@@ -20,7 +20,7 @@ echo "==> Installing Python dependencies"
 echo "==> Writing runtime .env"
 cat > .env <<EOF
 GEMINI_API_KEY=${GEMINI_API_KEY:?GEMINI_API_KEY is required}
-GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-pro}
+GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.1-pro-preview}
 APP_HOST=127.0.0.1
 APP_PORT=${APP_PORT}
 APP_ROOT_PATH=${APP_ROOT_PATH}

@@ -42,10 +42,11 @@ jobs:
           exit "$missing"
 
       - name: Setup SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
         run: |
           install -m 700 -d ~/.ssh
-          echo "${{ secrets.GCP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          python3 deploy/write_ssh_key.py ~/.ssh/id_rsa
           ssh-keyscan -H "${{ secrets.GCP_SSH_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Rsync application files
@@ -67,7 +68,7 @@ jobs:
       - name: Deploy application
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: gemini-2.5-pro
+          GEMINI_MODEL: gemini-3.1-pro-preview
         run: |
           ssh -i ~/.ssh/id_rsa "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_SSH_HOST }}" \
             "cd '${APP_DIR}' && GEMINI_API_KEY='${GEMINI_API_KEY}' GEMINI_MODEL='${GEMINI_MODEL}' APP_DIR='${APP_DIR}' APP_PORT='${APP_PORT}' APP_ROOT_PATH='${APP_ROOT_PATH}' ./deploy/deploy.sh"

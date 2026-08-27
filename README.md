@@ -1,13 +1,13 @@
 # GenAI Creator Studio
 
-A professional web app that uses **Google Gemini 2.5 Pro** to generate websites, print-ready documents, use case diagrams, and custom HTML creations — displayed live on an interactive canvas.
+A professional web app that uses **Google Gemini** to generate websites, print-ready documents, use case diagrams, and custom HTML creations — displayed live on an interactive canvas.
 
 ## Features
 
 - **Content types:** Website, PDF document, Use Case diagram, Custom
 - **Live canvas preview** with fullscreen, download, and print/save-as-PDF
 - **Mobile-responsive** UI with collapsible creation panel
-- **Gemini 2.5 Pro** for highest-quality HTML output
+- **Gemini 3.1 Pro Preview** for highest-quality HTML output (configurable via `GEMINI_MODEL`)
 
 ## Quick start
 

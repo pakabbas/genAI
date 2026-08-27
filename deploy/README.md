@@ -15,6 +15,8 @@ Add these under **Settings → Secrets and variables → Actions** in the **GitH
 | `GCP_SSH_PRIVATE_KEY` | Full SSH private key (`-----BEGIN ... KEY-----` block) |
 | `GEMINI_API_KEY` | Valid Google AI Studio API key |
 
+**SSH key format:** If your private key was pasted as a single line, the deploy workflow normalizes it automatically via `deploy/write_ssh_key.py`.
+
 **Important:** Cursor Cloud agent secrets and GitHub Actions secrets are separate. The deploy workflow reads only **GitHub repository secrets**. If deploy fails at "Validate GitHub Actions secrets", add the missing values in GitHub.
 
 **Never commit SSH keys or API keys to the repository.**

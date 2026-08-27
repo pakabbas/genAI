@@ -12,7 +12,7 @@ def get_settings() -> dict[str, str | int]:
     root_path = os.getenv("APP_ROOT_PATH", "").strip().rstrip("/")
     return {
         "gemini_api_key": api_key,
-        "gemini_model": os.getenv("GEMINI_MODEL", "gemini-2.5-pro").strip(),
+        "gemini_model": os.getenv("GEMINI_MODEL", "gemini-3.1-pro-preview").strip(),
         "app_host": os.getenv("APP_HOST", "0.0.0.0"),
         "app_port": int(os.getenv("APP_PORT", "8000")),
         "app_root_path": root_path,
