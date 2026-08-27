@@ -11,6 +11,8 @@ from app.prompts import CONTENT_TYPE_LABELS
 from app.services.gemini import generate_html
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+_settings = get_settings()
+_root_path = str(_settings["app_root_path"])
 
 app = FastAPI(
     title="GenAI Creator Studio",
@@ -20,6 +22,13 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+
+
+def _template_context(extra: dict | None = None) -> dict:
+    context = {"root_path": _root_path}
+    if extra:
+        context.update(extra)
+    return context
 
 
 class GenerateRequest(BaseModel):
@@ -38,7 +47,7 @@ async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "index.html",
-        context={"content_types": CONTENT_TYPE_LABELS},
+        context=_template_context({"content_types": CONTENT_TYPE_LABELS}),
     )
 
 

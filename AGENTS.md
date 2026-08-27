@@ -28,3 +28,12 @@ Only one service is required. Run it in tmux for long-lived sessions.
 ### Starlette templating
 
 Starlette ≥1.6 uses `TemplateResponse(request, "template.html", context={...})` — not the legacy `(name, {"request": ...})` signature.
+
+### Production deployment (GCP)
+
+- **Public URL:** https://leadpilotai.spiralloopstechnologies.com/genAI/
+- **Server path:** `/home/muhamad_abbas/apps/genAI`
+- **Service:** `genai.service` on `127.0.0.1:8010` (LeadPilot remains on `:8093`)
+- **Nginx:** snippet at `/etc/nginx/snippets/genai-leadpilot-location.conf`, included from `leadpilotai.conf`
+- **CI/CD:** `.github/workflows/deploy.yml` on push to `main` (requires GitHub secrets — see `deploy/README.md`)
+- **Subpath:** set `APP_ROOT_PATH=/genAI` in production `.env`; frontend uses `meta[name=app-root]` for API/static URLs

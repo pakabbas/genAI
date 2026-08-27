@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="GenAI Creator Studio — generate websites, PDF documents, and diagrams with Gemini AI." />
   <title>GenAI Creator Studio</title>
+  <meta name="app-root" content="{{ root_path }}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -158,6 +159,6 @@
 
   <div class="toast-container" id="toastContainer" aria-live="polite"></div>
 
-  <script src="/static/js/app.js" defer></script>
+  <script src="{{ root_path }}/static/js/app.js" defer></script>
 </body>
 </html>

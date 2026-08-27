@@ -1,4 +1,10 @@
 (() => {
+  const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
+
+  function withRoot(path) {
+    return `${APP_ROOT}${path}`;
+  }
+
   const state = {
     contentType: "website",
     lastPrompt: "",
@@ -91,7 +97,7 @@
 
   async function checkHealth() {
     try {
-      const res = await fetch("/api/health");
+      const res = await fetch(withRoot("/api/health"));
       const data = await res.json();
       if (data.api_key_configured) {
         els.apiStatus.classList.add("is-ready");
@@ -124,7 +130,7 @@
     }
 
     try {
-      const res = await fetch("/api/generate", {
+      const res = await fetch(withRoot("/api/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -189,7 +195,7 @@
 
   async function loadSample() {
     try {
-      const res = await fetch("/static/samples/use_case_example.html");
+      const res = await fetch(withRoot("/static/samples/use_case_example.html"));
       const html = await res.text();
       renderPreview(html);
       els.canvasTypeLabel.textContent = "Use Case Diagram (Example)";
