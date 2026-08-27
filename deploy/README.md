@@ -6,7 +6,7 @@ The app runs as a **separate systemd service** (`genai.service`) on port **8010*
 
 ### GitHub repository secrets
 
-Add these under **Settings → Secrets and variables → Actions**:
+Add these under **Settings → Secrets and variables → Actions** in the **GitHub repository** (not Cursor Cloud secrets):
 
 | Secret | Value |
 |--------|--------|
@@ -14,6 +14,8 @@ Add these under **Settings → Secrets and variables → Actions**:
 | `GCP_SSH_USER` | `muhamad_abbas` |
 | `GCP_SSH_PRIVATE_KEY` | Full SSH private key (`-----BEGIN ... KEY-----` block) |
 | `GEMINI_API_KEY` | Valid Google AI Studio API key |
+
+**Important:** Cursor Cloud agent secrets and GitHub Actions secrets are separate. The deploy workflow reads only **GitHub repository secrets**. If deploy fails at "Validate GitHub Actions secrets", add the missing values in GitHub.
 
 **Never commit SSH keys or API keys to the repository.**
 

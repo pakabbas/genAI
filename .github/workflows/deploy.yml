@@ -20,10 +20,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate GitHub Actions secrets
+        run: |
+          missing=0
+          if [ -z "${{ secrets.GCP_SSH_HOST }}" ]; then
+            echo "::error::Missing repository secret GCP_SSH_HOST (GitHub → Settings → Secrets → Actions)"
+            missing=1
+          fi
+          if [ -z "${{ secrets.GCP_SSH_USER }}" ]; then
+            echo "::error::Missing repository secret GCP_SSH_USER"
+            missing=1
+          fi
+          if [ -z "${{ secrets.GCP_SSH_PRIVATE_KEY }}" ]; then
+            echo "::error::Missing repository secret GCP_SSH_PRIVATE_KEY"
+            missing=1
+          fi
+          if [ -z "${{ secrets.GEMINI_API_KEY }}" ]; then
+            echo "::error::Missing repository secret GEMINI_API_KEY"
+            missing=1
+          fi
+          exit "$missing"
+
       - name: Setup SSH key
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.GCP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.GCP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "${{ secrets.GCP_SSH_HOST }}" >> ~/.ssh/known_hosts
 
