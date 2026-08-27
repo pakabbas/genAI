@@ -68,7 +68,7 @@ jobs:
       - name: Deploy application
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: gemini-3.1-pro-preview
+          GEMINI_MODEL: gemini-flash-lite-latest
         run: |
           ssh -i ~/.ssh/id_rsa "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_SSH_HOST }}" \
             "cd '${APP_DIR}' && GEMINI_API_KEY='${GEMINI_API_KEY}' GEMINI_MODEL='${GEMINI_MODEL}' APP_DIR='${APP_DIR}' APP_PORT='${APP_PORT}' APP_ROOT_PATH='${APP_ROOT_PATH}' ./deploy/deploy.sh"

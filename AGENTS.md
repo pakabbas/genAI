@@ -1,6 +1,6 @@
 # GenAI Creator Studio
 
-Python + FastAPI app that generates websites, PDF-style documents, use case diagrams, and custom HTML via **Gemini 2.5 Pro**, displayed on a live canvas.
+Python + FastAPI app that generates websites, PDF-style documents, use case diagrams, and custom HTML via **Gemini Flash Lite (latest)**, displayed on a live canvas.
 
 ## Cursor Cloud specific instructions
 
