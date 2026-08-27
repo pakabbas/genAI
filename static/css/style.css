@@ -484,6 +484,12 @@ textarea {
   padding: 2rem;
 }
 
+.canvas-empty[hidden],
+.canvas-loading[hidden],
+.preview-frame[hidden] {
+  display: none !important;
+}
+
 .canvas-empty h2 {
   margin: 1rem 0 0.35rem;
   font-size: 1.35rem;

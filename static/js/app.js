@@ -49,9 +49,28 @@
     els.generateBtn.classList.toggle("is-loading", isGenerating);
     els.generateBtn.querySelector(".btn-spinner").hidden = !isGenerating;
     els.canvasLoading.hidden = !isGenerating;
+
+    if (isGenerating) {
+      els.canvasEmpty.hidden = true;
+      els.previewFrame.hidden = true;
+    } else if (state.generatedHtml) {
+      els.canvasEmpty.hidden = true;
+      els.previewFrame.hidden = false;
+    } else {
+      els.canvasEmpty.hidden = false;
+      els.previewFrame.hidden = true;
+    }
+
     els.canvasBadge.textContent = isGenerating ? "Generating" : state.generatedHtml ? "Live" : "Ready";
     els.canvasBadge.classList.toggle("is-loading", isGenerating);
     els.canvasBadge.classList.toggle("is-live", !isGenerating && Boolean(state.generatedHtml));
+  }
+
+  function initCanvasView() {
+    els.canvasLoading.hidden = true;
+    els.previewFrame.hidden = true;
+    els.canvasEmpty.hidden = false;
+    setCanvasActionsEnabled(false);
   }
 
   function setCanvasActionsEnabled(enabled) {
@@ -229,5 +248,6 @@
   });
 
   updateCharCount();
+  initCanvasView();
   checkHealth();
 })();
