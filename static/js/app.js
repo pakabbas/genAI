@@ -25,6 +25,9 @@
     refreshBtn: document.getElementById("refreshBtn"),
     fullscreenBtn: document.getElementById("fullscreenBtn"),
     downloadBtn: document.getElementById("downloadBtn"),
+    downloadDropdown: document.getElementById("downloadDropdown"),
+    downloadMenu: document.getElementById("downloadMenu"),
+    downloadMenuItems: document.querySelectorAll(".download-menu-item"),
     printBtn: document.getElementById("printBtn"),
     canvasBadge: document.getElementById("canvasBadge"),
     canvasTypeLabel: document.getElementById("canvasTypeLabel"),
@@ -111,6 +114,7 @@
     els.canvasBadge.textContent = "Ready";
     els.canvasBadge.classList.remove("is-live", "is-loading");
     els.canvasTypeLabel.textContent = "No creation yet";
+    closeDownloadMenu();
     setCanvasActionsEnabled(false);
   }
 
@@ -179,15 +183,99 @@
     }
   }
 
+  function exportBaseName() {
+    return `genai-creation-${state.contentType}-${Date.now()}`;
+  }
+
+  function closeDownloadMenu() {
+    els.downloadMenu.hidden = true;
+    els.downloadBtn.classList.remove("is-open");
+    els.downloadBtn.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleDownloadMenu() {
+    if (els.downloadBtn.disabled) return;
+    const willOpen = els.downloadMenu.hidden;
+    if (willOpen) {
+      els.downloadMenu.hidden = false;
+      els.downloadBtn.classList.add("is-open");
+      els.downloadBtn.setAttribute("aria-expanded", "true");
+    } else {
+      closeDownloadMenu();
+    }
+  }
+
   function downloadHtml() {
     if (!state.generatedHtml) return;
+    closeDownloadMenu();
     const blob = new Blob([state.generatedHtml], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `genai-creation-${state.contentType}-${Date.now()}.html`;
+    a.download = `${exportBaseName()}.html`;
     a.click();
     URL.revokeObjectURL(url);
+    showToast("HTML file downloaded.", "success");
+  }
+
+  async function downloadPdf() {
+    if (!state.generatedHtml) return;
+    closeDownloadMenu();
+
+    if (typeof html2pdf === "undefined") {
+      showToast("PDF library failed to load. Try Print → Save as PDF.", "error");
+      return;
+    }
+
+    const frameDoc = els.previewFrame.contentDocument;
+    if (!frameDoc?.documentElement) {
+      showToast("Preview not ready for PDF export.", "error");
+      return;
+    }
+
+    const isDiagram = state.contentType === "use_case_diagram";
+    const previousLabel = els.downloadBtn.querySelector(".btn-text")?.textContent;
+    els.downloadBtn.disabled = true;
+    if (els.downloadBtn.querySelector(".btn-text")) {
+      els.downloadBtn.querySelector(".btn-text").textContent = "Exporting…";
+    }
+
+    try {
+      await html2pdf()
+        .set({
+          margin: [0.4, 0.4, 0.4, 0.4],
+          filename: `${exportBaseName()}.pdf`,
+          image: { type: "jpeg", quality: 0.95 },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            windowWidth: frameDoc.documentElement.scrollWidth,
+            windowHeight: frameDoc.documentElement.scrollHeight,
+          },
+          jsPDF: {
+            unit: "in",
+            format: "a4",
+            orientation: isDiagram ? "landscape" : "portrait",
+          },
+          pagebreak: { mode: ["css", "legacy"] },
+        })
+        .from(frameDoc.documentElement)
+        .save();
+      showToast("PDF downloaded.", "success");
+    } catch {
+      showToast("PDF export failed. Try Print → Save as PDF.", "error");
+    } finally {
+      els.downloadBtn.disabled = false;
+      if (els.downloadBtn.querySelector(".btn-text") && previousLabel) {
+        els.downloadBtn.querySelector(".btn-text").textContent = previousLabel;
+      }
+    }
+  }
+
+  function handleDownloadFormat(format) {
+    if (format === "html") downloadHtml();
+    else if (format === "pdf") downloadPdf();
   }
 
   function printPreview() {
@@ -238,7 +326,21 @@
       generate();
     }
   });
-  els.downloadBtn.addEventListener("click", downloadHtml);
+  els.downloadBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleDownloadMenu();
+  });
+  els.downloadMenuItems.forEach((item) => {
+    item.addEventListener("click", () => handleDownloadFormat(item.dataset.format));
+  });
+  document.addEventListener("click", (event) => {
+    if (!els.downloadDropdown.contains(event.target)) {
+      closeDownloadMenu();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeDownloadMenu();
+  });
   els.printBtn.addEventListener("click", printPreview);
   els.fullscreenBtn.addEventListener("click", toggleFullscreen);
 

@@ -462,6 +462,75 @@ textarea {
   gap: 0.4rem;
 }
 
+.download-dropdown {
+  position: relative;
+}
+
+.download-trigger {
+  gap: 0.35rem;
+}
+
+.download-chevron {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+}
+
+.download-menu {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 40;
+  min-width: 220px;
+  padding: 0.35rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: rgba(12, 16, 30, 0.98);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow);
+}
+
+.download-menu[hidden] {
+  display: none !important;
+}
+
+.download-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.download-menu-item:hover,
+.download-menu-item:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
+.download-menu-title {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.download-menu-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.download-trigger.is-open {
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .canvas-frame-wrap {
   position: relative;
   flex: 1;
