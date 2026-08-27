@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="GenAI Creator Studio — generate websites, PDF documents, and diagrams with Gemini AI." />
+  <title>GenAI Creator Studio</title>
+  <meta name="app-root" content="{{ root_path }}" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css" />
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <header class="site-header">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="2" width="28" height="28" rx="8" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M10 22V10l6 6 6-6v12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div>
+        <p class="brand-eyebrow">Powered by Gemini 2.5 Pro</p>
+        <h1 class="brand-title">Creator Studio</h1>
+      </div>
+    </div>
+    <div class="header-actions">
+      <span class="status-pill" id="apiStatus" aria-live="polite">
+        <span class="status-dot"></span>
+        Checking API…
+      </span>
+      <button type="button" class="btn btn-ghost btn-icon-only mobile-panel-toggle" id="panelToggle" aria-label="Toggle creation panel" aria-expanded="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="panel" id="creationPanel">
+      <section class="panel-section">
+        <h2 class="section-title">What do you want to create?</h2>
+        <p class="section-subtitle">Choose a format and describe your vision. Gemini will craft a polished HTML result on the canvas.</p>
+
+        <div class="type-grid" role="radiogroup" aria-label="Content type">
+          {% for key, label in content_types.items() %}
+          <button
+            type="button"
+            class="type-card{% if key == 'website' %} is-selected{% endif %}"
+            data-type="{{ key }}"
+            role="radio"
+            aria-checked="{% if key == 'website' %}true{% else %}false{% endif %}"
+          >
+            <span class="type-icon" aria-hidden="true">
+              {% if key == 'website' %}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 4V2M16 4V2"/></svg>
+              {% elif key == 'pdf' %}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
+              {% elif key == 'use_case_diagram' %}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="6" cy="12" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="18" cy="16" r="2"/><rect x="9" y="6" width="6" height="12" rx="3"/><path d="M8 12h1M15 8l-1 1M15 16l-1-1"/></svg>
+              {% else %}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17.8 5.8 22.3l2.4-7.4L2 10.4h7.6z"/></svg>
+              {% endif %}
+            </span>
+            <span class="type-label">{{ label }}</span>
+          </button>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="panel-section">
+        <label class="field-label" for="promptInput">Describe your creation</label>
+        <textarea
+          id="promptInput"
+          class="prompt-input"
+          rows="6"
+          placeholder="Example: A modern landing page for an AI-powered fitness coach with pricing tiers and a dark theme…"
+        ></textarea>
+        <div class="prompt-footer">
+          <span class="char-count" id="charCount">0 / 8000</span>
+        </div>
+      </section>
+
+      <section class="panel-section panel-actions">
+        <button type="button" class="btn btn-primary btn-generate" id="generateBtn">
+          <span class="btn-label">Generate with Gemini</span>
+          <span class="btn-spinner" hidden aria-hidden="true"></span>
+        </button>
+        <button type="button" class="btn btn-secondary" id="sampleBtn">Preview example on canvas</button>
+        <button type="button" class="btn btn-secondary" id="clearBtn">Clear canvas</button>
+      </section>
+
+      <section class="panel-section tips">
+        <h3 class="tips-title">Pro tips</h3>
+        <ul class="tips-list">
+          <li>Be specific about audience, tone, colors, and sections you need.</li>
+          <li>For PDFs, mention report title, sections, and data to include.</li>
+          <li>For diagrams, list actors, use cases, and relationships.</li>
+        </ul>
+      </section>
+    </aside>
+
+    <section class="canvas-area" aria-label="Preview canvas">
+      <div class="canvas-toolbar">
+        <div class="canvas-meta">
+          <span class="canvas-badge" id="canvasBadge">Ready</span>
+          <span class="canvas-type" id="canvasTypeLabel">No creation yet</span>
+        </div>
+        <div class="canvas-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="refreshBtn" disabled title="Regenerate">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+            <span class="btn-text">Regenerate</span>
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="fullscreenBtn" disabled title="Fullscreen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+            <span class="btn-text">Fullscreen</span>
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="downloadBtn" disabled title="Download HTML">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+            <span class="btn-text">Download</span>
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="printBtn" disabled title="Print / Save as PDF">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            <span class="btn-text">Print</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="canvas-frame-wrap" id="canvasWrap">
+        <div class="canvas-empty" id="canvasEmpty">
+          <div class="empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="8" y="12" width="48" height="40" rx="4"/>
+              <path d="M8 24h48M20 12V8M44 12V8"/>
+              <circle cx="32" cy="36" r="6"/>
+            </svg>
+          </div>
+          <h2>Your canvas is ready</h2>
+          <p>Pick a content type, describe what you want, and hit <strong>Generate with Gemini</strong>.</p>
+        </div>
+        <iframe
+          id="previewFrame"
+          class="preview-frame"
+          title="Generated content preview"
+          sandbox="allow-same-origin allow-scripts"
+          hidden
+        ></iframe>
+        <div class="canvas-loading" id="canvasLoading" hidden>
+          <div class="loading-orbit" aria-hidden="true"></div>
+          <p>Gemini is crafting your creation…</p>
+          <span class="loading-sub">This may take 15–45 seconds for high-quality output.</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <script src="{{ root_path }}/static/js/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Online Bookstore — Use Case Diagram</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --ink: #1e293b;
+      --accent: #4f46e5;
+      --muted: #64748b;
+      --line: #94a3b8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: linear-gradient(160deg, #eef2ff, var(--bg));
+      color: var(--ink);
+      padding: clamp(1rem, 3vw, 2.5rem);
+    }
+    .wrap { max-width: 960px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 1.5rem; }
+    h1 { margin: 0 0 0.35rem; font-size: clamp(1.4rem, 3vw, 2rem); }
+    p { margin: 0; color: var(--muted); }
+    .diagram {
+      background: white;
+      border-radius: 16px;
+      padding: 1rem;
+      box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
+    }
+    svg { width: 100%; height: auto; display: block; }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+    .line-sample { width: 24px; height: 2px; background: var(--line); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Online Bookstore System</h1>
+      <p>UML Use Case Diagram — sample output rendered on the Creator Studio canvas</p>
+    </header>
+    <div class="diagram">
+      <svg viewBox="0 0 820 480" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Use case diagram">
+        <rect x="180" y="60" width="460" height="340" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"/>
+        <text x="410" y="88" text-anchor="middle" font-size="16" font-weight="600" fill="#334155">Bookstore System</text>
+        <ellipse cx="410" cy="160" rx="78" ry="28" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+        <text x="410" y="165" text-anchor="middle" font-size="13" fill="#312e81">Browse Catalog</text>
+        <ellipse cx="320" cy="240" rx="72" ry="28" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+        <text x="320" y="245" text-anchor="middle" font-size="13" fill="#312e81">Place Order</text>
+        <ellipse cx="500" cy="240" rx="72" ry="28" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+        <text x="500" y="245" text-anchor="middle" font-size="13" fill="#312e81">Manage Inventory</text>
+        <ellipse cx="410" cy="330" rx="88" ry="28" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+        <text x="410" y="335" text-anchor="middle" font-size="13" fill="#312e81">Generate Reports</text>
+        <line x1="90" y1="200" x2="242" y2="200" stroke="#64748b" stroke-width="2"/>
+        <text x="55" y="205" font-size="14" fill="#334155">Customer</text>
+        <circle cx="55" cy="170" r="18" fill="none" stroke="#334155" stroke-width="2"/>
+        <line x1="55" y1="188" x2="55" y2="230" stroke="#334155" stroke-width="2"/>
+        <line x1="35" y1="210" x2="75" y2="210" stroke="#334155" stroke-width="2"/>
+        <line x1="40" y1="230" x2="70" y2="230" stroke="#334155" stroke-width="2"/>
+        <line x1="730" y1="260" x2="572" y2="260" stroke="#64748b" stroke-width="2"/>
+        <text x="765" y="265" font-size="14" fill="#334155">Admin</text>
+        <circle cx="765" cy="230" r="18" fill="none" stroke="#334155" stroke-width="2"/>
+        <line x1="765" y1="248" x2="765" y2="290" stroke="#334155" stroke-width="2"/>
+        <line x1="745" y1="270" x2="785" y2="270" stroke="#334155" stroke-width="2"/>
+        <line x1="750" y1="290" x2="780" y2="290" stroke="#334155" stroke-width="2"/>
+        <line x1="168" y1="200" x2="332" y2="212" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <line x1="168" y1="200" x2="332" y2="228" stroke="#94a3b8" stroke-width="1.5"/>
+        <line x1="652" y1="260" x2="572" y2="248" stroke="#94a3b8" stroke-width="1.5"/>
+        <line x1="652" y1="260" x2="498" y2="318" stroke="#94a3b8" stroke-width="1.5"/>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i class="dot"></i> Use case</span>
+      <span><i class="line-sample"></i> Association</span>
+      <span>Actors: Customer, Admin</span>
+    </div>
+  </div>
+</body>
+</html>
