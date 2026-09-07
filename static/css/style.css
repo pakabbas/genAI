@@ -300,6 +300,15 @@ input {
   font-family: var(--mono);
 }
 
+.panel-block-type {
+  padding-bottom: 0;
+}
+
+.panel-block-type + .panel-block {
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
 .panel-block + .panel-block {
   margin-top: 1.25rem;
   padding-top: 1.25rem;

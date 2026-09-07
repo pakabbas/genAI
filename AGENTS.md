@@ -39,7 +39,7 @@ Only one service is required. Run it in tmux for long-lived sessions.
 
 ### Designer UI
 
-- Left panel: shape library + canvas tools (select, pan, copy, delete).
+- Left panel: **diagram type** dropdown, shape library + canvas tools (select, pan, copy, delete).
 - Center: SVG designer canvas.
 - Right panel tabs: **AI Generation** (type, prompt, generate, sample) and **Project Settings** (save/load/transfer, export, shape properties). Client canvas project ID is stored in the backend only — not shown in the UI.
 - Frontend modules under `static/js/designer/`.

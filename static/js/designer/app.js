@@ -23,6 +23,7 @@ import { normalizeDiagram } from "./normalize.js";
   const els = {
     apiStatus: document.getElementById("apiStatus"),
     diagramTypeSelect: document.getElementById("diagramTypeSelect"),
+    diagramTypeSelectLeft: document.getElementById("diagramTypeSelectLeft"),
     activeTypeLabel: document.getElementById("activeTypeLabel"),
     toolboxNodes: document.getElementById("toolboxNodes"),
     toolboxEdges: document.getElementById("toolboxEdges"),
@@ -133,6 +134,7 @@ import { normalizeDiagram } from "./normalize.js";
     }
     state.diagramType = type;
     if (els.diagramTypeSelect) els.diagramTypeSelect.value = type;
+    if (els.diagramTypeSelectLeft) els.diagramTypeSelectLeft.value = type;
     if (els.activeTypeLabel) {
       els.activeTypeLabel.textContent = DIAGRAM_TYPE_LABELS[type] || type;
     }
@@ -551,8 +553,16 @@ import { normalizeDiagram } from "./normalize.js";
     showToast("Diagram JSON exported.", "success");
   }
 
+  function onDiagramTypeChange(value) {
+    selectDiagramType(value, { clearCanvasOnChange: canvas.diagram.nodes.length > 0 });
+  }
+
   els.diagramTypeSelect?.addEventListener("change", () => {
-    selectDiagramType(els.diagramTypeSelect.value, { clearCanvasOnChange: canvas.diagram.nodes.length > 0 });
+    onDiagramTypeChange(els.diagramTypeSelect.value);
+  });
+
+  els.diagramTypeSelectLeft?.addEventListener("change", () => {
+    onDiagramTypeChange(els.diagramTypeSelectLeft.value);
   });
 
   els.promptInput.addEventListener("input", updateCharCount);

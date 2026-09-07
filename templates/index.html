@@ -50,6 +50,15 @@
 
   <main class="designer-workspace">
     <aside class="designer-panel left-panel" id="leftPanel">
+      <section class="panel-block panel-block-type">
+        <label class="field-label" for="diagramTypeSelectLeft">Diagram type</label>
+        <select id="diagramTypeSelectLeft" class="select-input select-input-tight" aria-label="Diagram type">
+          {% for key, label in diagram_types.items() %}
+          <option value="{{ key }}"{% if key == 'use_case' %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </section>
+
       <section class="panel-block">
         <h2 class="block-title">Shape library</h2>
         <p class="active-type-badge" id="activeTypeLabel">Use Case Diagram</p>
