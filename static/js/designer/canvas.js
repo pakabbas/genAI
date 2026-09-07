@@ -109,6 +109,11 @@ export class DiagramCanvas {
     this.onSelectionChange(this.getSelection());
   }
 
+  /** Load diagram after normalizing to toolbox shapes (from AI or import). */
+  loadNormalizedDiagram(diagram) {
+    this.setDiagram(diagram);
+  }
+
   getDiagram() {
     return JSON.parse(JSON.stringify(this.diagram));
   }
@@ -450,7 +455,7 @@ export class DiagramCanvas {
       line.setAttribute("stroke-width", "2");
       line.setAttribute("marker-end", "url(#arrow)");
 
-      if (edge.type === "include" || edge.type === "extend") {
+      if (edge.type === "include" || edge.type === "extend" || edge.type === "dependency" || edge.type === "async_message" || edge.type === "wireless" || edge.type === "return_message") {
         line.setAttribute("stroke-dasharray", "6 4");
       }
 
@@ -485,7 +490,14 @@ export class DiagramCanvas {
 
   _drawNodes() {
     this.nodesLayer.innerHTML = "";
-    for (const node of this.diagram.nodes) {
+    this.overlayLayer.innerHTML = "";
+
+    const zOrder = (type) => (["system_boundary", "lane", "package", "fragment"].includes(type) ? 0 : 1);
+    const sorted = [...this.diagram.nodes].sort(
+      (a, b) => zOrder(a.type) - zOrder(b.type) || a.y - b.y || a.x - b.x,
+    );
+
+    for (const node of sorted) {
       const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
       g.dataset.id = node.id;
       g.dataset.kind = "node";
@@ -502,7 +514,11 @@ export class DiagramCanvas {
         node.type !== "end" &&
         node.type !== "lane" &&
         node.type !== "system_boundary" &&
-        node.type !== "relationship"
+        node.type !== "relationship" &&
+        node.type !== "package" &&
+        node.type !== "fragment" &&
+        node.type !== "class" &&
+        node.type !== "interface"
       ) {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("x", node.width / 2);
@@ -519,9 +535,41 @@ export class DiagramCanvas {
         label.setAttribute("class", "lane-label");
         label.textContent = node.label;
         g.appendChild(label);
+      } else if (["package", "fragment", "lifeline", "object", "cloud", "class", "enum"].includes(node.type) && node.label) {
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("x", node.type === "lane" ? 16 : node.width / 2);
+        label.setAttribute("y", node.type === "class" || node.type === "enum" ? 18 : node.type === "lifeline" ? 24 : 20);
+        label.setAttribute("text-anchor", node.type === "lane" ? "start" : "middle");
+        label.setAttribute("class", "node-label");
+        label.textContent = node.label;
+        g.appendChild(label);
       }
 
       this.nodesLayer.appendChild(g);
+    }
+
+    this._drawSelectionHandles();
+  }
+
+  _drawSelectionHandles() {
+    for (const node of this.diagram.nodes) {
+      if (!this.selectedIds.has(node.id)) continue;
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      g.setAttribute("class", "selection-handles");
+      g.setAttribute("pointer-events", "none");
+      const pad = 4;
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("x", node.x - pad);
+      rect.setAttribute("y", node.y - pad);
+      rect.setAttribute("width", node.width + pad * 2);
+      rect.setAttribute("height", node.height + pad * 2);
+      rect.setAttribute("fill", "none");
+      rect.setAttribute("stroke", "#6c7cff");
+      rect.setAttribute("stroke-width", "2");
+      rect.setAttribute("stroke-dasharray", "5 3");
+      rect.setAttribute("rx", "6");
+      g.appendChild(rect);
+      this.overlayLayer.appendChild(g);
     }
   }
 
@@ -727,6 +775,289 @@ export class DiagramCanvas {
       path.setAttribute("stroke", "#475569");
       path.setAttribute("stroke-width", "2");
       g.appendChild(path);
+      return;
+    }
+
+    if (type === "data_store") {
+      const body = document.createElementNS(ns, "path");
+      body.setAttribute(
+        "d",
+        `M 8 8 Q ${w / 2} 0 ${w - 8} 8 V ${h - 8} Q ${w / 2} ${h} 8 ${h - 8} Z`,
+      );
+      body.setAttribute("fill", "#f1f5f9");
+      body.setAttribute("stroke", "#475569");
+      body.setAttribute("stroke-width", "2");
+      g.appendChild(body);
+      return;
+    }
+
+    if (type === "text_box") {
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("width", w);
+      rect.setAttribute("height", h);
+      rect.setAttribute("rx", 4);
+      rect.setAttribute("fill", "#fff");
+      rect.setAttribute("stroke", "#94a3b8");
+      rect.setAttribute("stroke-width", "1.5");
+      g.appendChild(rect);
+      return;
+    }
+
+    if (type === "package" || type === "fragment") {
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("width", w);
+      rect.setAttribute("height", h);
+      rect.setAttribute("rx", 6);
+      rect.setAttribute("fill", type === "fragment" ? "rgba(255,251,235,0.6)" : "rgba(248,250,252,0.55)");
+      rect.setAttribute("stroke", "#64748b");
+      rect.setAttribute("stroke-width", "2");
+      if (type === "fragment") rect.setAttribute("stroke-dasharray", "4 3");
+      g.appendChild(rect);
+      const tab = document.createElementNS(ns, "rect");
+      tab.setAttribute("x", 8);
+      tab.setAttribute("y", -12);
+      tab.setAttribute("width", Math.min(100, w - 16));
+      tab.setAttribute("height", 20);
+      tab.setAttribute("rx", 4);
+      tab.setAttribute("fill", "#e2e8f0");
+      tab.setAttribute("stroke", "#64748b");
+      g.appendChild(tab);
+      return;
+    }
+
+    if (type === "subprocess") {
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("x", 4);
+      rect.setAttribute("y", 4);
+      rect.setAttribute("width", w - 8);
+      rect.setAttribute("height", h - 8);
+      rect.setAttribute("rx", 8);
+      rect.setAttribute("fill", "#f8fafc");
+      rect.setAttribute("stroke", "#334155");
+      rect.setAttribute("stroke-width", "2");
+      g.appendChild(rect);
+      const inner = document.createElementNS(ns, "rect");
+      inner.setAttribute("width", w);
+      inner.setAttribute("height", h);
+      inner.setAttribute("rx", 10);
+      inner.setAttribute("fill", "none");
+      inner.setAttribute("stroke", "#334155");
+      inner.setAttribute("stroke-width", "2");
+      g.appendChild(inner);
+      return;
+    }
+
+    if (type === "manual_input" || type === "preparation") {
+      const el = document.createElementNS(ns, "polygon");
+      if (type === "preparation") {
+        el.setAttribute("points", `2,${h / 2} ${w / 2},2 ${w - 2},${h / 2} ${w / 2},${h - 2}`);
+      } else {
+        el.setAttribute("points", `2,2 ${w - 12},2 ${w - 2},${h - 2} 12,${h - 2}`);
+      }
+      el.setAttribute("fill", "#f8fafc");
+      el.setAttribute("stroke", "#334155");
+      el.setAttribute("stroke-width", "2");
+      g.appendChild(el);
+      return;
+    }
+
+    if (type === "display") {
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("width", w);
+      rect.setAttribute("height", h);
+      rect.setAttribute("rx", 4);
+      rect.setAttribute("fill", "#f8fafc");
+      rect.setAttribute("stroke", "#334155");
+      rect.setAttribute("stroke-width", "2");
+      g.appendChild(rect);
+      const line = document.createElementNS(ns, "line");
+      line.setAttribute("x1", 8);
+      line.setAttribute("y1", h - 10);
+      line.setAttribute("x2", w - 8);
+      line.setAttribute("y2", h - 10);
+      line.setAttribute("stroke", "#64748b");
+      g.appendChild(line);
+      return;
+    }
+
+    if (type === "delay") {
+      const el = document.createElementNS(ns, "path");
+      el.setAttribute("d", `M 4 ${h / 2} Q 4 4 ${w / 2} 4 Q ${w - 4} 4 ${w - 4} ${h / 2} Q ${w - 4} ${h - 4} ${w / 2} ${h - 4} Q 4 ${h - 4} 4 ${h / 2}`);
+      el.setAttribute("fill", "#fef3c7");
+      el.setAttribute("stroke", "#b45309");
+      el.setAttribute("stroke-width", "2");
+      g.appendChild(el);
+      return;
+    }
+
+    if (type === "off_page" || type === "connector_node") {
+      const el = document.createElementNS(ns, "polygon");
+      el.setAttribute("points", type === "off_page" ? `2,2 ${w - 2},2 ${w - 2},${h - 2} ${w / 2},${h - 2} 2,${h - 2}` : `${w / 2},2 ${w - 2},${h / 2} ${w / 2},${h - 2} 2,${h / 2}`);
+      el.setAttribute("fill", "#eef2ff");
+      el.setAttribute("stroke", "#4338ca");
+      el.setAttribute("stroke-width", "2");
+      g.appendChild(el);
+      return;
+    }
+
+    if (type === "lifeline") {
+      const box = document.createElementNS(ns, "rect");
+      box.setAttribute("x", 8);
+      box.setAttribute("width", w - 16);
+      box.setAttribute("height", 36);
+      box.setAttribute("rx", 4);
+      box.setAttribute("fill", "#fff");
+      box.setAttribute("stroke", "#334155");
+      box.setAttribute("stroke-width", "2");
+      g.appendChild(box);
+      const line = document.createElementNS(ns, "line");
+      line.setAttribute("x1", w / 2);
+      line.setAttribute("y1", 36);
+      line.setAttribute("x2", w / 2);
+      line.setAttribute("y2", h);
+      line.setAttribute("stroke", "#64748b");
+      line.setAttribute("stroke-width", "2");
+      line.setAttribute("stroke-dasharray", "6 4");
+      g.appendChild(line);
+      return;
+    }
+
+    if (type === "object") {
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("width", w);
+      rect.setAttribute("height", h);
+      rect.setAttribute("rx", 6);
+      rect.setAttribute("fill", "#fff");
+      rect.setAttribute("stroke", "#334155");
+      rect.setAttribute("stroke-width", "2");
+      g.appendChild(rect);
+      return;
+    }
+
+    if (type === "activation") {
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("width", w);
+      rect.setAttribute("height", h);
+      rect.setAttribute("fill", "#dbeafe");
+      rect.setAttribute("stroke", "#2563eb");
+      rect.setAttribute("stroke-width", "1.5");
+      g.appendChild(rect);
+      return;
+    }
+
+    if (type === "class" || type === "interface" || type === "enum") {
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("width", w);
+      rect.setAttribute("height", h);
+      rect.setAttribute("fill", "#fff");
+      rect.setAttribute("stroke", "#1e293b");
+      rect.setAttribute("stroke-width", "2");
+      g.appendChild(rect);
+      const line1 = document.createElementNS(ns, "line");
+      line1.setAttribute("x1", 0);
+      line1.setAttribute("y1", 28);
+      line1.setAttribute("x2", w);
+      line1.setAttribute("y2", 28);
+      line1.setAttribute("stroke", "#1e293b");
+      g.appendChild(line1);
+      const line2 = document.createElementNS(ns, "line");
+      line2.setAttribute("x1", 0);
+      line2.setAttribute("y1", 52);
+      line2.setAttribute("x2", w);
+      line2.setAttribute("y2", 52);
+      line2.setAttribute("stroke", "#1e293b");
+      g.appendChild(line2);
+      if (type === "interface") {
+        const tag = document.createElementNS(ns, "text");
+        tag.setAttribute("x", w / 2);
+        tag.setAttribute("y", 18);
+        tag.setAttribute("text-anchor", "middle");
+        tag.setAttribute("class", "node-label");
+        tag.textContent = "«interface»";
+        g.appendChild(tag);
+      }
+      return;
+    }
+
+    if (type === "cloud") {
+      const path = document.createElementNS(ns, "path");
+      path.setAttribute(
+        "d",
+        `M ${w * 0.2} ${h * 0.65} Q 0 ${h * 0.45} ${w * 0.15} ${h * 0.35} Q ${w * 0.1} ${h * 0.1} ${w * 0.4} ${h * 0.15} Q ${w * 0.55} 0 ${w * 0.75} ${h * 0.12} Q ${w} ${h * 0.15} ${w * 0.92} ${h * 0.4} Q ${w} ${h * 0.65} ${w * 0.75} ${h * 0.65} Z`,
+      );
+      path.setAttribute("fill", "#e0f2fe");
+      path.setAttribute("stroke", "#0284c7");
+      path.setAttribute("stroke-width", "2");
+      g.appendChild(path);
+      return;
+    }
+
+    if (type === "router" || type === "switch") {
+      const el = document.createElementNS(ns, "polygon");
+      el.setAttribute(
+        "points",
+        type === "router"
+          ? `${w / 2},2 ${w - 2},${h * 0.35} ${w * 0.72},${h - 2} ${w * 0.28},${h - 2} 2,${h * 0.35}`
+          : `8,2 ${w - 8},2 ${w - 2},${h - 2} 2,${h - 2}`,
+      );
+      el.setAttribute("fill", "#f1f5f9");
+      el.setAttribute("stroke", "#334155");
+      el.setAttribute("stroke-width", "2");
+      g.appendChild(el);
+      return;
+    }
+
+    if (type === "firewall") {
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("width", w);
+      rect.setAttribute("height", h);
+      rect.setAttribute("fill", "#fef2f2");
+      rect.setAttribute("stroke", "#dc2626");
+      rect.setAttribute("stroke-width", "3");
+      g.appendChild(rect);
+      return;
+    }
+
+    if (type === "server") {
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("x", 12);
+      rect.setAttribute("width", w - 24);
+      rect.setAttribute("height", h);
+      rect.setAttribute("rx", 4);
+      rect.setAttribute("fill", "#f8fafc");
+      rect.setAttribute("stroke", "#334155");
+      rect.setAttribute("stroke-width", "2");
+      g.appendChild(rect);
+      for (let i = 1; i <= 3; i += 1) {
+        const slot = document.createElementNS(ns, "line");
+        slot.setAttribute("x1", 16);
+        slot.setAttribute("x2", w - 16);
+        slot.setAttribute("y1", (h / 4) * i);
+        slot.setAttribute("y2", (h / 4) * i);
+        slot.setAttribute("stroke", "#94a3b8");
+        g.appendChild(slot);
+      }
+      return;
+    }
+
+    if (type === "client" || type === "workstation") {
+      const screen = document.createElementNS(ns, "rect");
+      screen.setAttribute("x", 8);
+      screen.setAttribute("y", 6);
+      screen.setAttribute("width", w - 16);
+      screen.setAttribute("height", h - 22);
+      screen.setAttribute("rx", 3);
+      screen.setAttribute("fill", "#fff");
+      screen.setAttribute("stroke", "#334155");
+      screen.setAttribute("stroke-width", "2");
+      g.appendChild(screen);
+      const base = document.createElementNS(ns, "rect");
+      base.setAttribute("x", w / 2 - 14);
+      base.setAttribute("y", h - 14);
+      base.setAttribute("width", 28);
+      base.setAttribute("height", 8);
+      base.setAttribute("fill", "#64748b");
+      g.appendChild(base);
       return;
     }
 

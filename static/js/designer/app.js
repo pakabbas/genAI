@@ -1,5 +1,6 @@
 import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js";
 import { DiagramCanvas } from "./canvas.js";
+import { normalizeDiagram } from "./normalize.js";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -18,8 +19,10 @@ import { DiagramCanvas } from "./canvas.js";
 
   const els = {
     apiStatus: document.getElementById("apiStatus"),
-    diagramTypeCards: document.querySelectorAll(".diagram-type-card"),
-    toolboxGrid: document.getElementById("toolboxGrid"),
+    diagramTypeSelect: document.getElementById("diagramTypeSelect"),
+    activeTypeLabel: document.getElementById("activeTypeLabel"),
+    toolboxNodes: document.getElementById("toolboxNodes"),
+    toolboxEdges: document.getElementById("toolboxEdges"),
     toolboxHint: document.getElementById("toolboxHint"),
     canvasHost: document.getElementById("canvasHost"),
     diagramTitle: document.getElementById("diagramTitle"),
@@ -29,6 +32,7 @@ import { DiagramCanvas } from "./canvas.js";
     sampleBtn: document.getElementById("sampleBtn"),
     clearBtn: document.getElementById("clearBtn"),
     deleteBtn: document.getElementById("deleteBtn"),
+    duplicateBtn: document.getElementById("duplicateBtn"),
     selectTool: document.getElementById("selectTool"),
     panTool: document.getElementById("panTool"),
     connectHint: document.getElementById("connectHint"),
@@ -86,15 +90,31 @@ import { DiagramCanvas } from "./canvas.js";
     els.charCount.textContent = `${els.promptInput.value.length} / 8000`;
   }
 
-  function selectDiagramType(type) {
+  function applyDiagramToCanvas(diagram, badge = "Ready") {
+    const normalized = normalizeDiagram(diagram, state.toolbox);
+    canvas.loadNormalizedDiagram(normalized);
+    els.diagramTitle.value = normalized.title;
+    state.isDirty = false;
+    canvas.fitToContent();
+    els.canvasBadge.textContent = badge;
+    els.canvasBadge.classList.add("is-live");
+  }
+
+  function selectDiagramType(type, { clearCanvasOnChange = false } = {}) {
+    if (state.diagramType === type && !clearCanvasOnChange) {
+      return;
+    }
     state.diagramType = type;
-    els.diagramTypeCards.forEach((card) => {
-      const selected = card.dataset.type === type;
-      card.classList.toggle("is-selected", selected);
-      card.setAttribute("aria-checked", selected ? "true" : "false");
-    });
+    if (els.diagramTypeSelect) els.diagramTypeSelect.value = type;
+    if (els.activeTypeLabel) {
+      els.activeTypeLabel.textContent = DIAGRAM_TYPE_LABELS[type] || type;
+    }
     canvas.setDiagramType(type);
-    loadToolbox(type);
+    loadToolbox(type).then(() => {
+      if (clearCanvasOnChange) {
+        clearCanvas();
+      }
+    });
   }
 
   async function loadToolbox(type) {
@@ -104,51 +124,43 @@ import { DiagramCanvas } from "./canvas.js";
       if (!res.ok) throw new Error(data.detail || "Failed to load toolbox");
       state.toolbox = data.items;
       renderToolbox(data.items);
-      els.toolboxHint.textContent = `Shapes for ${data.label}`;
+      els.toolboxHint.textContent = data.label;
     } catch (err) {
       showToast(err.message, "error");
     }
   }
 
   function renderToolbox(items) {
-    els.toolboxGrid.innerHTML = "";
+    els.toolboxNodes.innerHTML = "";
+    els.toolboxEdges.innerHTML = "";
     for (const item of items) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = `toolbox-item toolbox-${item.kind}`;
       btn.dataset.shape = item.shape;
-      btn.dataset.kind = item.kind;
       btn.title = item.label;
       btn.innerHTML = `
-        <span class="toolbox-icon" aria-hidden="true">${toolboxIcon(item.shape)}</span>
+        <span class="toolbox-glyph" aria-hidden="true">${glyphFor(item)}</span>
         <span class="toolbox-label">${item.label}</span>
       `;
       btn.addEventListener("click", () => onToolboxClick(item));
-      els.toolboxGrid.appendChild(btn);
+      if (item.kind === "node") els.toolboxNodes.appendChild(btn);
+      else els.toolboxEdges.appendChild(btn);
     }
   }
 
-  function toolboxIcon(shape) {
-    const icons = {
-      actor: "👤",
-      use_case: "⬭",
-      system_boundary: "▭",
-      note: "📝",
-      entity: "▣",
-      attribute: "◯",
-      relationship: "◇",
-      lane: "≡",
-      process: "▢",
-      start: "●",
-      end: "◉",
-      decision: "◆",
-      document: "📄",
-      input: "▱",
-      parallelogram: "▱",
-      terminator: "⬭",
+  function glyphFor(item) {
+    const map = {
+      actor: "Actor",
+      use_case: "UC",
+      entity: "Ent",
+      process: "Proc",
+      lane: "Lane",
+      class: "Class",
+      cloud: "Cloud",
     };
-    if (icons[shape]) return icons[shape];
-    return shape.includes("edge") || ["association", "flow", "connector"].includes(shape) ? "↗" : "▢";
+    if (item.kind === "edge") return "→";
+    return map[item.shape] || item.label.slice(0, 4);
   }
 
   function onToolboxClick(item) {
@@ -163,7 +175,7 @@ import { DiagramCanvas } from "./canvas.js";
       canvas.setMode("connect", item.shape);
       setActiveTool("connect");
       els.connectHint.hidden = false;
-      els.connectHint.textContent = `Connect mode: click source then target (${item.label})`;
+      els.connectHint.textContent = `Connect: click source, then target (${item.label})`;
     }
   }
 
@@ -190,6 +202,18 @@ import { DiagramCanvas } from "./canvas.js";
     els.propsForm.hidden = false;
     els.propLabel.value = item.label || "";
     els.propType.textContent = item.type;
+  }
+
+  function duplicateSelection() {
+    const sel = canvas.getSelection();
+    if (!sel.nodes.length) {
+      showToast("Select a shape to duplicate.", "error");
+      return;
+    }
+    for (const node of sel.nodes) {
+      canvas.addNode(node.type, node.label, node.x + 24, node.y + 24);
+    }
+    showToast("Duplicated selection.", "success");
   }
 
   async function checkHealth() {
@@ -240,12 +264,11 @@ import { DiagramCanvas } from "./canvas.js";
         throw new Error(typeof data.detail === "string" ? data.detail : "Generation failed.");
       }
 
-      canvas.setDiagram(data.diagram);
-      els.diagramTitle.value = data.diagram.title;
-      state.isDirty = false;
-      canvas.fitToContent();
-      els.canvasBadge.textContent = "AI Generated";
-      showToast(`${data.diagram_type_label} ready — drag nodes to refine.`, "success");
+      applyDiagramToCanvas(data.diagram, "AI · Editable");
+      showToast(
+        `${data.diagram_type_label}: ${(data.diagram?.nodes || []).length} editable shapes from toolbox.`,
+        "success",
+      );
     } catch (err) {
       showToast(err.message || "Something went wrong.", "error");
     } finally {
@@ -255,13 +278,12 @@ import { DiagramCanvas } from "./canvas.js";
 
   function loadSample() {
     const sample = SAMPLE_DIAGRAMS[state.diagramType];
-    if (!sample) return;
-    canvas.setDiagram(sample);
-    els.diagramTitle.value = sample.title;
-    state.isDirty = false;
-    canvas.fitToContent();
-    els.canvasBadge.textContent = "Sample";
-    showToast("Sample diagram loaded. Connect Gemini to generate custom diagrams.", "success");
+    if (!sample) {
+      showToast("No sample for this diagram type yet.", "error");
+      return;
+    }
+    applyDiagramToCanvas(sample, "Sample");
+    showToast("Sample loaded — every element is an editable toolbox shape.", "success");
   }
 
   function clearCanvas() {
@@ -302,8 +324,8 @@ import { DiagramCanvas } from "./canvas.js";
     showToast("Diagram JSON exported.", "success");
   }
 
-  els.diagramTypeCards.forEach((card) => {
-    card.addEventListener("click", () => selectDiagramType(card.dataset.type));
+  els.diagramTypeSelect?.addEventListener("change", () => {
+    selectDiagramType(els.diagramTypeSelect.value, { clearCanvasOnChange: canvas.diagram.nodes.length > 0 });
   });
 
   els.promptInput.addEventListener("input", updateCharCount);
@@ -311,6 +333,7 @@ import { DiagramCanvas } from "./canvas.js";
   els.sampleBtn.addEventListener("click", loadSample);
   els.clearBtn.addEventListener("click", clearCanvas);
   els.deleteBtn.addEventListener("click", () => canvas.deleteSelection());
+  els.duplicateBtn?.addEventListener("click", duplicateSelection);
 
   els.selectTool.addEventListener("click", () => setActiveTool("select"));
   els.panTool.addEventListener("click", () => setActiveTool("pan"));
@@ -334,12 +357,8 @@ import { DiagramCanvas } from "./canvas.js";
   els.exportSvgBtn.addEventListener("click", exportSvg);
   els.exportJsonBtn.addEventListener("click", exportJson);
 
-  els.panelToggleLeft?.addEventListener("click", () => {
-    els.leftPanel.classList.toggle("is-collapsed");
-  });
-  els.panelToggleRight?.addEventListener("click", () => {
-    els.rightPanel.classList.toggle("is-collapsed");
-  });
+  els.panelToggleLeft?.addEventListener("click", () => els.leftPanel.classList.toggle("is-collapsed"));
+  els.panelToggleRight?.addEventListener("click", () => els.rightPanel.classList.toggle("is-collapsed"));
 
   updateCharCount();
   checkHealth();

@@ -11,6 +11,7 @@ from app.prompts.diagrams import (
     build_diagram_user_prompt,
 )
 from app.schemas.diagram import DiagramDocument, DiagramType
+from app.services.diagram_normalizer import normalize_diagram
 
 JSON_FENCE_PATTERN = re.compile(
     r"^```(?:json)?\s*\n?(.*?)\n?```\s*$",
@@ -78,4 +79,5 @@ def generate_diagram(
     if "title" not in data or not str(data.get("title", "")).strip():
         data["title"] = DIAGRAM_TYPE_LABELS[diagram_type]
 
-    return DiagramDocument.model_validate(data)
+    document = DiagramDocument.model_validate(data)
+    return normalize_diagram(diagram_type, document)

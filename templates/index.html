@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="GenAI Diagram Studio — AI-powered use case, ERD, swim lane, and flowchart designer." />
+  <meta name="description" content="GenAI Diagram Studio — AI-powered diagram designer with editable toolbox shapes." />
   <title>GenAI Diagram Studio</title>
   <meta name="app-root" content="{{ root_path }}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -51,47 +51,42 @@
   <main class="designer-workspace">
     <aside class="designer-panel left-panel" id="leftPanel">
       <section class="panel-block">
-        <h2 class="block-title">Diagram type</h2>
-        <div class="diagram-type-grid" role="radiogroup" aria-label="Diagram type">
-          {% for key, label in diagram_types.items() %}
-          <button
-            type="button"
-            class="diagram-type-card{% if key == 'use_case' %} is-selected{% endif %}"
-            data-type="{{ key }}"
-            role="radio"
-            aria-checked="{% if key == 'use_case' %}true{% else %}false{% endif %}"
-          >
-            <span class="diagram-type-label">{{ label }}</span>
-          </button>
-          {% endfor %}
-        </div>
+        <h2 class="block-title">Shape library</h2>
+        <p class="active-type-badge" id="activeTypeLabel">Use Case Diagram</p>
+        <p class="block-subtitle" id="toolboxHint">Drag shapes onto the canvas or use AI to compose them.</p>
       </section>
 
       <section class="panel-block">
-        <div class="block-header">
-          <h2 class="block-title">Toolbox</h2>
-          <p class="block-subtitle" id="toolboxHint">Shapes for your diagram</p>
-        </div>
-        <div class="toolbox-grid" id="toolboxGrid"></div>
+        <h3 class="toolbox-section-title">Nodes &amp; containers</h3>
+        <div class="toolbox-grid" id="toolboxNodes"></div>
+      </section>
+
+      <section class="panel-block">
+        <h3 class="toolbox-section-title">Connectors</h3>
+        <div class="toolbox-grid" id="toolboxEdges"></div>
       </section>
 
       <section class="panel-block">
         <h2 class="block-title">Canvas tools</h2>
-        <div class="tool-row">
-          <button type="button" class="tool-btn is-active" id="selectTool" title="Select (V)">
+        <div class="tool-row tool-row-4">
+          <button type="button" class="tool-btn is-active" id="selectTool" title="Select">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l7 16 2-7 7-2z"/></svg>
             Select
           </button>
-          <button type="button" class="tool-btn" id="panTool" title="Pan (Alt+drag)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20M7 7l10 10M17 7L7 17"/></svg>
+          <button type="button" class="tool-btn" id="panTool" title="Pan">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>
             Pan
           </button>
-          <button type="button" class="tool-btn tool-btn-danger" id="deleteBtn" title="Delete selection">
+          <button type="button" class="tool-btn" id="duplicateBtn" title="Duplicate">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>
+            Copy
+          </button>
+          <button type="button" class="tool-btn tool-btn-danger" id="deleteBtn" title="Delete">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
-            Delete
+            Del
           </button>
         </div>
-        <p class="connect-hint" id="connectHint" hidden>Connect mode: click source then target</p>
+        <p class="connect-hint" id="connectHint" hidden>Connect: click source, then target</p>
       </section>
     </aside>
 
@@ -99,19 +94,14 @@
       <div class="canvas-toolbar">
         <div class="canvas-meta">
           <span class="canvas-badge" id="canvasBadge">Ready</span>
+          <span class="canvas-hint">Each shape is selectable and editable</span>
         </div>
         <div class="canvas-actions">
           <button type="button" class="btn btn-ghost btn-sm" id="zoomOutBtn" title="Zoom out">−</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="fitBtn" title="Fit to screen">Fit</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="fitBtn" title="Fit">Fit</button>
           <button type="button" class="btn btn-ghost btn-sm" id="zoomInBtn" title="Zoom in">+</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="exportSvgBtn" title="Export SVG">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-            SVG
-          </button>
-          <button type="button" class="btn btn-ghost btn-sm" id="exportJsonBtn" title="Export JSON">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-            JSON
-          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="exportSvgBtn">SVG</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="exportJsonBtn">JSON</button>
           <button type="button" class="btn btn-ghost btn-sm" id="clearBtn">Clear</button>
         </div>
       </div>
@@ -120,8 +110,8 @@
         <div id="canvasHost"></div>
         <div class="canvas-loading" id="canvasLoading" hidden>
           <div class="loading-orbit" aria-hidden="true"></div>
-          <p>Gemini is building your diagram…</p>
-          <span class="loading-sub">Layout and connections are generated as editable nodes.</span>
+          <p>Placing toolbox shapes…</p>
+          <span class="loading-sub">AI picks Actor, Process, Entity, etc. — not a flat image. You'll edit each part.</span>
         </div>
       </div>
     </section>
@@ -129,13 +119,21 @@
     <aside class="designer-panel right-panel" id="rightPanel">
       <section class="panel-block">
         <h2 class="block-title">AI Generate</h2>
-        <p class="block-subtitle">Describe actors, entities, lanes, or flows. Gemini creates an editable diagram on the canvas.</p>
+        <p class="block-subtitle">AI composes your diagram from the shape library — same parts you see in the toolbox.</p>
+
+        <label class="field-label" for="diagramTypeSelect">Diagram type</label>
+        <select id="diagramTypeSelect" class="select-input" aria-label="Diagram type">
+          {% for key, label in diagram_types.items() %}
+          <option value="{{ key }}"{% if key == 'use_case' %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+
         <label class="field-label" for="promptInput">Describe your diagram</label>
         <textarea
           id="promptInput"
           class="prompt-input"
           rows="7"
-          placeholder="Example: Use case diagram for an online library — Member borrows/returns books, Librarian manages catalog, Admin runs reports…"
+          placeholder="Example: Online library — Member borrows books, Librarian updates catalog, Admin generates reports. Include actors and main use cases inside a system boundary."
         ></textarea>
         <div class="prompt-footer">
           <span class="char-count" id="charCount">0 / 8000</span>
@@ -151,21 +149,20 @@
 
       <section class="panel-block">
         <h2 class="block-title">Properties</h2>
-        <p class="props-empty" id="propsEmpty">Select a node or edge to edit its label.</p>
+        <p class="props-empty" id="propsEmpty">Select a shape or connector to edit its label.</p>
         <div class="props-form" id="propsForm" hidden>
           <label class="field-label" for="propLabel">Label</label>
           <input type="text" id="propLabel" class="text-input" />
-          <p class="prop-meta">Type: <span id="propType"></span></p>
+          <p class="prop-meta">Toolbox type: <span id="propType"></span></p>
         </div>
       </section>
 
       <section class="panel-block tips">
-        <h3 class="tips-title">Designer tips</h3>
+        <h3 class="tips-title">Quick guide</h3>
         <ul class="tips-list">
-          <li>Click toolbox shapes to add nodes; click edge tools then connect two nodes.</li>
-          <li>Drag nodes to reposition. Delete with the Delete key or toolbar.</li>
-          <li>Scroll to zoom; Alt+drag or Pan tool to move the canvas.</li>
-          <li>Re-run AI to extend an existing diagram on the canvas.</li>
+          <li>AI output = individual toolbox shapes you can drag, relabel, or delete.</li>
+          <li>Pick a connector in the toolbox, then click two nodes to link them.</li>
+          <li>Change diagram type from the dropdown before generating.</li>
         </ul>
       </section>
     </aside>

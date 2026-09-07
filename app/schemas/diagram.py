@@ -3,7 +3,15 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-DiagramType = Literal["use_case", "erd", "swim_lane", "flowchart"]
+DiagramType = Literal[
+    "use_case",
+    "erd",
+    "swim_lane",
+    "flowchart",
+    "sequence",
+    "class_diagram",
+    "network",
+]
 
 
 class DiagramNode(BaseModel):
