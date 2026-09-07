@@ -56,6 +56,11 @@ import { normalizeDiagram } from "./normalize.js";
     rightPanel: document.getElementById("rightPanel"),
     panelToggleLeft: document.getElementById("panelToggleLeft"),
     panelToggleRight: document.getElementById("panelToggleRight"),
+    mobilePanelBackdrop: document.getElementById("mobilePanelBackdrop"),
+    mobileDock: document.getElementById("mobileDock"),
+    mobileDockLeft: document.getElementById("mobileDockLeft"),
+    mobileDockCanvas: document.getElementById("mobileDockCanvas"),
+    mobileDockRight: document.getElementById("mobileDockRight"),
     tabAi: document.getElementById("tabAi"),
     tabProject: document.getElementById("tabProject"),
     panelAi: document.getElementById("panelAi"),
@@ -77,6 +82,78 @@ import { normalizeDiagram } from "./normalize.js";
   };
 
   let contextMenuTargetId = null;
+  const mobileMq = window.matchMedia("(max-width: 768px)");
+
+  function isMobileLayout() {
+    return mobileMq.matches;
+  }
+
+  function updateMobileDock(active) {
+    els.mobileDockLeft?.classList.toggle("is-active", active === "left");
+    els.mobileDockCanvas?.classList.toggle("is-active", active === "canvas");
+    els.mobileDockRight?.classList.toggle("is-active", active === "right");
+  }
+
+  function setMobileBackdrop(visible) {
+    if (!els.mobilePanelBackdrop) return;
+    els.mobilePanelBackdrop.hidden = !visible;
+    els.mobilePanelBackdrop.setAttribute("aria-hidden", visible ? "false" : "true");
+  }
+
+  function closeMobilePanels() {
+    if (!isMobileLayout()) return;
+    els.leftPanel?.classList.add("is-collapsed");
+    els.rightPanel?.classList.add("is-collapsed");
+    setMobileBackdrop(false);
+    updateMobileDock("canvas");
+    canvas.scheduleFitToContent();
+  }
+
+  function openMobilePanel(side) {
+    if (!isMobileLayout()) return;
+    if (side === "left") {
+      els.leftPanel?.classList.remove("is-collapsed");
+      els.rightPanel?.classList.add("is-collapsed");
+      updateMobileDock("left");
+    } else if (side === "right") {
+      els.rightPanel?.classList.remove("is-collapsed");
+      els.leftPanel?.classList.add("is-collapsed");
+      updateMobileDock("right");
+    } else {
+      closeMobilePanels();
+      return;
+    }
+    setMobileBackdrop(true);
+  }
+
+  function togglePanel(side) {
+    if (isMobileLayout()) {
+      const panel = side === "left" ? els.leftPanel : els.rightPanel;
+      const isOpen = panel && !panel.classList.contains("is-collapsed");
+      if (isOpen) {
+        closeMobilePanels();
+      } else {
+        openMobilePanel(side);
+      }
+      return;
+    }
+    if (side === "left") els.leftPanel?.classList.toggle("is-collapsed");
+    else els.rightPanel?.classList.toggle("is-collapsed");
+  }
+
+  function initMobileLayout() {
+    if (isMobileLayout()) {
+      els.leftPanel?.classList.add("is-collapsed");
+      els.rightPanel?.classList.add("is-collapsed");
+      updateMobileDock("canvas");
+      setMobileBackdrop(false);
+    } else {
+      els.leftPanel?.classList.remove("is-collapsed");
+      els.rightPanel?.classList.remove("is-collapsed");
+      setMobileBackdrop(false);
+    }
+    canvas.scheduleFitToContent();
+  }
 
   function hideContextMenu() {
     if (els.canvasContextMenu) els.canvasContextMenu.hidden = true;
@@ -330,10 +407,10 @@ import { normalizeDiagram } from "./normalize.js";
       if (data.api_key_configured) {
         els.apiStatus.classList.add("is-ready");
         const dbLabel = data.db_connected ? " · DB" : "";
-        els.apiStatus.innerHTML = `<span class="status-dot"></span> Gemini ready${dbLabel}`;
+        els.apiStatus.innerHTML = `<span class="status-dot"></span><span class="status-text">Gemini ready${dbLabel}</span>`;
       } else {
         els.apiStatus.classList.add("is-error");
-        els.apiStatus.innerHTML = '<span class="status-dot"></span> API key missing';
+        els.apiStatus.innerHTML = '<span class="status-dot"></span><span class="status-text">API key missing</span>';
         showToast("Set GEMINI_API_KEY in .env to enable AI generation.", "error");
       }
       if (!data.db_connected) {
@@ -343,7 +420,7 @@ import { normalizeDiagram } from "./normalize.js";
       }
     } catch {
       els.apiStatus.classList.add("is-error");
-      els.apiStatus.innerHTML = '<span class="status-dot"></span> Offline';
+      els.apiStatus.innerHTML = '<span class="status-dot"></span><span class="status-text">Offline</span>';
     }
   }
 
@@ -718,8 +795,15 @@ import { normalizeDiagram } from "./normalize.js";
   els.exportSvgBtn.addEventListener("click", exportSvg);
   els.exportJsonBtn.addEventListener("click", exportJson);
 
-  els.panelToggleLeft?.addEventListener("click", () => els.leftPanel.classList.toggle("is-collapsed"));
-  els.panelToggleRight?.addEventListener("click", () => els.rightPanel.classList.toggle("is-collapsed"));
+  els.panelToggleLeft?.addEventListener("click", () => togglePanel("left"));
+  els.panelToggleRight?.addEventListener("click", () => togglePanel("right"));
+
+  els.mobileDockLeft?.addEventListener("click", () => togglePanel("left"));
+  els.mobileDockRight?.addEventListener("click", () => togglePanel("right"));
+  els.mobileDockCanvas?.addEventListener("click", () => closeMobilePanels());
+  els.mobilePanelBackdrop?.addEventListener("click", () => closeMobilePanels());
+
+  mobileMq.addEventListener("change", initMobileLayout);
 
   els.tabAi?.addEventListener("click", () => switchSidebarTab("ai"));
   els.tabProject?.addEventListener("click", () => switchSidebarTab("project"));
@@ -737,4 +821,5 @@ import { normalizeDiagram } from "./normalize.js";
   checkHealth();
   selectDiagramType("use_case");
   canvas.resetView();
+  initMobileLayout();
 })();
