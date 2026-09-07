@@ -204,6 +204,14 @@
 
   <div class="toast-container" id="toastContainer" aria-live="polite"></div>
 
+  <div id="canvasContextMenu" class="canvas-context-menu" hidden role="menu" aria-label="Canvas actions">
+    <button type="button" class="context-menu-item" id="ctxRename" role="menuitem">Rename</button>
+    <button type="button" class="context-menu-item context-menu-item-danger" id="ctxDelete" role="menuitem">Delete</button>
+  </div>
+  <div id="canvasInlineEditor" class="canvas-inline-editor" hidden>
+    <input type="text" id="canvasInlineInput" class="canvas-inline-input" aria-label="Rename shape label" />
+  </div>
+
   <script type="module" src="{{ root_path }}/static/js/designer/app.js"></script>
 </body>
 </html>

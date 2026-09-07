@@ -69,7 +69,72 @@ import { normalizeDiagram } from "./normalize.js";
     transferProjectBtn: document.getElementById("transferProjectBtn"),
     copyCanvasExportBtn: document.getElementById("copyCanvasExportBtn"),
     projectStatus: document.getElementById("projectStatus"),
+    canvasContextMenu: document.getElementById("canvasContextMenu"),
+    ctxRename: document.getElementById("ctxRename"),
+    ctxDelete: document.getElementById("ctxDelete"),
+    canvasInlineEditor: document.getElementById("canvasInlineEditor"),
+    canvasInlineInput: document.getElementById("canvasInlineInput"),
   };
+
+  let contextMenuTargetId = null;
+
+  function hideContextMenu() {
+    if (els.canvasContextMenu) els.canvasContextMenu.hidden = true;
+    contextMenuTargetId = null;
+  }
+
+  function hideInlineEditor() {
+    if (els.canvasInlineEditor) els.canvasInlineEditor.hidden = true;
+    if (els.canvasInlineInput) els.canvasInlineInput.dataset.itemId = "";
+  }
+
+  function startInlineRename(id) {
+    const found = canvas.getItemById(id);
+    if (!found) return;
+
+    hideContextMenu();
+    const { kind, item } = found;
+    let wx;
+    let wy;
+    let width;
+    let height;
+
+    if (kind === "node") {
+      wx = item.x;
+      wy = item.y;
+      width = item.width;
+      height = item.height;
+    } else {
+      const from = canvas.diagram.nodes.find((n) => n.id === item.from);
+      const to = canvas.diagram.nodes.find((n) => n.id === item.to);
+      if (!from || !to) return;
+      width = 160;
+      height = 32;
+      wx = (from.x + from.width / 2 + to.x + to.width / 2) / 2 - width / 2;
+      wy = (from.y + from.height / 2 + to.y + to.height / 2) / 2 - height / 2;
+    }
+
+    const topLeft = canvas.worldToScreen(wx, wy);
+    els.canvasInlineEditor.style.left = `${topLeft.x}px`;
+    els.canvasInlineEditor.style.top = `${topLeft.y}px`;
+    els.canvasInlineEditor.style.width = `${Math.max(width * canvas.view.scale, 96)}px`;
+    els.canvasInlineInput.style.fontSize = `${Math.max(12, 12 * canvas.view.scale)}px`;
+    els.canvasInlineInput.dataset.itemId = id;
+    els.canvasInlineInput.value = item.label || "";
+    els.canvasInlineEditor.hidden = false;
+    els.canvasInlineInput.focus();
+    els.canvasInlineInput.select();
+  }
+
+  function commitInlineRename() {
+    const id = els.canvasInlineInput.dataset.itemId;
+    if (!id) {
+      hideInlineEditor();
+      return;
+    }
+    canvas.renameItem(id, els.canvasInlineInput.value.trim());
+    hideInlineEditor();
+  }
 
   const canvas = new DiagramCanvas(els.canvasHost, {
     onChange: () => {
@@ -82,6 +147,17 @@ import { normalizeDiagram } from "./normalize.js";
     },
     onSelectionChange: (selection) => {
       updatePropertiesPanel(selection);
+    },
+    onContextMenu: ({ id, clientX, clientY }) => {
+      contextMenuTargetId = id;
+      const menu = els.canvasContextMenu;
+      if (!menu) return;
+      menu.style.left = `${clientX}px`;
+      menu.style.top = `${clientY}px`;
+      menu.hidden = false;
+    },
+    onRequestRename: ({ id }) => {
+      startInlineRename(id);
     },
   });
 
@@ -579,6 +655,51 @@ import { normalizeDiagram } from "./normalize.js";
   els.panTool.addEventListener("click", () => setActiveTool("pan"));
 
   els.propLabel.addEventListener("input", () => canvas.updateSelectedLabel(els.propLabel.value));
+
+  els.ctxRename?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (contextMenuTargetId) startInlineRename(contextMenuTargetId);
+  });
+
+  els.ctxDelete?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (contextMenuTargetId) {
+      canvas.selectOnly(contextMenuTargetId);
+      canvas.deleteSelection();
+    }
+    hideContextMenu();
+  });
+
+  els.canvasInlineInput?.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitInlineRename();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      hideInlineEditor();
+    }
+  });
+
+  els.canvasInlineInput?.addEventListener("blur", () => {
+    if (!els.canvasInlineEditor?.hidden) commitInlineRename();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!els.canvasContextMenu?.contains(e.target)) hideContextMenu();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.target.matches("input, textarea, select") && e.key !== "Escape") return;
+    if (e.key === "F2") {
+      const sel = canvas.getSelection();
+      const item = sel.nodes[0] || sel.edges[0];
+      if (item) {
+        e.preventDefault();
+        startInlineRename(item.id);
+      }
+    }
+  });
 
   els.diagramTitle.addEventListener("change", () => {
     canvas.diagram.title = els.diagramTitle.value.trim() || "Untitled Diagram";

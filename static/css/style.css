@@ -783,19 +783,90 @@ input {
   cursor: move;
 }
 
+.diagram-node.is-selected {
+  filter: drop-shadow(0 0 10px rgba(37, 99, 235, 0.35));
+}
+
 .diagram-node.is-selected rect,
 .diagram-node.is-selected ellipse,
 .diagram-node.is-selected polygon,
-.diagram-node.is-selected path,
+.diagram-node.is-selected path:not(.actor-legs),
 .diagram-node.is-selected circle,
 .diagram-node.is-selected line {
-  stroke: #6c7cff !important;
-  stroke-width: 2.5 !important;
+  stroke: #2563eb !important;
+  stroke-width: 3 !important;
 }
 
-.diagram-edge.is-selected line {
-  stroke: #6c7cff !important;
-  stroke-width: 3 !important;
+.diagram-edge.is-selected line:not(.edge-hit):not(.edge-glow) {
+  stroke: #2563eb !important;
+  stroke-width: 3.5 !important;
+}
+
+.diagram-node.is-selected .node-label,
+.diagram-node.is-selected .boundary-label,
+.diagram-node.is-selected .lane-label,
+.diagram-edge.is-selected .edge-label {
+  fill: #1d4ed8 !important;
+  font-weight: 600;
+}
+
+.diagram-edge {
+  cursor: pointer;
+}
+
+.edge-hit {
+  cursor: pointer;
+}
+
+.canvas-context-menu {
+  position: fixed;
+  z-index: 200;
+  min-width: 148px;
+  padding: 0.35rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.context-menu-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.context-menu-item-danger:hover {
+  background: #fef2f2;
+  color: var(--danger);
+}
+
+.canvas-inline-editor {
+  position: fixed;
+  z-index: 201;
+  pointer-events: auto;
+}
+
+.canvas-inline-input {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  outline: none;
 }
 
 .node-label,

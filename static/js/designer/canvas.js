@@ -9,6 +9,8 @@ export class DiagramCanvas {
     this.container = container;
     this.onChange = options.onChange || (() => {});
     this.onSelectionChange = options.onSelectionChange || (() => {});
+    this.onContextMenu = options.onContextMenu || (() => {});
+    this.onRequestRename = options.onRequestRename || (() => {});
 
     this.diagram = {
       diagram_type: "use_case",
@@ -98,6 +100,8 @@ export class DiagramCanvas {
   _bindEvents() {
     this.viewport.addEventListener("wheel", (e) => this._onWheel(e), { passive: false });
     this.svg.addEventListener("mousedown", (e) => this._onMouseDown(e));
+    this.svg.addEventListener("dblclick", (e) => this._onDoubleClick(e));
+    this.viewport.addEventListener("contextmenu", (e) => this._onContextMenu(e));
     window.addEventListener("mousemove", (e) => this._onMouseMove(e));
     window.addEventListener("mouseup", (e) => this._onMouseUp(e));
     window.addEventListener("keydown", (e) => this._onKeyDown(e));
@@ -186,6 +190,35 @@ export class DiagramCanvas {
     this.render();
     this.onChange(this.getDiagram());
     return edge;
+  }
+
+  renameItem(id, label) {
+    const node = this.diagram.nodes.find((n) => n.id === id);
+    if (node) {
+      node.label = label;
+    } else {
+      const edge = this.diagram.edges.find((e) => e.id === id);
+      if (edge) edge.label = label;
+    }
+    this.render();
+    this.onChange(this.getDiagram());
+    this.onSelectionChange(this.getSelection());
+  }
+
+  worldToScreen(wx, wy) {
+    const rect = this.viewport.getBoundingClientRect();
+    return {
+      x: rect.left + this.view.x + wx * this.view.scale,
+      y: rect.top + this.view.y + wy * this.view.scale,
+    };
+  }
+
+  getItemById(id) {
+    const node = this.diagram.nodes.find((n) => n.id === id);
+    if (node) return { kind: "node", item: node };
+    const edge = this.diagram.edges.find((e) => e.id === id);
+    if (edge) return { kind: "edge", item: edge };
+    return null;
   }
 
   deleteSelection() {
@@ -327,6 +360,30 @@ export class DiagramCanvas {
     return { x, y };
   }
 
+  _onContextMenu(e) {
+    const target = e.target.closest("[data-id]");
+    if (!target) return;
+    e.preventDefault();
+    const id = target.dataset.id;
+    if (!this.selectedIds.has(id)) this.selectOnly(id);
+    this.onContextMenu({
+      id,
+      kind: target.dataset.kind,
+      clientX: e.clientX,
+      clientY: e.clientY,
+    });
+  }
+
+  _onDoubleClick(e) {
+    const target = e.target.closest("[data-id]");
+    if (!target) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const id = target.dataset.id;
+    this.selectOnly(id);
+    this.onRequestRename({ id, kind: target.dataset.kind });
+  }
+
   _onWheel(e) {
     e.preventDefault();
     this.zoomBy(e.deltaY < 0 ? 1 : -1, e.clientX, e.clientY);
@@ -363,6 +420,10 @@ export class DiagramCanvas {
 
     if (!e.shiftKey) {
       if (!this.selectedIds.has(id)) this.selectOnly(id);
+      else {
+        this.onSelectionChange(this.getSelection());
+        this.render();
+      }
     } else {
       if (this.selectedIds.has(id)) this.selectedIds.delete(id);
       else this.selectedIds.add(id);
@@ -475,6 +536,31 @@ export class DiagramCanvas {
       g.setAttribute("class", `diagram-edge${this.selectedIds.has(edge.id) ? " is-selected" : ""}`);
 
       const { x1, y1, x2, y2 } = this._edgePoints(from, to);
+      const isSelected = this.selectedIds.has(edge.id);
+
+      const hitLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      hitLine.setAttribute("x1", x1);
+      hitLine.setAttribute("y1", y1);
+      hitLine.setAttribute("x2", x2);
+      hitLine.setAttribute("y2", y2);
+      hitLine.setAttribute("stroke", "transparent");
+      hitLine.setAttribute("stroke-width", "14");
+      hitLine.setAttribute("class", "edge-hit");
+      g.appendChild(hitLine);
+
+      if (isSelected) {
+        const glow = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        glow.setAttribute("x1", x1);
+        glow.setAttribute("y1", y1);
+        glow.setAttribute("x2", x2);
+        glow.setAttribute("y2", y2);
+        glow.setAttribute("class", "edge-glow");
+        glow.setAttribute("stroke", "rgba(37, 99, 235, 0.35)");
+        glow.setAttribute("stroke-width", "10");
+        glow.setAttribute("stroke-linecap", "round");
+        g.appendChild(glow);
+      }
+
       const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
       line.setAttribute("x1", x1);
       line.setAttribute("y1", y1);
@@ -584,20 +670,56 @@ export class DiagramCanvas {
     for (const node of this.diagram.nodes) {
       if (!this.selectedIds.has(node.id)) continue;
       const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      g.setAttribute("class", "selection-handles");
+      g.setAttribute("class", "selection-handles selection-handles-node");
       g.setAttribute("pointer-events", "none");
-      const pad = 4;
+      const pad = 6;
       const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
       rect.setAttribute("x", node.x - pad);
       rect.setAttribute("y", node.y - pad);
       rect.setAttribute("width", node.width + pad * 2);
       rect.setAttribute("height", node.height + pad * 2);
-      rect.setAttribute("fill", "none");
-      rect.setAttribute("stroke", "#6c7cff");
+      rect.setAttribute("fill", "rgba(37, 99, 235, 0.08)");
+      rect.setAttribute("stroke", "#2563eb");
       rect.setAttribute("stroke-width", "2");
-      rect.setAttribute("stroke-dasharray", "5 3");
-      rect.setAttribute("rx", "6");
+      rect.setAttribute("stroke-dasharray", "6 4");
+      rect.setAttribute("rx", "8");
       g.appendChild(rect);
+      this.overlayLayer.appendChild(g);
+    }
+
+    for (const edge of this.diagram.edges) {
+      if (!this.selectedIds.has(edge.id)) continue;
+      const from = this.diagram.nodes.find((n) => n.id === edge.from);
+      const to = this.diagram.nodes.find((n) => n.id === edge.to);
+      if (!from || !to) continue;
+      const { x1, y1, x2, y2 } = this._edgePoints(from, to);
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      g.setAttribute("class", "selection-handles selection-handles-edge");
+      g.setAttribute("pointer-events", "none");
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", x1);
+      line.setAttribute("y1", y1);
+      line.setAttribute("x2", x2);
+      line.setAttribute("y2", y2);
+      line.setAttribute("stroke", "#2563eb");
+      line.setAttribute("stroke-width", "3");
+      line.setAttribute("stroke-dasharray", "8 5");
+      line.setAttribute("stroke-linecap", "round");
+      g.appendChild(line);
+      for (const [cx, cy] of [
+        [x1, y1],
+        [x2, y2],
+        [(x1 + x2) / 2, (y1 + y2) / 2],
+      ]) {
+        const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        dot.setAttribute("cx", cx);
+        dot.setAttribute("cy", cy);
+        dot.setAttribute("r", 5);
+        dot.setAttribute("fill", "#2563eb");
+        dot.setAttribute("stroke", "#fff");
+        dot.setAttribute("stroke-width", "2");
+        g.appendChild(dot);
+      }
       this.overlayLayer.appendChild(g);
     }
   }
