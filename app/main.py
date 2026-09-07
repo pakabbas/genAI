@@ -4,20 +4,26 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
 
 from app.config import get_settings
-from app.prompts import CONTENT_TYPE_LABELS
-from app.services.gemini import generate_html
+from app.prompts.diagrams import DIAGRAM_TYPE_LABELS, TOOLBOX
+from app.schemas.diagram import (
+    DiagramDocument,
+    DiagramType,
+    GenerateDiagramRequest,
+    GenerateDiagramResponse,
+    ToolboxResponse,
+)
+from app.services.diagram_generator import generate_diagram
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 _settings = get_settings()
 _root_path = str(_settings["app_root_path"])
 
 app = FastAPI(
-    title="GenAI Creator Studio",
-    description="Create websites, documents, and diagrams with Gemini",
-    version="1.0.0",
+    title="GenAI Diagram Studio",
+    description="AI-powered diagram designer — use case, ERD, swim lane, and flowcharts",
+    version="2.0.0",
 )
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
@@ -31,23 +37,12 @@ def _template_context(extra: dict | None = None) -> dict:
     return context
 
 
-class GenerateRequest(BaseModel):
-    prompt: str = Field(..., min_length=3, max_length=8000)
-    content_type: str = Field(default="website")
-
-
-class GenerateResponse(BaseModel):
-    html: str
-    content_type: str
-    content_type_label: str
-
-
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "index.html",
-        context=_template_context({"content_types": CONTENT_TYPE_LABELS}),
+        context=_template_context({"diagram_types": DIAGRAM_TYPE_LABELS}),
     )
 
 
@@ -61,13 +56,28 @@ async def health() -> dict[str, str | bool]:
     }
 
 
-@app.post("/api/generate", response_model=GenerateResponse)
-async def generate(request: GenerateRequest) -> GenerateResponse:
-    if request.content_type not in CONTENT_TYPE_LABELS:
-        raise HTTPException(status_code=400, detail="Invalid content type.")
+@app.get("/api/toolbox/{diagram_type}", response_model=ToolboxResponse)
+async def toolbox(diagram_type: DiagramType) -> ToolboxResponse:
+    items = TOOLBOX.get(diagram_type)
+    if not items:
+        raise HTTPException(status_code=404, detail="Unknown diagram type.")
+    return ToolboxResponse(
+        diagram_type=diagram_type,
+        label=DIAGRAM_TYPE_LABELS[diagram_type],
+        items=items,
+    )
 
+
+@app.post("/api/generate-diagram", response_model=GenerateDiagramResponse)
+async def generate_diagram_endpoint(
+    request: GenerateDiagramRequest,
+) -> GenerateDiagramResponse:
     try:
-        html = generate_html(request.content_type, request.prompt)
+        diagram = generate_diagram(
+            request.diagram_type,
+            request.prompt,
+            request.existing,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
@@ -76,8 +86,19 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
             detail=f"Generation failed: {exc}",
         ) from exc
 
-    return GenerateResponse(
-        html=html,
-        content_type=request.content_type,
-        content_type_label=CONTENT_TYPE_LABELS[request.content_type],
+    return GenerateDiagramResponse(
+        diagram=diagram,
+        diagram_type=request.diagram_type,
+        diagram_type_label=DIAGRAM_TYPE_LABELS[request.diagram_type],
     )
+
+
+@app.post("/api/validate-diagram")
+async def validate_diagram(diagram: DiagramDocument) -> dict[str, str | int]:
+    """Validate diagram JSON from the client (save/export round-trip)."""
+    return {
+        "status": "ok",
+        "node_count": len(diagram.nodes),
+        "edge_count": len(diagram.edges),
+        "title": diagram.title,
+    }
