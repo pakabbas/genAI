@@ -129,7 +129,8 @@ import { normalizeDiagram } from "./normalize.js";
   }
 
   function selectDiagramType(type, { clearCanvasOnChange = false } = {}) {
-    if (state.diagramType === type && !clearCanvasOnChange) {
+    const alreadySelected = state.diagramType === type && !clearCanvasOnChange;
+    if (alreadySelected && state.toolbox.length > 0) {
       return;
     }
     state.diagramType = type;
