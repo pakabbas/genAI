@@ -544,7 +544,7 @@ export class DiagramCanvas {
       hitLine.setAttribute("x2", x2);
       hitLine.setAttribute("y2", y2);
       hitLine.setAttribute("stroke", "transparent");
-      hitLine.setAttribute("stroke-width", "14");
+      hitLine.setAttribute("stroke-width", "18");
       hitLine.setAttribute("class", "edge-hit");
       g.appendChild(hitLine);
 
