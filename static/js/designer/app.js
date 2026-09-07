@@ -16,6 +16,7 @@ import { normalizeDiagram } from "./normalize.js";
     isGenerating: false,
     isDirty: false,
     currentProjectId: null,
+    externalProjectId: null,
     dbConnected: false,
   };
 
@@ -54,9 +55,12 @@ import { normalizeDiagram } from "./normalize.js";
     rightPanel: document.getElementById("rightPanel"),
     panelToggleLeft: document.getElementById("panelToggleLeft"),
     panelToggleRight: document.getElementById("panelToggleRight"),
+    tabAi: document.getElementById("tabAi"),
+    tabProject: document.getElementById("tabProject"),
+    panelAi: document.getElementById("panelAi"),
+    panelProject: document.getElementById("panelProject"),
     projectSelect: document.getElementById("projectSelect"),
     projectNameInput: document.getElementById("projectNameInput"),
-    externalProjectIdInput: document.getElementById("externalProjectIdInput"),
     newProjectBtn: document.getElementById("newProjectBtn"),
     saveProjectBtn: document.getElementById("saveProjectBtn"),
     deleteProjectBtn: document.getElementById("deleteProjectBtn"),
@@ -79,6 +83,18 @@ import { normalizeDiagram } from "./normalize.js";
       updatePropertiesPanel(selection);
     },
   });
+
+  function switchSidebarTab(tab) {
+    const isAi = tab === "ai";
+    els.tabAi?.classList.toggle("is-active", isAi);
+    els.tabProject?.classList.toggle("is-active", !isAi);
+    els.tabAi?.setAttribute("aria-selected", isAi ? "true" : "false");
+    els.tabProject?.setAttribute("aria-selected", !isAi ? "true" : "false");
+    els.panelAi?.classList.toggle("is-active", isAi);
+    els.panelProject?.classList.toggle("is-active", !isAi);
+    if (els.panelAi) els.panelAi.hidden = !isAi;
+    if (els.panelProject) els.panelProject.hidden = isAi;
+  }
 
   function showToast(message, type = "info") {
     const toast = document.createElement("div");
@@ -303,8 +319,8 @@ import { normalizeDiagram } from "./normalize.js";
       if (!res.ok) throw new Error(data.detail || "Load failed.");
 
       state.currentProjectId = data.id;
+      state.externalProjectId = data.external_project_id || null;
       els.projectNameInput.value = data.name;
-      els.externalProjectIdInput.value = data.external_project_id || "";
       els.diagramTitle.value = data.title;
       selectDiagramType(data.diagram_type);
       applyDiagramToCanvas(data.diagram, "Loaded");
@@ -319,8 +335,8 @@ import { normalizeDiagram } from "./normalize.js";
 
   function newProject() {
     state.currentProjectId = null;
+    state.externalProjectId = null;
     els.projectNameInput.value = "Untitled Project";
-    els.externalProjectIdInput.value = "";
     els.projectSelect.value = "";
     clearCanvas();
     setProjectStatus("Not saved yet");
@@ -345,7 +361,7 @@ import { normalizeDiagram } from "./normalize.js";
         nodes: diagram.nodes,
         edges: diagram.edges,
       },
-      external_project_id: els.externalProjectIdInput.value.trim() || null,
+      external_project_id: state.externalProjectId,
     };
 
     try {
@@ -367,6 +383,7 @@ import { normalizeDiagram } from "./normalize.js";
       if (!res.ok) throw new Error(data.detail || "Save failed.");
 
       state.currentProjectId = data.id;
+      state.externalProjectId = data.external_project_id || null;
       state.isDirty = false;
       setProjectStatus(`Saved · ${data.id.slice(0, 8)}…`);
       await refreshProjectList();
@@ -402,15 +419,15 @@ import { normalizeDiagram } from "./normalize.js";
       return;
     }
     const targetId = els.transferTargetSelect.value;
-    const externalId = els.externalProjectIdInput.value.trim();
-    if (!targetId && !externalId) {
-      showToast("Pick a target project or set a client canvas project ID.", "error");
+    if (!targetId) {
+      showToast("Select a target project.", "error");
       return;
     }
 
-    const payload = { replace: true };
-    if (targetId) payload.target_project_id = targetId;
-    if (externalId) payload.target_external_project_id = externalId;
+    const payload = { replace: true, target_project_id: targetId };
+    if (state.externalProjectId) {
+      payload.target_external_project_id = state.externalProjectId;
+    }
 
     try {
       const res = await fetch(withRoot(`/api/projects/${state.currentProjectId}/transfer`), {
@@ -569,6 +586,9 @@ import { normalizeDiagram } from "./normalize.js";
 
   els.panelToggleLeft?.addEventListener("click", () => els.leftPanel.classList.toggle("is-collapsed"));
   els.panelToggleRight?.addEventListener("click", () => els.rightPanel.classList.toggle("is-collapsed"));
+
+  els.tabAi?.addEventListener("click", () => switchSidebarTab("ai"));
+  els.tabProject?.addEventListener("click", () => switchSidebarTab("project"));
 
   els.projectSelect?.addEventListener("change", () => {
     if (els.projectSelect.value) loadProject(els.projectSelect.value);

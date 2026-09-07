@@ -117,84 +117,79 @@
     </section>
 
     <aside class="designer-panel right-panel" id="rightPanel">
-      <section class="panel-block">
-        <h2 class="block-title">Projects</h2>
-        <p class="block-subtitle">Save diagrams to MySQL and push JSON to a client canvas project.</p>
+      <div class="sidebar-tabs" role="tablist" aria-label="Sidebar sections">
+        <button type="button" class="sidebar-tab is-active" id="tabAi" role="tab" aria-selected="true" aria-controls="panelAi">AI Generation</button>
+        <button type="button" class="sidebar-tab" id="tabProject" role="tab" aria-selected="false" aria-controls="panelProject">Project Settings</button>
+      </div>
 
-        <label class="field-label" for="projectSelect">Open project</label>
-        <select id="projectSelect" class="select-input" aria-label="Saved projects">
-          <option value="">— New unsaved project —</option>
-        </select>
+      <div class="sidebar-tab-panels">
+        <div class="tab-panel is-active" id="panelAi" role="tabpanel" aria-labelledby="tabAi">
+          <p class="block-subtitle tab-intro">AI builds your diagram from toolbox shapes — every part stays editable.</p>
 
-        <label class="field-label" for="projectNameInput">Project name</label>
-        <input type="text" id="projectNameInput" class="text-input" placeholder="My ERD diagram" value="Untitled Project" />
+          <label class="field-label" for="diagramTypeSelect">Diagram type</label>
+          <select id="diagramTypeSelect" class="select-input select-input-tight" aria-label="Diagram type">
+            {% for key, label in diagram_types.items() %}
+            <option value="{{ key }}"{% if key == 'use_case' %} selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
 
-        <label class="field-label" for="externalProjectIdInput">Client canvas project ID</label>
-        <input type="text" id="externalProjectIdInput" class="text-input" placeholder="LeadPilot project id (optional)" />
-
-        <div class="panel-actions panel-actions-inline">
-          <button type="button" class="btn btn-secondary btn-compact" id="newProjectBtn">New</button>
-          <button type="button" class="btn btn-primary btn-compact" id="saveProjectBtn">Save</button>
-          <button type="button" class="btn btn-secondary btn-compact" id="deleteProjectBtn">Delete</button>
+          <label class="field-label" for="promptInput">Describe your diagram</label>
+          <textarea
+            id="promptInput"
+            class="prompt-input"
+            rows="8"
+            placeholder="Example: Online library — Member borrows books, Librarian manages catalog, Admin generates reports…"
+          ></textarea>
+          <div class="prompt-footer">
+            <span class="char-count" id="charCount">0 / 8000</span>
+          </div>
+          <div class="panel-actions">
+            <button type="button" class="btn btn-primary btn-generate" id="generateBtn">
+              <span class="btn-label">Generate with AI</span>
+              <span class="btn-spinner" hidden aria-hidden="true"></span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="sampleBtn">Load sample diagram</button>
+          </div>
         </div>
 
-        <label class="field-label" for="transferTargetSelect">Send diagram to project</label>
-        <select id="transferTargetSelect" class="select-input" aria-label="Transfer target project">
-          <option value="">Select target…</option>
-        </select>
-        <button type="button" class="btn btn-secondary" id="transferProjectBtn">Send JSON to target</button>
-        <button type="button" class="btn btn-ghost btn-compact-wide" id="copyCanvasExportBtn">Copy canvas export JSON</button>
-        <p class="project-status" id="projectStatus" aria-live="polite">Not saved yet</p>
-      </section>
+        <div class="tab-panel" id="panelProject" role="tabpanel" aria-labelledby="tabProject" hidden>
+          <p class="block-subtitle tab-intro">Save, open, and share diagram projects.</p>
 
-      <section class="panel-block">
-        <h2 class="block-title">AI Generate</h2>
-        <p class="block-subtitle">AI composes your diagram from the shape library — same parts you see in the toolbox.</p>
+          <label class="field-label" for="projectSelect">Open project</label>
+          <select id="projectSelect" class="select-input select-input-tight" aria-label="Saved projects">
+            <option value="">— New unsaved project —</option>
+          </select>
 
-        <label class="field-label" for="diagramTypeSelect">Diagram type</label>
-        <select id="diagramTypeSelect" class="select-input" aria-label="Diagram type">
-          {% for key, label in diagram_types.items() %}
-          <option value="{{ key }}"{% if key == 'use_case' %} selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
+          <label class="field-label" for="projectNameInput">Project name</label>
+          <input type="text" id="projectNameInput" class="text-input" placeholder="My ERD diagram" value="Untitled Project" />
 
-        <label class="field-label" for="promptInput">Describe your diagram</label>
-        <textarea
-          id="promptInput"
-          class="prompt-input"
-          rows="7"
-          placeholder="Example: Online library — Member borrows books, Librarian updates catalog, Admin generates reports. Include actors and main use cases inside a system boundary."
-        ></textarea>
-        <div class="prompt-footer">
-          <span class="char-count" id="charCount">0 / 8000</span>
+          <div class="panel-actions panel-actions-inline">
+            <button type="button" class="btn btn-secondary btn-compact" id="newProjectBtn">New</button>
+            <button type="button" class="btn btn-primary btn-compact" id="saveProjectBtn">Save</button>
+            <button type="button" class="btn btn-secondary btn-compact" id="deleteProjectBtn">Delete</button>
+          </div>
+          <p class="project-status" id="projectStatus" aria-live="polite">Not saved yet</p>
+
+          <div class="settings-divider"></div>
+
+          <label class="field-label" for="transferTargetSelect">Send diagram to project</label>
+          <select id="transferTargetSelect" class="select-input select-input-tight" aria-label="Transfer target project">
+            <option value="">Select target…</option>
+          </select>
+          <button type="button" class="btn btn-secondary" id="transferProjectBtn">Send to target project</button>
+          <button type="button" class="btn btn-ghost btn-compact-wide" id="copyCanvasExportBtn">Copy export JSON</button>
+
+          <div class="settings-divider"></div>
+
+          <h3 class="block-title">Shape properties</h3>
+          <p class="props-empty" id="propsEmpty">Select a shape or connector on the canvas.</p>
+          <div class="props-form" id="propsForm" hidden>
+            <label class="field-label" for="propLabel">Label</label>
+            <input type="text" id="propLabel" class="text-input" />
+            <p class="prop-meta">Type: <span id="propType"></span></p>
+          </div>
         </div>
-        <div class="panel-actions">
-          <button type="button" class="btn btn-primary btn-generate" id="generateBtn">
-            <span class="btn-label">Generate with AI</span>
-            <span class="btn-spinner" hidden aria-hidden="true"></span>
-          </button>
-          <button type="button" class="btn btn-secondary" id="sampleBtn">Load sample diagram</button>
-        </div>
-      </section>
-
-      <section class="panel-block">
-        <h2 class="block-title">Properties</h2>
-        <p class="props-empty" id="propsEmpty">Select a shape or connector to edit its label.</p>
-        <div class="props-form" id="propsForm" hidden>
-          <label class="field-label" for="propLabel">Label</label>
-          <input type="text" id="propLabel" class="text-input" />
-          <p class="prop-meta">Toolbox type: <span id="propType"></span></p>
-        </div>
-      </section>
-
-      <section class="panel-block tips">
-        <h3 class="tips-title">Quick guide</h3>
-        <ul class="tips-list">
-          <li>AI output = individual toolbox shapes you can drag, relabel, or delete.</li>
-          <li>Pick a connector in the toolbox, then click two nodes to link them.</li>
-          <li>Change diagram type from the dropdown before generating.</li>
-        </ul>
-      </section>
+      </div>
     </aside>
   </main>
 
