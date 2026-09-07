@@ -54,7 +54,10 @@ export class DiagramCanvas {
     this.overlayLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
     this.overlayLayer.setAttribute("class", "layer-overlay");
 
-    this.svg.append(this.gridLayer, this.edgesLayer, this.nodesLayer, this.overlayLayer);
+    this.worldLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    this.worldLayer.setAttribute("class", "diagram-world");
+    this.worldLayer.append(this.gridLayer, this.edgesLayer, this.nodesLayer, this.overlayLayer);
+    this.svg.appendChild(this.worldLayer);
     this.viewport.appendChild(this.svg);
     this.container.appendChild(this.viewport);
   }
@@ -98,6 +101,13 @@ export class DiagramCanvas {
     window.addEventListener("mousemove", (e) => this._onMouseMove(e));
     window.addEventListener("mouseup", (e) => this._onMouseUp(e));
     window.addEventListener("keydown", (e) => this._onKeyDown(e));
+
+    if (typeof ResizeObserver !== "undefined") {
+      this._resizeObserver = new ResizeObserver(() => {
+        if (this.diagram.nodes.length) this.scheduleFitToContent();
+      });
+      this._resizeObserver.observe(this.viewport);
+    }
   }
 
   setDiagram(diagram) {
@@ -246,18 +256,29 @@ export class DiagramCanvas {
     }
     const bounds = this._contentBounds();
     const rect = this.viewport.getBoundingClientRect();
-    const pad = 48;
-    const scaleX = (rect.width - pad * 2) / bounds.width;
-    const scaleY = (rect.height - pad * 2) / bounds.height;
-    this.view.scale = Math.min(1.2, Math.max(MIN_ZOOM, Math.min(scaleX, scaleY)));
+    if (rect.width < 40 || rect.height < 40) return;
+
+    const pad = 56;
+    const scaleX = (rect.width - pad * 2) / Math.max(bounds.width, 1);
+    const scaleY = (rect.height - pad * 2) / Math.max(bounds.height, 1);
+    this.view.scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(scaleX, scaleY)));
     this.view.x = (rect.width - bounds.width * this.view.scale) / 2 - bounds.x * this.view.scale;
     this.view.y = (rect.height - bounds.height * this.view.scale) / 2 - bounds.y * this.view.scale;
     this._applyViewTransform();
   }
 
+  /** Defer fit until layout and overlays have settled (e.g. after AI generation). */
+  scheduleFitToContent() {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => this.fitToContent());
+    });
+  }
+
   exportSvg() {
     const clone = this.svg.cloneNode(true);
     clone.removeAttribute("style");
+    const world = clone.querySelector(".diagram-world");
+    world?.removeAttribute("transform");
     const bounds = this._contentBounds();
     const pad = 40;
     clone.setAttribute(
@@ -277,18 +298,26 @@ export class DiagramCanvas {
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
+    const margin = 24;
     for (const n of this.diagram.nodes) {
       minX = Math.min(minX, n.x);
       minY = Math.min(minY, n.y);
       maxX = Math.max(maxX, n.x + n.width);
       maxY = Math.max(maxY, n.y + n.height);
     }
-    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    return {
+      x: minX - margin,
+      y: minY - margin,
+      width: maxX - minX + margin * 2,
+      height: maxY - minY + margin * 2,
+    };
   }
 
   _applyViewTransform() {
-    this.svg.style.transform = `translate(${this.view.x}px, ${this.view.y}px) scale(${this.view.scale})`;
-    this.svg.style.transformOrigin = "0 0";
+    this.worldLayer.setAttribute(
+      "transform",
+      `translate(${this.view.x} ${this.view.y}) scale(${this.view.scale})`,
+    );
   }
 
   _screenToWorld(clientX, clientY) {

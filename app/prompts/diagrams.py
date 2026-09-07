@@ -111,7 +111,7 @@ TOOLBOX: dict[DiagramType, list[ToolboxItem]] = {
 
 DIAGRAM_TYPE_GUIDANCE: dict[DiagramType, str] = {
     "use_case": "UML use case: actors, ovals, system boundary, association/include/extend.",
-    "erd": "Chen ERD: entities, attributes, relationship diamonds, cardinality on edges.",
+    "erd": "Chen ERD: entities (rectangles), attributes (ovals linked to entities), relationship diamonds, cardinality on edges. Include all core entities for the domain (e.g. school: Student, Course, Teacher, Enrollment).",
     "swim_lane": "BPMN-style swim lanes with tasks, gateways, start/end events, sequence flows.",
     "flowchart": "Standard flowchart symbols: terminators, processes, decisions, I/O, database.",
     "sequence": "UML sequence: lifelines top-to-bottom, sync/async/return messages between lifelines.",
@@ -137,10 +137,11 @@ JSON schema:
 
 Layout rules:
 1. Use unique ids (n1, n2, e1…).
-2. Spread nodes on a ~1000×700 canvas; avoid heavy overlap.
-3. Edges must reference existing node ids.
-4. Put containers (system_boundary, lane, package, fragment) behind content with larger width/height.
-5. Labels concise and professional."""
+2. Place ALL nodes within x: 40–860 and y: 40–640 so the full diagram fits one screen.
+3. Include every major entity the user asked for — do not stop after partial output.
+4. Edges must reference existing node ids; connect attributes to entities and relationships to entities.
+5. Put containers (system_boundary, lane, package, fragment) behind content with larger width/height.
+6. Labels concise and professional."""
 
 
 def toolbox_catalog(diagram_type: DiagramType) -> str:

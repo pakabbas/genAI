@@ -123,7 +123,7 @@ import { normalizeDiagram } from "./normalize.js";
     canvas.loadNormalizedDiagram(normalized);
     els.diagramTitle.value = normalized.title;
     state.isDirty = false;
-    canvas.fitToContent();
+    canvas.scheduleFitToContent();
     els.canvasBadge.textContent = badge;
     els.canvasBadge.classList.add("is-live");
   }
@@ -498,10 +498,12 @@ import { normalizeDiagram } from "./normalize.js";
         `${data.diagram_type_label}: ${(data.diagram?.nodes || []).length} editable shapes from toolbox.`,
         "success",
       );
+      canvas.scheduleFitToContent();
     } catch (err) {
       showToast(err.message || "Something went wrong.", "error");
     } finally {
       setGenerating(false);
+      canvas.scheduleFitToContent();
     }
   }
 
