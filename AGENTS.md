@@ -37,12 +37,12 @@ Only one service is required. Run it in tmux for long-lived sessions.
 - By client project id: `GET /api/canvas/external/{external_project_id}`.
 - Transfer: `POST /api/projects/{id}/transfer` with `target_project_id` and/or `target_external_project_id`.
 
-### Starlette templating
+### Designer UI
 
-- Left panel: diagram type + toolbox + canvas tools (select, pan, delete).
+- Left panel: shape library + canvas tools (select, pan, copy, delete).
 - Center: SVG designer canvas.
-- Right panel: AI prompt, properties for selected node/edge.
-- Frontend modules live under `static/js/designer/` (loaded as ES modules from `templates/index.html`).
+- Right panel tabs: **AI Generation** (type, prompt, generate, sample) and **Project Settings** (save/load/transfer, export, shape properties). Client canvas project ID is stored in the backend only — not shown in the UI.
+- Frontend modules under `static/js/designer/`.
 
 ### Starlette templating
 
