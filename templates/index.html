@@ -118,6 +118,36 @@
 
     <aside class="designer-panel right-panel" id="rightPanel">
       <section class="panel-block">
+        <h2 class="block-title">Projects</h2>
+        <p class="block-subtitle">Save diagrams to MySQL and push JSON to a client canvas project.</p>
+
+        <label class="field-label" for="projectSelect">Open project</label>
+        <select id="projectSelect" class="select-input" aria-label="Saved projects">
+          <option value="">— New unsaved project —</option>
+        </select>
+
+        <label class="field-label" for="projectNameInput">Project name</label>
+        <input type="text" id="projectNameInput" class="text-input" placeholder="My ERD diagram" value="Untitled Project" />
+
+        <label class="field-label" for="externalProjectIdInput">Client canvas project ID</label>
+        <input type="text" id="externalProjectIdInput" class="text-input" placeholder="LeadPilot project id (optional)" />
+
+        <div class="panel-actions panel-actions-inline">
+          <button type="button" class="btn btn-secondary btn-compact" id="newProjectBtn">New</button>
+          <button type="button" class="btn btn-primary btn-compact" id="saveProjectBtn">Save</button>
+          <button type="button" class="btn btn-secondary btn-compact" id="deleteProjectBtn">Delete</button>
+        </div>
+
+        <label class="field-label" for="transferTargetSelect">Send diagram to project</label>
+        <select id="transferTargetSelect" class="select-input" aria-label="Transfer target project">
+          <option value="">Select target…</option>
+        </select>
+        <button type="button" class="btn btn-secondary" id="transferProjectBtn">Send JSON to target</button>
+        <button type="button" class="btn btn-ghost btn-compact-wide" id="copyCanvasExportBtn">Copy canvas export JSON</button>
+        <p class="project-status" id="projectStatus" aria-live="polite">Not saved yet</p>
+      </section>
+
+      <section class="panel-block">
         <h2 class="block-title">AI Generate</h2>
         <p class="block-subtitle">AI composes your diagram from the shape library — same parts you see in the toolbox.</p>
 

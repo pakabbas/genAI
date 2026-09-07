@@ -23,10 +23,21 @@ Only one service is required. Run it in tmux for long-lived sessions.
 ### Testing without a valid Gemini key
 
 - Use **Load sample diagram** to verify toolbox, canvas (drag/zoom/connect), and export.
-- `GET /api/health` should return `api_key_configured: true` when `.env` is set.
-- `POST /api/generate-diagram` requires a valid Gemini API key for AI layout generation.
+- **Projects** panel requires MySQL (`db_connected: true` on `/api/health`).
 
-### Designer UI
+### Database (MySQL)
+
+- Uses shared **`leadpilot`** database on GCP (`127.0.0.1`) — tables `genai_projects`, `genai_project_transfers`.
+- Credentials: `/opt/leadpilot/config/mysqldb.txt` on the VM (deploy reads this automatically).
+- Apply schema: `deploy/mysql_schema.sql` (already applied on production).
+
+### Client canvas API
+
+- Export: `GET /api/projects/{id}/export` → `genai-canvas-v1` JSON (`nodes`, `edges`).
+- By client project id: `GET /api/canvas/external/{external_project_id}`.
+- Transfer: `POST /api/projects/{id}/transfer` with `target_project_id` and/or `target_external_project_id`.
+
+### Starlette templating
 
 - Left panel: diagram type + toolbox + canvas tools (select, pan, delete).
 - Center: SVG designer canvas.

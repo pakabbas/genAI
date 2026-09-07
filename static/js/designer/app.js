@@ -15,6 +15,8 @@ import { normalizeDiagram } from "./normalize.js";
     lastPrompt: "",
     isGenerating: false,
     isDirty: false,
+    currentProjectId: null,
+    dbConnected: false,
   };
 
   const els = {
@@ -36,7 +38,6 @@ import { normalizeDiagram } from "./normalize.js";
     selectTool: document.getElementById("selectTool"),
     panTool: document.getElementById("panTool"),
     connectHint: document.getElementById("connectHint"),
-    propsPanel: document.getElementById("propsPanel"),
     propsEmpty: document.getElementById("propsEmpty"),
     propsForm: document.getElementById("propsForm"),
     propLabel: document.getElementById("propLabel"),
@@ -53,6 +54,16 @@ import { normalizeDiagram } from "./normalize.js";
     rightPanel: document.getElementById("rightPanel"),
     panelToggleLeft: document.getElementById("panelToggleLeft"),
     panelToggleRight: document.getElementById("panelToggleRight"),
+    projectSelect: document.getElementById("projectSelect"),
+    projectNameInput: document.getElementById("projectNameInput"),
+    externalProjectIdInput: document.getElementById("externalProjectIdInput"),
+    newProjectBtn: document.getElementById("newProjectBtn"),
+    saveProjectBtn: document.getElementById("saveProjectBtn"),
+    deleteProjectBtn: document.getElementById("deleteProjectBtn"),
+    transferTargetSelect: document.getElementById("transferTargetSelect"),
+    transferProjectBtn: document.getElementById("transferProjectBtn"),
+    copyCanvasExportBtn: document.getElementById("copyCanvasExportBtn"),
+    projectStatus: document.getElementById("projectStatus"),
   };
 
   const canvas = new DiagramCanvas(els.canvasHost, {
@@ -220,17 +231,216 @@ import { normalizeDiagram } from "./normalize.js";
     try {
       const res = await fetch(withRoot("/api/health"));
       const data = await res.json();
+      state.dbConnected = Boolean(data.db_connected);
       if (data.api_key_configured) {
         els.apiStatus.classList.add("is-ready");
-        els.apiStatus.innerHTML = '<span class="status-dot"></span> Gemini ready';
+        const dbLabel = data.db_connected ? " · DB" : "";
+        els.apiStatus.innerHTML = `<span class="status-dot"></span> Gemini ready${dbLabel}`;
       } else {
         els.apiStatus.classList.add("is-error");
         els.apiStatus.innerHTML = '<span class="status-dot"></span> API key missing';
         showToast("Set GEMINI_API_KEY in .env to enable AI generation.", "error");
       }
+      if (!data.db_connected) {
+        setProjectStatus("Database offline — save disabled");
+      } else {
+        await refreshProjectList();
+      }
     } catch {
       els.apiStatus.classList.add("is-error");
       els.apiStatus.innerHTML = '<span class="status-dot"></span> Offline';
+    }
+  }
+
+  function setProjectStatus(text) {
+    if (els.projectStatus) els.projectStatus.textContent = text;
+  }
+
+  function buildDiagramPayload() {
+    const diagram = canvas.getDiagram();
+    diagram.diagram_type = state.diagramType;
+    diagram.title = els.diagramTitle.value.trim() || diagram.title;
+    return normalizeDiagram(diagram, state.toolbox);
+  }
+
+  async function refreshProjectList() {
+    if (!state.dbConnected || !els.projectSelect) return;
+    try {
+      const res = await fetch(withRoot("/api/projects"));
+      const items = await res.json();
+      if (!res.ok) throw new Error(items.detail || "Could not load projects.");
+
+      const current = state.currentProjectId;
+      els.projectSelect.innerHTML = '<option value="">— New unsaved project —</option>';
+      els.transferTargetSelect.innerHTML = '<option value="">Select target…</option>';
+
+      for (const p of items) {
+        const label = `${p.name} (${p.node_count} shapes)`;
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = label;
+        els.projectSelect.appendChild(opt);
+
+        if (p.id !== current) {
+          const tOpt = document.createElement("option");
+          tOpt.value = p.id;
+          tOpt.textContent = label;
+          els.transferTargetSelect.appendChild(tOpt);
+        }
+      }
+
+      if (current) els.projectSelect.value = current;
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  }
+
+  async function loadProject(projectId) {
+    if (!projectId) return;
+    try {
+      const res = await fetch(withRoot(`/api/projects/${projectId}`));
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Load failed.");
+
+      state.currentProjectId = data.id;
+      els.projectNameInput.value = data.name;
+      els.externalProjectIdInput.value = data.external_project_id || "";
+      els.diagramTitle.value = data.title;
+      selectDiagramType(data.diagram_type);
+      applyDiagramToCanvas(data.diagram, "Loaded");
+      state.isDirty = false;
+      setProjectStatus(`Saved · ${data.id.slice(0, 8)}…`);
+      await refreshProjectList();
+      showToast(`Opened project “${data.name}”.`, "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  }
+
+  function newProject() {
+    state.currentProjectId = null;
+    els.projectNameInput.value = "Untitled Project";
+    els.externalProjectIdInput.value = "";
+    els.projectSelect.value = "";
+    clearCanvas();
+    setProjectStatus("Not saved yet");
+    showToast("New project — edit and click Save.", "success");
+  }
+
+  async function saveProject() {
+    if (!state.dbConnected) {
+      showToast("Database not connected.", "error");
+      return;
+    }
+
+    const name = els.projectNameInput.value.trim() || "Untitled Project";
+    const diagram = buildDiagramPayload();
+    const body = {
+      name,
+      diagram_type: state.diagramType,
+      title: diagram.title,
+      diagram: {
+        diagram_type: state.diagramType,
+        title: diagram.title,
+        nodes: diagram.nodes,
+        edges: diagram.edges,
+      },
+      external_project_id: els.externalProjectIdInput.value.trim() || null,
+    };
+
+    try {
+      let res;
+      if (state.currentProjectId) {
+        res = await fetch(withRoot(`/api/projects/${state.currentProjectId}`), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      } else {
+        res = await fetch(withRoot("/api/projects"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Save failed.");
+
+      state.currentProjectId = data.id;
+      state.isDirty = false;
+      setProjectStatus(`Saved · ${data.id.slice(0, 8)}…`);
+      await refreshProjectList();
+      els.projectSelect.value = data.id;
+      showToast("Project saved.", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  }
+
+  async function deleteCurrentProject() {
+    if (!state.currentProjectId) {
+      showToast("No saved project selected.", "error");
+      return;
+    }
+    if (!confirm("Delete this project from the database?")) return;
+
+    try {
+      const res = await fetch(withRoot(`/api/projects/${state.currentProjectId}`), { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Delete failed.");
+      newProject();
+      await refreshProjectList();
+      showToast("Project deleted.", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  }
+
+  async function transferProject() {
+    if (!state.currentProjectId) {
+      showToast("Save the project first before transferring.", "error");
+      return;
+    }
+    const targetId = els.transferTargetSelect.value;
+    const externalId = els.externalProjectIdInput.value.trim();
+    if (!targetId && !externalId) {
+      showToast("Pick a target project or set a client canvas project ID.", "error");
+      return;
+    }
+
+    const payload = { replace: true };
+    if (targetId) payload.target_project_id = targetId;
+    if (externalId) payload.target_external_project_id = externalId;
+
+    try {
+      const res = await fetch(withRoot(`/api/projects/${state.currentProjectId}/transfer`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Transfer failed.");
+      await refreshProjectList();
+      showToast("Diagram JSON sent — use export API or client canvas to render.", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  }
+
+  async function copyCanvasExport() {
+    const projectId = state.currentProjectId;
+    if (!projectId) {
+      showToast("Save the project first to get a canvas export id.", "error");
+      return;
+    }
+    try {
+      const res = await fetch(withRoot(`/api/projects/${projectId}/export`));
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Export failed.");
+      await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+      showToast("Canvas export JSON copied (genai-canvas-v1).", "success");
+    } catch (err) {
+      showToast(err.message || "Copy failed.", "error");
     }
   }
 
@@ -359,6 +569,15 @@ import { normalizeDiagram } from "./normalize.js";
 
   els.panelToggleLeft?.addEventListener("click", () => els.leftPanel.classList.toggle("is-collapsed"));
   els.panelToggleRight?.addEventListener("click", () => els.rightPanel.classList.toggle("is-collapsed"));
+
+  els.projectSelect?.addEventListener("change", () => {
+    if (els.projectSelect.value) loadProject(els.projectSelect.value);
+  });
+  els.newProjectBtn?.addEventListener("click", newProject);
+  els.saveProjectBtn?.addEventListener("click", saveProject);
+  els.deleteProjectBtn?.addEventListener("click", deleteCurrentProject);
+  els.transferProjectBtn?.addEventListener("click", transferProject);
+  els.copyCanvasExportBtn?.addEventListener("click", copyCanvasExport);
 
   updateCharCount();
   checkHealth();

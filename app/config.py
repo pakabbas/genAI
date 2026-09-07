@@ -16,4 +16,9 @@ def get_settings() -> dict[str, str | int]:
         "app_host": os.getenv("APP_HOST", "0.0.0.0"),
         "app_port": int(os.getenv("APP_PORT", "8000")),
         "app_root_path": root_path,
+        "db_host": os.getenv("DB_HOST", "127.0.0.1").strip(),
+        "db_port": int(os.getenv("DB_PORT", "3306")),
+        "db_name": os.getenv("DB_NAME", "leadpilot").strip(),
+        "db_user": os.getenv("DB_USER", "leadpilot").strip(),
+        "db_password": os.getenv("DB_PASSWORD", "").strip(),
     }

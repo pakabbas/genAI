@@ -209,6 +209,31 @@ input {
   border-left: 1px solid var(--border);
 }
 
+.panel-actions-inline {
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 0.5rem;
+}
+
+.btn-compact {
+  min-height: 38px;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.78rem;
+}
+
+.btn-compact-wide {
+  width: 100%;
+  margin-top: 0.45rem;
+  min-height: 36px;
+  font-size: 0.78rem;
+}
+
+.project-status {
+  margin: 0.65rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--mono);
+}
+
 .panel-block + .panel-block {
   margin-top: 1.25rem;
   padding-top: 1.25rem;
