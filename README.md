@@ -64,10 +64,16 @@ See [deploy/README.md](deploy/README.md) for GitHub secrets and workflow details
 - `PUT /api/projects/{id}` — update
 - `DELETE /api/projects/{id}` — delete
 
-### Client canvas integration
+### Client canvas integration (public demo — no API key)
+
+**Demo page:** `/demo` (production: https://leadpilotai.spiralloopstechnologies.com/genAI/demo)
+
+View formatted raw JSON, copy URLs, and share `?project={uuid}` with clients. Read endpoints are open for integration demos.
 
 Export format **`genai-canvas-v1`** for LeadPilot / external canvas:
 
+- `GET /api/projects` — list saved projects
+- `GET /api/projects/{id}` — full project + diagram JSON
 - `GET /api/projects/{id}/export` — JSON payload with `nodes` and `edges`
 - `GET /api/canvas/external/{external_project_id}` — fetch by client project id
 - `POST /api/projects/{id}/transfer` — `{ "target_project_id": "...", "target_external_project_id": "...", "replace": true }`

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="GenAI Diagram Studio — public API demo. View raw JSON for client canvas integration. No API key required." />
+  <title>API Demo · GenAI Diagram Studio</title>
+  <meta name="app-root" content="{{ root_path }}" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css" />
+</head>
+<body class="api-demo-page">
+  <header class="demo-header">
+    <div class="demo-header-top">
+      <a class="demo-back-link" href="{{ root_path }}/">← Back to Diagram Studio</a>
+      <span class="demo-badge">Public demo · No API key</span>
+    </div>
+    <h1 class="demo-title">Client canvas API demo</h1>
+    <p class="demo-lead">
+      Read endpoints are open for integration demos. Fetch <strong>genai-canvas-v1</strong> JSON and render
+      <code>nodes</code> + <code>edges</code> in your own canvas — no authentication required.
+    </p>
+  </header>
+
+  <main class="demo-main">
+    <section class="demo-card">
+      <h2 class="demo-card-title">Choose a saved project</h2>
+      <label class="field-label" for="demoProjectSelect">Project</label>
+      <select id="demoProjectSelect" class="select-input">
+        <option value="">Loading projects…</option>
+      </select>
+      <p class="demo-hint" id="demoProjectMeta"></p>
+    </section>
+
+    <section class="demo-card">
+      <h2 class="demo-card-title">API URLs (open in browser)</h2>
+      <div class="demo-url-list">
+        <div class="demo-url-row">
+          <span class="demo-url-label">List projects</span>
+          <code class="demo-url" id="urlList"></code>
+          <button type="button" class="btn btn-ghost btn-sm demo-copy-btn" data-copy="urlList">Copy</button>
+          <a class="btn btn-ghost btn-sm demo-open-btn" id="openList" target="_blank" rel="noopener">Open</a>
+        </div>
+        <div class="demo-url-row">
+          <span class="demo-url-label">Full project</span>
+          <code class="demo-url" id="urlProject"></code>
+          <button type="button" class="btn btn-ghost btn-sm demo-copy-btn" data-copy="urlProject">Copy</button>
+          <a class="btn btn-ghost btn-sm demo-open-btn" id="openProject" target="_blank" rel="noopener">Open</a>
+        </div>
+        <div class="demo-url-row">
+          <span class="demo-url-label">Canvas export <span class="demo-url-tag">genai-canvas-v1</span></span>
+          <code class="demo-url" id="urlExport"></code>
+          <button type="button" class="btn btn-ghost btn-sm demo-copy-btn" data-copy="urlExport">Copy</button>
+          <a class="btn btn-ghost btn-sm demo-open-btn" id="openExport" target="_blank" rel="noopener">Open</a>
+        </div>
+        <div class="demo-url-row" id="externalUrlRow" hidden>
+          <span class="demo-url-label">By client project id</span>
+          <code class="demo-url" id="urlExternal"></code>
+          <button type="button" class="btn btn-ghost btn-sm demo-copy-btn" data-copy="urlExternal">Copy</button>
+          <a class="btn btn-ghost btn-sm demo-open-btn" id="openExternal" target="_blank" rel="noopener">Open</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="demo-card">
+      <div class="demo-json-header">
+        <h2 class="demo-card-title">Raw JSON · Canvas export</h2>
+        <button type="button" class="btn btn-secondary btn-sm" id="copyExportJson">Copy JSON</button>
+      </div>
+      <p class="demo-hint">Use this payload in your app. Format: <code>genai-canvas-v1</code></p>
+      <pre class="demo-json" id="jsonExport" aria-live="polite">Select a project above…</pre>
+    </section>
+
+    <section class="demo-card">
+      <div class="demo-json-header">
+        <h2 class="demo-card-title">Raw JSON · Full project</h2>
+        <button type="button" class="btn btn-secondary btn-sm" id="copyProjectJson">Copy JSON</button>
+      </div>
+      <p class="demo-hint">Includes metadata + full <code>diagram</code> document.</p>
+      <pre class="demo-json demo-json-tall" id="jsonProject" aria-live="polite">Select a project above…</pre>
+    </section>
+  </main>
+
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
+      const origin = window.location.origin;
+      const base = `${origin}${APP_ROOT}`;
+
+      const els = {
+        select: document.getElementById("demoProjectSelect"),
+        meta: document.getElementById("demoProjectMeta"),
+        urlList: document.getElementById("urlList"),
+        urlProject: document.getElementById("urlProject"),
+        urlExport: document.getElementById("urlExport"),
+        urlExternal: document.getElementById("urlExternal"),
+        externalUrlRow: document.getElementById("externalUrlRow"),
+        openList: document.getElementById("openList"),
+        openProject: document.getElementById("openProject"),
+        openExport: document.getElementById("openExport"),
+        openExternal: document.getElementById("openExternal"),
+        jsonExport: document.getElementById("jsonExport"),
+        jsonProject: document.getElementById("jsonProject"),
+        toastContainer: document.getElementById("toastContainer"),
+      };
+
+      let exportData = null;
+      let projectData = null;
+      let projects = [];
+
+      function api(path) {
+        return `${base}${path}`;
+      }
+
+      function showToast(message, type = "info") {
+        const toast = document.createElement("div");
+        toast.className = `toast${type === "error" ? " is-error" : type === "success" ? " is-success" : ""}`;
+        toast.textContent = message;
+        els.toastContainer.appendChild(toast);
+        setTimeout(() => toast.remove(), 4200);
+      }
+
+      function setUrls(projectId, externalId) {
+        const listUrl = api("/api/projects");
+        els.urlList.textContent = listUrl;
+        els.openList.href = listUrl;
+
+        if (!projectId) {
+          els.urlProject.textContent = api("/api/projects/{project_id}");
+          els.urlExport.textContent = api("/api/projects/{project_id}/export");
+          els.openProject.href = "#";
+          els.openExport.href = "#";
+          els.externalUrlRow.hidden = true;
+          return;
+        }
+
+        const projectUrl = api(`/api/projects/${projectId}`);
+        const exportUrl = api(`/api/projects/${projectId}/export`);
+        els.urlProject.textContent = projectUrl;
+        els.urlExport.textContent = exportUrl;
+        els.openProject.href = projectUrl;
+        els.openExport.href = exportUrl;
+
+        if (externalId) {
+          const extUrl = api(`/api/canvas/external/${encodeURIComponent(externalId)}`);
+          els.urlExternal.textContent = extUrl;
+          els.openExternal.href = extUrl;
+          els.externalUrlRow.hidden = false;
+        } else {
+          els.externalUrlRow.hidden = true;
+        }
+      }
+
+      async function loadProjectJson(projectId) {
+        els.jsonExport.textContent = "Loading…";
+        els.jsonProject.textContent = "Loading…";
+        exportData = null;
+        projectData = null;
+
+        try {
+          const [exportRes, projectRes] = await Promise.all([
+            fetch(api(`/api/projects/${projectId}/export`)),
+            fetch(api(`/api/projects/${projectId}`)),
+          ]);
+          const exportJson = await exportRes.json();
+          const projectJson = await projectRes.json();
+
+          if (!exportRes.ok) throw new Error(exportJson.detail || "Export failed");
+          if (!projectRes.ok) throw new Error(projectJson.detail || "Project load failed");
+
+          exportData = exportJson;
+          projectData = projectJson;
+          els.jsonExport.textContent = JSON.stringify(exportJson, null, 2);
+          els.jsonProject.textContent = JSON.stringify(projectJson, null, 2);
+
+          const p = projects.find((x) => x.id === projectId);
+          const ext = p?.external_project_id || exportJson.external_project_id;
+          setUrls(projectId, ext);
+
+          els.meta.textContent = p
+            ? `${p.title} · ${p.diagram_type} · ${p.node_count} nodes, ${p.edge_count} edges`
+            : "";
+        } catch (err) {
+          els.jsonExport.textContent = `Error: ${err.message}`;
+          els.jsonProject.textContent = "";
+          showToast(err.message, "error");
+        }
+      }
+
+      async function init() {
+        setUrls(null, null);
+        els.urlList.textContent = api("/api/projects");
+        els.openList.href = api("/api/projects");
+
+        try {
+          const res = await fetch(api("/api/projects"));
+          projects = await res.json();
+          if (!res.ok) throw new Error(projects.detail || "Could not load projects");
+
+          els.select.innerHTML = "";
+          if (!projects.length) {
+            els.select.innerHTML = '<option value="">No saved projects yet</option>';
+            els.meta.textContent = "Save a diagram in Diagram Studio first.";
+            return;
+          }
+
+          for (const p of projects) {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = `${p.name} (${p.title})`;
+            els.select.appendChild(opt);
+          }
+
+          const params = new URLSearchParams(window.location.search);
+          const fromQuery = params.get("project");
+          if (fromQuery && projects.some((p) => p.id === fromQuery)) {
+            els.select.value = fromQuery;
+          }
+
+          if (els.select.value) await loadProjectJson(els.select.value);
+        } catch (err) {
+          els.select.innerHTML = '<option value="">Database unavailable</option>';
+          els.meta.textContent = err.message;
+          showToast(err.message, "error");
+        }
+      }
+
+      els.select.addEventListener("change", () => {
+        if (els.select.value) {
+          const url = new URL(window.location.href);
+          url.searchParams.set("project", els.select.value);
+          window.history.replaceState({}, "", url);
+          loadProjectJson(els.select.value);
+        }
+      });
+
+      document.querySelectorAll(".demo-copy-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.copy;
+          const el = document.getElementById(id);
+          if (!el?.textContent) return;
+          try {
+            await navigator.clipboard.writeText(el.textContent);
+            showToast("URL copied.", "success");
+          } catch {
+            showToast("Copy failed.", "error");
+          }
+        });
+      });
+
+      document.getElementById("copyExportJson").addEventListener("click", async () => {
+        if (!exportData) return;
+        try {
+          await navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
+          showToast("Export JSON copied.", "success");
+        } catch {
+          showToast("Copy failed.", "error");
+        }
+      });
+
+      document.getElementById("copyProjectJson").addEventListener("click", async () => {
+        if (!projectData) return;
+        try {
+          await navigator.clipboard.writeText(JSON.stringify(projectData, null, 2));
+          showToast("Project JSON copied.", "success");
+        } catch {
+          showToast("Copy failed.", "error");
+        }
+      });
+
+      init();
+    })();
+  </script>
+</body>
+</html>

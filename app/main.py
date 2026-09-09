@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -37,6 +38,14 @@ app = FastAPI(
     version="2.1.0",
 )
 
+# Public read APIs for client canvas demos (no API key). CORS enabled for integration testing.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
@@ -61,6 +70,16 @@ async def index(request: Request) -> HTMLResponse:
         request,
         "index.html",
         context=_template_context({"diagram_types": DIAGRAM_TYPE_LABELS}),
+    )
+
+
+@app.get("/demo", response_class=HTMLResponse)
+async def api_demo_page(request: Request) -> HTMLResponse:
+    """Public API demo — view raw JSON and copy URLs for client canvas integration."""
+    return templates.TemplateResponse(
+        request,
+        "api-demo.html",
+        context=_template_context(),
     )
 
 

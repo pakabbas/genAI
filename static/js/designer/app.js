@@ -73,6 +73,7 @@ import { normalizeDiagram } from "./normalize.js";
     transferTargetSelect: document.getElementById("transferTargetSelect"),
     transferProjectBtn: document.getElementById("transferProjectBtn"),
     copyCanvasExportBtn: document.getElementById("copyCanvasExportBtn"),
+    openApiDemoLink: document.getElementById("openApiDemoLink"),
     projectStatus: document.getElementById("projectStatus"),
     canvasContextMenu: document.getElementById("canvasContextMenu"),
     ctxRename: document.getElementById("ctxRename"),
@@ -428,6 +429,14 @@ import { normalizeDiagram } from "./normalize.js";
     if (els.projectStatus) els.projectStatus.textContent = text;
   }
 
+  function updateApiDemoLink(projectId) {
+    if (!els.openApiDemoLink) return;
+    const demoPath = projectId
+      ? `${withRoot("/demo")}?project=${encodeURIComponent(projectId)}`
+      : withRoot("/demo");
+    els.openApiDemoLink.href = demoPath;
+  }
+
   function buildDiagramPayload() {
     const diagram = canvas.getDiagram();
     diagram.diagram_type = state.diagramType;
@@ -482,6 +491,7 @@ import { normalizeDiagram } from "./normalize.js";
       applyDiagramToCanvas(data.diagram, "Loaded");
       state.isDirty = false;
       setProjectStatus(`Saved · ${data.id.slice(0, 8)}…`);
+      updateApiDemoLink(data.id);
       await refreshProjectList();
       showToast(`Opened project “${data.name}”.`, "success");
     } catch (err) {
@@ -496,6 +506,7 @@ import { normalizeDiagram } from "./normalize.js";
     els.projectSelect.value = "";
     clearCanvas();
     setProjectStatus("Not saved yet");
+    updateApiDemoLink(null);
     showToast("New project — edit and click Save.", "success");
   }
 
@@ -542,6 +553,7 @@ import { normalizeDiagram } from "./normalize.js";
       state.externalProjectId = data.external_project_id || null;
       state.isDirty = false;
       setProjectStatus(`Saved · ${data.id.slice(0, 8)}…`);
+      updateApiDemoLink(data.id);
       await refreshProjectList();
       els.projectSelect.value = data.id;
       showToast("Project saved.", "success");
@@ -822,4 +834,5 @@ import { normalizeDiagram } from "./normalize.js";
   selectDiagramType("use_case");
   canvas.resetView();
   initMobileLayout();
+  updateApiDemoLink(null);
 })();
