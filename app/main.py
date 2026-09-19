@@ -13,9 +13,9 @@ from app.schemas.diagram import (
     DiagramDocument,
     DiagramType,
     GenerateDiagramRequest,
-    GenerateDiagramResponse,
     ToolboxResponse,
 )
+from app.schemas.generation import GenerateDiagramResponse
 from app.schemas.project import (
     CanvasExportV1,
     ProjectCreate,
@@ -25,7 +25,7 @@ from app.schemas.project import (
     ProjectTransferResponse,
     ProjectUpdate,
 )
-from app.services.diagram_generator import generate_diagram
+from app.services.diagram_pipeline import generate_diagram_with_qc
 from app.services import project_repository as projects
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -112,7 +112,7 @@ async def generate_diagram_endpoint(
     request: GenerateDiagramRequest,
 ) -> GenerateDiagramResponse:
     try:
-        diagram = generate_diagram(
+        result = generate_diagram_with_qc(
             request.diagram_type,
             request.prompt,
             request.existing,
@@ -125,11 +125,7 @@ async def generate_diagram_endpoint(
             detail=f"Generation failed: {exc}",
         ) from exc
 
-    return GenerateDiagramResponse(
-        diagram=diagram,
-        diagram_type=request.diagram_type,
-        diagram_type_label=DIAGRAM_TYPE_LABELS[request.diagram_type],
-    )
+    return result
 
 
 @app.post("/api/validate-diagram")

@@ -120,8 +120,8 @@
         <div id="canvasHost"></div>
         <div class="canvas-loading" id="canvasLoading" hidden>
           <div class="loading-orbit" aria-hidden="true"></div>
-          <p>Placing toolbox shapes…</p>
-          <span class="loading-sub">AI picks Actor, Process, Entity, etc. — not a flat image. You'll edit each part.</span>
+          <p id="canvasLoadingTitle">Placing toolbox shapes…</p>
+          <span class="loading-sub" id="canvasLoadingSub">Generator → QC Auditor pipeline running…</span>
         </div>
       </div>
     </section>
@@ -134,7 +134,7 @@
 
       <div class="sidebar-tab-panels">
         <div class="tab-panel is-active" id="panelAi" role="tabpanel" aria-labelledby="tabAi">
-          <p class="block-subtitle tab-intro">AI builds your diagram from toolbox shapes — every part stays editable.</p>
+          <p class="block-subtitle tab-intro">Generator composes toolbox shapes; QC Auditor checks for missing modules or errors before delivery.</p>
 
           <label class="field-label" for="diagramTypeSelect">Diagram type</label>
           <select id="diagramTypeSelect" class="select-input select-input-tight" aria-label="Diagram type">
@@ -159,6 +159,13 @@
               <span class="btn-spinner" hidden aria-hidden="true"></span>
             </button>
             <button type="button" class="btn btn-secondary" id="sampleBtn">Load sample diagram</button>
+            <button type="button" class="btn btn-ghost ai-log-btn" id="aiThinkingLogBtn" disabled title="Run a generation first">
+              AI thinking log
+            </button>
+          </div>
+          <div class="qc-recommendations" id="qcRecommendations" hidden>
+            <p class="qc-recommendations-title">QC suggestions (optional)</p>
+            <ul class="qc-recommendations-list" id="qcRecommendationsList"></ul>
           </div>
         </div>
 
@@ -228,6 +235,20 @@
   </div>
   <div id="canvasInlineEditor" class="canvas-inline-editor" hidden>
     <input type="text" id="canvasInlineInput" class="canvas-inline-input" aria-label="Rename shape label" />
+  </div>
+
+  <div id="aiThinkingModal" class="ai-thinking-modal" hidden role="dialog" aria-modal="true" aria-labelledby="aiThinkingTitle">
+    <div class="ai-thinking-backdrop" id="aiThinkingBackdrop"></div>
+    <div class="ai-thinking-panel">
+      <header class="ai-thinking-header">
+        <div>
+          <h2 id="aiThinkingTitle">AI thinking log</h2>
+          <p class="ai-thinking-sub">Generator and QC Auditor communication for the last run.</p>
+        </div>
+        <button type="button" class="btn btn-ghost btn-icon-only" id="closeAiThinkingBtn" aria-label="Close">✕</button>
+      </header>
+      <div class="ai-thinking-body" id="aiThinkingBody"></div>
+    </div>
   </div>
 
   <script type="module" src="{{ root_path }}/static/js/designer/app.js"></script>

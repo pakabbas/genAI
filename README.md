@@ -53,7 +53,11 @@ See [deploy/README.md](deploy/README.md) for GitHub secrets and workflow details
 
 - `GET /api/health` — service status (`db_connected`, `api_key_configured`)
 - `GET /api/toolbox/{diagram_type}` — toolbox items
-- `POST /api/generate-diagram` — AI diagram JSON
+- `POST /api/generate-diagram` — two-agent AI pipeline (Generator → QC Auditor). Response includes:
+  - `diagram` — toolbox-valid diagram JSON
+  - `qc_approved`, `revision_applied` — whether QC passed and whether a revision round ran
+  - `recommendations` — optional polish suggestions (non-blocking)
+  - `trace` — step-by-step agent log (Generator, QC Auditor, pipeline) for the **AI thinking log** UI
 - `POST /api/validate-diagram` — validate diagram JSON
 
 ### Projects (MySQL)
