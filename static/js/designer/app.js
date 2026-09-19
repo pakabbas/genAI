@@ -18,6 +18,8 @@ import { normalizeDiagram } from "./normalize.js";
     currentProjectId: null,
     externalProjectId: null,
     dbConnected: false,
+    lastGenerationTrace: [],
+    lastRecommendations: [],
   };
 
   const els = {
@@ -33,6 +35,15 @@ import { normalizeDiagram } from "./normalize.js";
     promptInput: document.getElementById("promptInput"),
     charCount: document.getElementById("charCount"),
     generateBtn: document.getElementById("generateBtn"),
+    aiThinkingLogBtn: document.getElementById("aiThinkingLogBtn"),
+    aiThinkingModal: document.getElementById("aiThinkingModal"),
+    aiThinkingBody: document.getElementById("aiThinkingBody"),
+    aiThinkingBackdrop: document.getElementById("aiThinkingBackdrop"),
+    closeAiThinkingBtn: document.getElementById("closeAiThinkingBtn"),
+    qcRecommendations: document.getElementById("qcRecommendations"),
+    qcRecommendationsList: document.getElementById("qcRecommendationsList"),
+    canvasLoadingTitle: document.getElementById("canvasLoadingTitle"),
+    canvasLoadingSub: document.getElementById("canvasLoadingSub"),
     sampleBtn: document.getElementById("sampleBtn"),
     clearBtn: document.getElementById("clearBtn"),
     deleteBtn: document.getElementById("deleteBtn"),
@@ -259,13 +270,89 @@ import { normalizeDiagram } from "./normalize.js";
     setTimeout(() => toast.remove(), 4200);
   }
 
-  function setGenerating(isGenerating) {
+  function setGenerating(isGenerating, stageTitle = "Placing toolbox shapes…", stageSub = "") {
     state.isGenerating = isGenerating;
     els.generateBtn.disabled = isGenerating;
     els.generateBtn.classList.toggle("is-loading", isGenerating);
     els.generateBtn.querySelector(".btn-spinner").hidden = !isGenerating;
     els.canvasLoading.hidden = !isGenerating;
     els.canvasBadge.classList.toggle("is-loading", isGenerating);
+    if (els.canvasLoadingTitle) els.canvasLoadingTitle.textContent = stageTitle;
+    if (els.canvasLoadingSub) {
+      els.canvasLoadingSub.textContent =
+        stageSub || "Generator composes shapes, then QC Auditor checks for missing modules or errors.";
+    }
+  }
+
+  function agentLabel(agent) {
+    const map = {
+      generator: "Diagram Generator",
+      qc_auditor: "QC Auditor",
+      system: "Pipeline",
+    };
+    return map[agent] || agent;
+  }
+
+  function agentClass(agent) {
+    if (agent === "generator") return "is-generator";
+    if (agent === "qc_auditor") return "is-qc";
+    return "is-system";
+  }
+
+  function renderThinkingLog(trace) {
+    if (!els.aiThinkingBody) return;
+    els.aiThinkingBody.innerHTML = "";
+    if (!trace?.length) {
+      els.aiThinkingBody.innerHTML = '<p class="ai-thinking-empty">No log entries yet. Run Generate with AI first.</p>';
+      return;
+    }
+    for (const entry of trace) {
+      const item = document.createElement("article");
+      item.className = `ai-thinking-entry ${agentClass(entry.agent)}`;
+      const time = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : "";
+      item.innerHTML = `
+        <div class="ai-thinking-entry-head">
+          <span class="ai-thinking-agent">${agentLabel(entry.agent)}</span>
+          <span class="ai-thinking-phase">${entry.phase.replace(/_/g, " ")}</span>
+          ${time ? `<span class="ai-thinking-time">${time}</span>` : ""}
+        </div>
+        <p class="ai-thinking-message">${escapeHtml(entry.message)}</p>
+        ${entry.detail ? `<pre class="ai-thinking-detail">${escapeHtml(entry.detail)}</pre>` : ""}
+      `;
+      els.aiThinkingBody.appendChild(item);
+    }
+    els.aiThinkingBody.scrollTop = els.aiThinkingBody.scrollHeight;
+  }
+
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function showRecommendations(recommendations) {
+    if (!els.qcRecommendations || !els.qcRecommendationsList) return;
+    els.qcRecommendationsList.innerHTML = "";
+    if (!recommendations?.length) {
+      els.qcRecommendations.hidden = true;
+      return;
+    }
+    for (const rec of recommendations) {
+      const li = document.createElement("li");
+      li.textContent = rec;
+      els.qcRecommendationsList.appendChild(li);
+    }
+    els.qcRecommendations.hidden = false;
+  }
+
+  function openThinkingLog() {
+    renderThinkingLog(state.lastGenerationTrace);
+    if (els.aiThinkingModal) els.aiThinkingModal.hidden = false;
+  }
+
+  function closeThinkingLog() {
+    if (els.aiThinkingModal) els.aiThinkingModal.hidden = true;
   }
 
   function updateCharCount() {
@@ -638,7 +725,9 @@ import { normalizeDiagram } from "./normalize.js";
     }
 
     state.lastPrompt = prompt;
-    setGenerating(true);
+    setGenerating(true, "Generator drafting diagram…", "Step 1 of 2 — building toolbox shapes from your prompt.");
+    if (els.aiThinkingLogBtn) els.aiThinkingLogBtn.disabled = true;
+    showRecommendations([]);
 
     const payload = {
       prompt,
@@ -659,11 +748,20 @@ import { normalizeDiagram } from "./normalize.js";
         throw new Error(typeof data.detail === "string" ? data.detail : "Generation failed.");
       }
 
-      applyDiagramToCanvas(data.diagram, "AI · Editable");
-      showToast(
-        `${data.diagram_type_label}: ${(data.diagram?.nodes || []).length} editable shapes from toolbox.`,
-        "success",
-      );
+      state.lastGenerationTrace = data.trace || [];
+      state.lastRecommendations = data.recommendations || [];
+      if (els.aiThinkingLogBtn) els.aiThinkingLogBtn.disabled = !state.lastGenerationTrace.length;
+
+      applyDiagramToCanvas(data.diagram, data.revision_applied ? "AI · QC revised" : "AI · QC approved");
+      showRecommendations(state.lastRecommendations);
+
+      const nodeCount = (data.diagram?.nodes || []).length;
+      let toastMsg = `${data.diagram_type_label}: ${nodeCount} shapes`;
+      if (data.revision_applied) toastMsg += " (QC revision applied)";
+      if (state.lastRecommendations.length) {
+        toastMsg += ` · ${state.lastRecommendations.length} optional QC suggestion(s)`;
+      }
+      showToast(toastMsg, "success");
       canvas.scheduleFitToContent();
     } catch (err) {
       showToast(err.message || "Something went wrong.", "error");
@@ -735,6 +833,9 @@ import { normalizeDiagram } from "./normalize.js";
 
   els.promptInput.addEventListener("input", updateCharCount);
   els.generateBtn.addEventListener("click", generateDiagram);
+  els.aiThinkingLogBtn?.addEventListener("click", openThinkingLog);
+  els.closeAiThinkingBtn?.addEventListener("click", closeThinkingLog);
+  els.aiThinkingBackdrop?.addEventListener("click", closeThinkingLog);
   els.sampleBtn.addEventListener("click", loadSample);
   els.clearBtn.addEventListener("click", clearCanvas);
   els.deleteBtn.addEventListener("click", () => canvas.deleteSelection());

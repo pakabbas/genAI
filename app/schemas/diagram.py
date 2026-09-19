@@ -51,12 +51,6 @@ class GenerateDiagramRequest(BaseModel):
     existing: DiagramDocument | None = None
 
 
-class GenerateDiagramResponse(BaseModel):
-    diagram: DiagramDocument
-    diagram_type: str
-    diagram_type_label: str
-
-
 class ToolboxItem(BaseModel):
     id: str
     label: str

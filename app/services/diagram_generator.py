@@ -36,6 +36,20 @@ def _extract_json_object(text: str) -> str:
     return cleaned[start : end + 1]
 
 
+def _parse_diagram_json(raw_text: str, diagram_type: DiagramType) -> DiagramDocument:
+    raw_json = _extract_json_object(raw_text)
+    try:
+        data = json.loads(raw_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid diagram JSON from model: {exc}") from exc
+
+    data["diagram_type"] = diagram_type
+    if "title" not in data or not str(data.get("title", "")).strip():
+        data["title"] = DIAGRAM_TYPE_LABELS[diagram_type]
+
+    return DiagramDocument.model_validate(data)
+
+
 def generate_diagram(
     diagram_type: DiagramType,
     user_prompt: str,
@@ -46,9 +60,7 @@ def generate_diagram(
     if not api_key:
         raise ValueError("GEMINI_API_KEY is not configured. Set it in your .env file.")
 
-    existing_json = None
-    if existing:
-        existing_json = existing.model_dump_json(by_alias=True)
+    existing_json = existing.model_dump_json(by_alias=True) if existing else None
 
     client = genai.Client(api_key=api_key)
     model = settings["gemini_model"]
@@ -69,15 +81,5 @@ def generate_diagram(
     if not text:
         raise RuntimeError("Gemini returned an empty response. Please try again.")
 
-    raw_json = _extract_json_object(text)
-    try:
-        data = json.loads(raw_json)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid diagram JSON from model: {exc}") from exc
-
-    data["diagram_type"] = diagram_type
-    if "title" not in data or not str(data.get("title", "")).strip():
-        data["title"] = DIAGRAM_TYPE_LABELS[diagram_type]
-
-    document = DiagramDocument.model_validate(data)
+    document = _parse_diagram_json(text, diagram_type)
     return normalize_diagram(diagram_type, document)
