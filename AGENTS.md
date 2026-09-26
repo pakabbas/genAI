@@ -20,6 +20,19 @@ Only one service is required. Run it in tmux for long-lived sessions.
 - Default model is `gemini-flash-lite-latest` (override with `GEMINI_MODEL` in `.env`).
 - **Do not commit `.env`** — it is gitignored.
 
+### Local dev on your PC (Windows / LP-Abbas)
+
+`http://localhost:8000` in your **Windows browser** only works if uvicorn is running **on that same machine**, not in a Cloud Agent VM.
+
+From a clone of this repo on your PC:
+
+```powershell
+cd path\to\genAI
+.\scripts\run-local.ps1
+```
+
+Then open **http://127.0.0.1:8000/** (not production). If you copied `.env.example`, use port **8000** locally (8010 is for GCP systemd).
+
 ### Testing without a valid Gemini key
 
 - Use **Load sample diagram** to verify toolbox, canvas (drag/zoom/connect), and export.
