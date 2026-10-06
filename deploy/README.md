@@ -1,46 +1,67 @@
-## Deployment (GCP + GitHub Actions)
+## Deployment (GCP 3 + GitHub Actions)
 
-Production URL: **https://leadpilotai.spiralloopstechnologies.com/genAI/**
+Production URL: **https://leadpilotai.spiralloopstechnologies.com/genai/**
 
-The app runs as a **separate systemd service** (`genai.service`) on port **8010**, proxied by nginx under `/genAI/` on the existing LeadPilot host (`34.41.10.28`). The root LeadPilot app on port **8093** is unchanged.
+The app runs as systemd service **`genai-leadpilot.service`** on port **8011**, proxied by nginx under `/genai/`.
+
+### Production server facts
+
+| Item | Value |
+|------|-------|
+| Host | GCP instance `leadpacer-gcp3` (see `GCP_SSH_HOST` secret) |
+| SSH user | See `GCP_SSH_USER` secret (has passwordless sudo) |
+| App directory | `/var/www/html/leadpilotai/genai` |
+| Service | `genai-leadpilot.service` (uvicorn on `127.0.0.1:8011`) |
+| URL path | `/genai/` (lowercase) |
 
 ### GitHub repository secrets
 
-Add these under **Settings → Secrets and variables → Actions** in the **GitHub repository** (not Cursor Cloud secrets):
+Add these under **Settings → Secrets and variables → Actions** in the **GitHub repository**:
 
-| Secret | Value |
-|--------|--------|
-| `GCP_SSH_HOST` | `34.41.10.28` |
-| `GCP_SSH_USER` | `muhamad_abbas` |
+| Secret | Description |
+|--------|-------------|
+| `GCP_SSH_HOST` | Server IP address |
+| `GCP_SSH_USER` | SSH username with passwordless sudo |
 | `GCP_SSH_PRIVATE_KEY` | Full SSH private key (`-----BEGIN ... KEY-----` block) |
-| `GEMINI_API_KEY` | Valid Google AI Studio API key |
 
 **SSH key format:** If your private key was pasted as a single line, the deploy workflow normalizes it automatically via `deploy/write_ssh_key.py`.
 
-**Important:** Cursor Cloud agent secrets and GitHub Actions secrets are separate. The deploy workflow reads only **GitHub repository secrets**. If deploy fails at "Validate GitHub Actions secrets", add the missing values in GitHub.
+**Important notes:**
+- The server `.env` already exists and is **never overwritten** by the deploy workflow.
+- `GEMINI_API_KEY` is **not** required as a GitHub Actions secret (already configured on the server).
+- Cursor Cloud agent secrets and GitHub Actions secrets are separate systems.
 
 **Never commit SSH keys or API keys to the repository.**
 
 ### Workflows
 
-- **`ci.yml`** — runs on PRs and pushes to `main` (import check + script validation)
-- **`deploy.yml`** — deploys on push to `main` (or manual **workflow_dispatch**)
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yml` | PRs, pushes to `main` | Import check + script validation |
+| `deploy.yml` | Push to `main`, manual dispatch | Production deploy |
 
-Deploy steps: rsync → `deploy/setup-server.sh` (nginx snippet + systemd, idempotent) → `deploy/deploy.sh` → public health check.
+### Deploy steps
 
-### Manual one-time server setup
+1. Checkout repository
+2. Setup SSH key
+3. rsync application files to `/var/www/html/leadpilotai/genai/` (excluding `.git`, `.venv`, `.env`, `__pycache__`, etc.)
+4. Install Python dependencies into server `.venv`
+5. Set ownership to `www-data:www-data`
+6. Restart `genai-leadpilot.service`
+7. Verify health endpoint and homepage return HTTP 200
 
-```bash
-ssh muhamad_abbas@34.41.10.28
-cd ~/apps/genAI
-chmod +x deploy/*.sh
-./deploy/setup-server.sh
-GEMINI_API_KEY=your_key ./deploy/deploy.sh
-```
+### Legacy paths (removed)
+
+The following old paths are no longer used:
+- Old home directory app path (previously used on a different server)
+- `/genAI/` uppercase URL path
+- Port `8010`
+- `genai.service` (old service name)
+- `setup-server.sh` / `deploy.sh` scripts (nginx bootstrap)
 
 ### Local subpath testing
 
 ```bash
-APP_ROOT_PATH=/genAI uvicorn app.main:app --host 127.0.0.0 --port 8010
-# Visit http://127.0.0.1:8010/ (app uses root_path for generated links)
+APP_ROOT_PATH=/genai uvicorn app.main:app --host 127.0.0.1 --port 8011
+# Visit http://127.0.0.1:8011/ (app uses root_path for generated links)
 ```
