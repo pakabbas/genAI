@@ -46,9 +46,19 @@ Add these under **Settings → Secrets and variables → Actions** in the **GitH
 2. Setup SSH key
 3. rsync application files to `/var/www/html/leadpilotai/genai/` (excluding `.git`, `.venv`, `.env`, `__pycache__`, etc.)
 4. Install Python dependencies into server `.venv`
-5. Set ownership to `www-data:www-data`
+5. Set ownership to `pakabbas52:www-data` (SSH user : service group)
 6. Restart `genai-leadpilot.service`
 7. Verify health endpoint and homepage return HTTP 200
+
+### File ownership
+
+The app directory is owned by `pakabbas52:www-data`:
+
+- **Owner (`pakabbas52`):** deploy SSH user — allows rsync to write files on subsequent deploys.
+- **Group (`www-data`):** allows the systemd service (running as `www-data`) to read the app tree.
+- **Directory setgid:** the app root has `g+rwxs` so new subdirectories inherit the `www-data` group.
+
+The rsync step uses `--no-owner --no-group` to avoid permission errors when updating files.
 
 ### Legacy paths (removed)
 

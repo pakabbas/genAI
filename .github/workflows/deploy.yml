@@ -46,7 +46,8 @@ jobs:
 
       - name: Rsync application files
         run: |
-          rsync -az \
+          rsync -rlptDz \
+            --no-owner --no-group \
             --exclude '.git' \
             --exclude '.venv' \
             --exclude '.env' \
@@ -75,12 +76,13 @@ jobs:
             fi
 
             echo "==> Installing Python dependencies"
-            .venv/bin/pip install --quiet --upgrade pip
-            .venv/bin/pip install --quiet -r requirements.txt
+            .venv/bin/python -m pip install --quiet --upgrade pip
+            .venv/bin/python -m pip install --quiet -r requirements.txt
 
-            # Fix ownership for app tree (www-data), but preserve .env permissions
-            echo "==> Setting ownership to www-data:www-data"
-            sudo chown -R www-data:www-data "${APP_DIR}"
+            # Fix ownership: SSH user owns files (for rsync), www-data group (for service)
+            echo "==> Setting ownership to pakabbas52:www-data"
+            sudo chown -R pakabbas52:www-data "${APP_DIR}"
+            sudo chmod g+rwxs "${APP_DIR}"
 
             echo "==> Restarting ${SERVICE_NAME}"
             sudo systemctl restart "${SERVICE_NAME}"

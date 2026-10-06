@@ -13,7 +13,8 @@ INCLUDE_MARKER="include snippets/${SNIPPET_NAME};"
 
 echo "==> Ensuring app directory exists at ${APP_DIR}"
 mkdir -p "${APP_DIR}"
-chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
+chown -R "${APP_USER}:www-data" "${APP_DIR}"
+chmod g+rwxs "${APP_DIR}"
 
 echo "==> Installing nginx location snippet for /genAI/"
 sudo cp "${SCRIPT_DIR}/nginx-genai-location.conf" "/etc/nginx/snippets/${SNIPPET_NAME}"
