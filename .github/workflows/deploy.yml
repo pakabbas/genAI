@@ -10,9 +10,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APP_DIR: /home/muhamad_abbas/apps/genAI
-  APP_PORT: "8010"
-  APP_ROOT_PATH: /genAI
+  APP_DIR: /var/www/html/leadpilotai/genai
+  SERVICE_NAME: genai-leadpilot.service
 
 jobs:
   deploy:
@@ -35,10 +34,6 @@ jobs:
             echo "::error::Missing repository secret GCP_SSH_PRIVATE_KEY"
             missing=1
           fi
-          if [ -z "${{ secrets.GEMINI_API_KEY }}" ]; then
-            echo "::error::Missing repository secret GEMINI_API_KEY"
-            missing=1
-          fi
           exit "$missing"
 
       - name: Setup SSH key
@@ -51,31 +46,62 @@ jobs:
 
       - name: Rsync application files
         run: |
-          rsync -az --delete \
+          rsync -az \
             --exclude '.git' \
             --exclude '.venv' \
             --exclude '.env' \
             --exclude '__pycache__' \
             --exclude '.pytest_cache' \
+            --exclude '.mypy_cache' \
+            --exclude '.ruff_cache' \
+            --exclude '*.pyc' \
+            --exclude '.DS_Store' \
             -e "ssh -i ~/.ssh/id_rsa" \
             ./ "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_SSH_HOST }}:${APP_DIR}/"
 
-      - name: Bootstrap server (nginx + systemd, idempotent)
+      - name: Install dependencies and restart service
         run: |
-          ssh -i ~/.ssh/id_rsa "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_SSH_HOST }}" \
-            "cd '${APP_DIR}' && chmod +x deploy/*.sh && APP_DIR='${APP_DIR}' APP_PORT='${APP_PORT}' ./deploy/setup-server.sh"
+          ssh -i ~/.ssh/id_rsa "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_SSH_HOST }}" bash -s << 'REMOTE_SCRIPT'
+            set -euo pipefail
+            APP_DIR="/var/www/html/leadpilotai/genai"
+            SERVICE_NAME="genai-leadpilot.service"
 
-      - name: Deploy application
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: gemini-flash-lite-latest
-        run: |
-          ssh -i ~/.ssh/id_rsa "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_SSH_HOST }}" \
-            "cd '${APP_DIR}' && GEMINI_API_KEY='${GEMINI_API_KEY}' GEMINI_MODEL='${GEMINI_MODEL}' APP_DIR='${APP_DIR}' APP_PORT='${APP_PORT}' APP_ROOT_PATH='${APP_ROOT_PATH}' ./deploy/deploy.sh"
+            cd "${APP_DIR}"
 
-      - name: Verify public health endpoint
+            # Ensure virtualenv exists
+            if [[ ! -d .venv ]]; then
+              echo "==> Creating virtualenv"
+              python3 -m venv .venv
+            fi
+
+            echo "==> Installing Python dependencies"
+            .venv/bin/pip install --quiet --upgrade pip
+            .venv/bin/pip install --quiet -r requirements.txt
+
+            # Fix ownership for app tree (www-data), but preserve .env permissions
+            echo "==> Setting ownership to www-data:www-data"
+            sudo chown -R www-data:www-data "${APP_DIR}"
+
+            echo "==> Restarting ${SERVICE_NAME}"
+            sudo systemctl restart "${SERVICE_NAME}"
+            sleep 2
+
+            echo "==> Checking service status"
+            if sudo systemctl is-active --quiet "${SERVICE_NAME}"; then
+              echo "Service is active"
+            else
+              echo "::error::Service ${SERVICE_NAME} failed to start"
+              sudo systemctl status "${SERVICE_NAME}" --no-pager || true
+              sudo journalctl -u "${SERVICE_NAME}" --no-pager -n 30 || true
+              exit 1
+            fi
+          REMOTE_SCRIPT
+
+      - name: Verify deployment
         run: |
-          curl -fsS "https://leadpilotai.spiralloopstechnologies.com/genAI/api/health"
+          echo "==> Checking health endpoint"
+          curl -fsS "https://leadpilotai.spiralloopstechnologies.com/genai/api/health"
           echo
+          echo "==> Checking homepage"
           curl -fsS -o /dev/null -w "Homepage HTTP %{http_code}\n" \
-            "https://leadpilotai.spiralloopstechnologies.com/genAI/"
+            "https://leadpilotai.spiralloopstechnologies.com/genai/"
