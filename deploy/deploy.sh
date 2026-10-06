@@ -14,8 +14,8 @@ if [[ ! -d .venv ]]; then
 fi
 
 echo "==> Installing Python dependencies"
-.venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r requirements.txt
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.txt
 
 echo "==> Writing runtime .env"
 if [[ -z "${DB_PASSWORD:-}" && -f /opt/leadpilot/config/mysqldb.txt ]]; then
