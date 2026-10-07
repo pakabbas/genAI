@@ -25,7 +25,7 @@ Toolbox naming:
 - Do NOT require revision solely because the JSON uses data_store instead of the word database.
 - Load balancers must be type load_balancer (not router). Prefer recommendation over blocking if a router is used as LB.
 - Architecture valid node types: actor, service, api, package, cloud, data_store, note, text_box
-  (service/api may appear as process after normalization — that is OK).
+  (service and api must remain distinct shapes — not both process).
 - Sequence message edges must be message / async_message / return_message.
 
 When revision_required=true, list concise blocking_issues the generator must fix.

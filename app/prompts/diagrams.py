@@ -30,31 +30,34 @@ TOOLBOX: dict[DiagramType, list[ToolboxItem]] = {
         ToolboxItem(id="dependency", label="Dependency", kind="edge", shape="dependency"),
     ],
     "erd": [
-        ToolboxItem(id="entity", label="Entity", kind="node", shape="entity", default_width=160, default_height=80),
-        ToolboxItem(id="weak_entity", label="Weak Entity", kind="node", shape="weak_entity", default_width=160, default_height=80),
-        ToolboxItem(id="attribute", label="Attribute", kind="node", shape="attribute", default_width=120, default_height=48),
-        ToolboxItem(id="relationship", label="Relationship", kind="node", shape="relationship", default_width=72, default_height=72),
-        ToolboxItem(id="data_store", label="Data Store", kind="node", shape="data_store", default_width=100, default_height=64),
+        ToolboxItem(id="entity", label="Entity (table)", kind="node", shape="entity", default_width=180, default_height=110),
+        ToolboxItem(id="weak_entity", label="Weak Entity", kind="node", shape="weak_entity", default_width=180, default_height=110),
+        ToolboxItem(id="attribute", label="Attribute (oval)", kind="node", shape="attribute", default_width=120, default_height=48),
+        ToolboxItem(id="relationship", label="Relationship ◆", kind="node", shape="relationship", default_width=72, default_height=72),
         ToolboxItem(id="note", label="Note", kind="node", shape="note", default_width=120, default_height=80),
+        ToolboxItem(id="one", label="One (1)", kind="edge", shape="one"),
+        ToolboxItem(id="many", label="Many (*)", kind="edge", shape="many"),
+        ToolboxItem(id="one_or_many", label="One or Many (1..*)", kind="edge", shape="one_or_many"),
+        ToolboxItem(id="zero_or_one", label="Zero or One (0..1)", kind="edge", shape="zero_or_one"),
+        ToolboxItem(id="zero_or_many", label="Zero or Many (0..*)", kind="edge", shape="zero_or_many"),
         ToolboxItem(id="one_to_many", label="One-to-Many", kind="edge", shape="one_to_many"),
         ToolboxItem(id="many_to_many", label="Many-to-Many", kind="edge", shape="many_to_many"),
         ToolboxItem(id="identifying", label="Identifying", kind="edge", shape="identifying"),
-        ToolboxItem(id="association", label="Association", kind="edge", shape="association"),
     ],
     "swim_lane": [
+        ToolboxItem(id="pool", label="Pool", kind="node", shape="pool", default_width=960, default_height=480),
         ToolboxItem(id="lane", label="Swim Lane", kind="node", shape="lane", default_width=920, default_height=150),
         ToolboxItem(id="start", label="Start Event", kind="node", shape="start", default_width=48, default_height=48),
         ToolboxItem(id="end", label="End Event", kind="node", shape="end", default_width=48, default_height=48),
         ToolboxItem(id="process", label="Task / Process", kind="node", shape="process", default_width=140, default_height=64),
         ToolboxItem(id="subprocess", label="Subprocess", kind="node", shape="subprocess", default_width=160, default_height=72),
-        ToolboxItem(id="decision", label="Gateway", kind="node", shape="decision", default_width=88, default_height=88),
+        ToolboxItem(id="gateway_xor", label="XOR Gateway", kind="node", shape="gateway_xor", default_width=72, default_height=72),
+        ToolboxItem(id="gateway_and", label="AND Gateway", kind="node", shape="gateway_and", default_width=72, default_height=72),
         ToolboxItem(id="document", label="Document", kind="node", shape="document", default_width=120, default_height=72),
-        ToolboxItem(id="manual_input", label="Manual Input", kind="node", shape="manual_input", default_width=120, default_height=56),
         ToolboxItem(id="data_store", label="Data Store", kind="node", shape="data_store", default_width=100, default_height=64),
-        ToolboxItem(id="delay", label="Delay", kind="node", shape="delay", default_width=56, default_height=56),
         ToolboxItem(id="text_box", label="Annotation", kind="node", shape="text_box", default_width=120, default_height=48),
         ToolboxItem(id="flow", label="Sequence Flow", kind="edge", shape="flow"),
-        ToolboxItem(id="connector", label="Message Flow", kind="edge", shape="connector"),
+        ToolboxItem(id="message_flow", label="Message Flow", kind="edge", shape="message_flow"),
     ],
     "flowchart": [
         ToolboxItem(id="terminator", label="Start / End", kind="node", shape="terminator", default_width=120, default_height=48),
@@ -113,22 +116,34 @@ TOOLBOX: dict[DiagramType, list[ToolboxItem]] = {
     ],
     "architecture": [
         ToolboxItem(id="actor", label="User / Actor", kind="node", shape="actor", default_width=72, default_height=96),
-        ToolboxItem(id="service", label="Service", kind="node", shape="process", default_width=160, default_height=72),
-        ToolboxItem(id="api", label="API Gateway", kind="node", shape="process", default_width=160, default_height=64),
+        ToolboxItem(id="service", label="Service", kind="node", shape="service", default_width=160, default_height=72),
+        ToolboxItem(id="api", label="API Gateway", kind="node", shape="api", default_width=160, default_height=72),
         ToolboxItem(id="package", label="Subsystem", kind="node", shape="package", default_width=240, default_height=160),
         ToolboxItem(id="cloud", label="External System", kind="node", shape="cloud", default_width=140, default_height=88),
         ToolboxItem(id="data_store", label="Database", kind="node", shape="data_store", default_width=100, default_height=64),
         ToolboxItem(id="note", label="Note", kind="node", shape="note", default_width=120, default_height=80),
         ToolboxItem(id="text_box", label="Component", kind="node", shape="text_box", default_width=140, default_height=48),
         ToolboxItem(id="dependency", label="Dependency", kind="edge", shape="dependency"),
-        ToolboxItem(id="connector", label="Data Flow", kind="edge", shape="connector"),
+        ToolboxItem(id="data_flow", label="Data Flow", kind="edge", shape="data_flow"),
     ],
 }
 
 DIAGRAM_TYPE_GUIDANCE: dict[DiagramType, str] = {
-    "use_case": "UML use case: actors, ovals, system boundary, association/include/extend.",
-    "erd": "Chen ERD: entities (rectangles), attributes (ovals linked to entities), relationship diamonds, cardinality on edges. Include all core entities for the domain (e.g. school: Student, Course, Teacher, Enrollment).",
-    "swim_lane": "BPMN-style swim lanes with tasks, gateways, start/end events, sequence flows.",
+    "use_case": (
+        "UML use case: actors, ovals, system boundary. "
+        "Edges: association (undirected), include/extend/dependency (dashed open arrow), "
+        "generalization (hollow triangle)."
+    ),
+    "erd": (
+        "ERD with table-style entities (label compartments: Name\\n--\\nPK id\\nattr\\nFK other_id). "
+        "Optional Chen attribute ovals + relationship diamonds. "
+        "Cardinality edges use crow's-foot types: one, many, one_or_many, zero_or_one, zero_or_many, "
+        "one_to_many, many_to_many, identifying. Do NOT use data_store."
+    ),
+    "swim_lane": (
+        "BPMN: pool + lanes, start/end event circles, tasks, XOR (gateway_xor) and AND (gateway_and) gateways. "
+        "sequence flow = flow (solid filled arrow); message flow = message_flow (dashed open arrow)."
+    ),
     "flowchart": "Standard flowchart symbols: terminators, processes, decisions, I/O, database.",
     "sequence": (
         "UML sequence: lifelines top-to-bottom. "
@@ -141,7 +156,9 @@ DIAGRAM_TYPE_GUIDANCE: dict[DiagramType, str] = {
     "class_diagram": (
         "UML class diagram. Class/interface labels MUST use compartments separated by "
         "a line containing only --  e.g. 'Order\\n--\\n+id: UUID\\n+total: Money\\n--\\n+pay()'. "
-        "Use realization (dashed) for interface implementation; inheritance for extends."
+        "association undirected; dependency dashed open; realization dashed hollow triangle; "
+        "inheritance hollow triangle; composition filled diamond; aggregation open diamond. "
+        "Put multiplicities in edge labels (e.g. 1..*)."
     ),
     "network": (
         "Network topology: cloud, routers, switches, load_balancer, servers, clients, links. "
@@ -150,9 +167,11 @@ DIAGRAM_TYPE_GUIDANCE: dict[DiagramType, str] = {
     ),
     "architecture": (
         "Software/system architecture. ONLY use toolbox ids: actor, service, api, package, "
-        "cloud, data_store, note, text_box, dependency, connector. "
+        "cloud, data_store, note, text_box, dependency, data_flow. "
+        "service and api are DISTINCT shapes (never both process). "
         "Map User→actor, microservice→service, API Gateway→api, Subsystem→package, "
-        "External System→cloud, Database→data_store, Component→text_box."
+        "External System→cloud, Database→data_store, Component→text_box. "
+        "dependency=dashed open arrow; data_flow=solid filled arrow."
     ),
 }
 

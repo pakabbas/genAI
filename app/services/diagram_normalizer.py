@@ -7,7 +7,7 @@ import re
 from app.prompts.diagrams import TOOLBOX
 from app.schemas.diagram import DiagramDocument, DiagramEdge, DiagramNode, DiagramType
 
-BACKGROUND_SHAPES = frozenset({"system_boundary", "lane", "package", "frame"})
+BACKGROUND_SHAPES = frozenset({"system_boundary", "lane", "package", "frame", "pool"})
 
 NODE_ALIASES: dict[str, str] = {
     "actor": "actor",
@@ -43,7 +43,14 @@ NODE_ALIASES: dict[str, str] = {
     "end": "end",
     "terminator": "terminator",
     "decision": "decision",
-    "gateway": "decision",
+    "gateway": "gateway_xor",
+    "gateway_xor": "gateway_xor",
+    "xor": "gateway_xor",
+    "exclusive_gateway": "gateway_xor",
+    "gateway_and": "gateway_and",
+    "and": "gateway_and",
+    "parallel_gateway": "gateway_and",
+    "pool": "pool",
     "document": "document",
     "input": "input",
     "output": "input",
@@ -82,10 +89,11 @@ NODE_ALIASES: dict[str, str] = {
     "haproxy": "load_balancer",
     "nlb": "load_balancer",
     "alb": "load_balancer",
-    "service": "process",
-    "microservice": "process",
-    "api": "process",
-    "api_gateway": "process",
+    "service": "service",
+    "microservice": "service",
+    "api": "api",
+    "api_gateway": "api",
+    "apigateway": "api",
     "component": "text_box",
     "text": "text_box",
     "textbox": "text_box",
@@ -108,12 +116,26 @@ EDGE_ALIASES: dict[str, str] = {
     "extend": "extend",
     "generalization": "generalization",
     "dependency": "dependency",
+    "one": "one",
+    "1": "one",
+    "many": "many",
+    "n": "many",
+    "star": "many",
+    "one_or_many": "one_or_many",
+    "1n_plus": "one_or_many",
+    "zero_or_one": "zero_or_one",
+    "0_1": "zero_or_one",
+    "zero_or_many": "zero_or_many",
+    "0_n": "zero_or_many",
     "one_to_many": "one_to_many",
     "1n": "one_to_many",
     "many_to_many": "many_to_many",
     "nm": "many_to_many",
     "identifying": "identifying",
     "flow": "flow",
+    "sequence_flow": "flow",
+    "message_flow": "message_flow",
+    "data_flow": "data_flow",
     "connector": "connector",
     "arrow": "connector",
     "message": "message",
@@ -214,6 +236,10 @@ def _resolve_node_type(raw: str, allowed: dict[str, str], fallback: str = "proce
 
 def _resolve_edge_type(raw: str, allowed: dict[str, str], diagram_type: DiagramType | None = None) -> str:
     key = _clean_key(raw)
+    if diagram_type == "swim_lane" and key in {"connector", "messageflow", "message_flow"}:
+        return allowed.get("message_flow", "message_flow")
+    if diagram_type == "architecture" and key in {"connector", "arrow", "dataflow", "data_flow"}:
+        return allowed.get("data_flow", "data_flow")
     if key in allowed:
         return allowed[key]
     if key in EDGE_ALIASES:
@@ -246,7 +272,7 @@ def _sanitize_meta(meta: dict) -> dict:
 
 def _format_class_compartments(label: str, shape: str) -> str:
     """Ensure class/interface/enum labels use name / -- / attrs / -- / methods."""
-    if shape not in {"class", "interface", "enum"}:
+    if shape not in {"class", "interface", "enum", "entity", "weak_entity"}:
         return label
     text = (label or "").replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n").strip()
     if not text:
@@ -313,6 +339,7 @@ def normalize_diagram(diagram_type: DiagramType, document: DiagramDocument) -> D
 
         shape = _resolve_node_type(node.type, allowed_nodes, default_node)
         label = (node.label or "").strip()
+        raw_type = _clean_key(node.type or "")
 
         # Sequence: never draw humans as lifeline/object boxes — keep type actor
         if (
@@ -322,6 +349,38 @@ def normalize_diagram(diagram_type: DiagramType, document: DiagramDocument) -> D
             and _is_human_sequence_label(label)
         ):
             shape = allowed_nodes.get("actor", "actor")
+
+        # Architecture: service/api are distinct — never collapse both to process boxes
+        if diagram_type == "architecture":
+            allowed_shapes = set(allowed_nodes.values())
+            process_like = raw_type in {
+                "api",
+                "apigateway",
+                "api_gateway",
+                "service",
+                "microservice",
+                "process",
+                "task",
+                "activity",
+                "box",
+                "rectangle",
+            }
+            if raw_type in {"api", "apigateway", "api_gateway"} or (
+                process_like and re.search(r"\b(api|gateway)\b", label, re.I)
+            ):
+                shape = allowed_nodes.get("api", "api")
+            elif process_like:
+                shape = allowed_nodes.get("service", "service")
+            elif shape not in allowed_shapes and "service" in allowed_nodes:
+                shape = allowed_nodes["service"]
+
+        # Swim lane: plain decision diamonds become XOR gateways
+        if diagram_type == "swim_lane" and (
+            raw_type in {"decision", "gateway", "xor", "exclusive_gateway"} or shape == "decision"
+        ):
+            shape = allowed_nodes.get("gateway_xor", "gateway_xor")
+        if diagram_type == "swim_lane" and raw_type in {"and", "gateway_and", "parallel_gateway"}:
+            shape = allowed_nodes.get("gateway_and", "gateway_and")
 
         width, height = sizes.get(shape, (node.width, node.height))
         if node.width <= 0 or node.height <= 0:

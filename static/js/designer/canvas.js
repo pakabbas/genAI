@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.3.4";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.3.5";
 
 const GRID = 20;
 const MIN_ZOOM = 0.25;
@@ -172,6 +172,52 @@ export class DiagramCanvas {
     trianglePath.setAttribute("stroke-width", "1.5");
     triangle.appendChild(trianglePath);
     defs.appendChild(triangle);
+
+    const openArrow = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+    openArrow.setAttribute("id", "arrow-open");
+    openArrow.setAttribute("viewBox", "0 0 10 10");
+    openArrow.setAttribute("refX", "9");
+    openArrow.setAttribute("refY", "5");
+    openArrow.setAttribute("markerWidth", "7");
+    openArrow.setAttribute("markerHeight", "7");
+    openArrow.setAttribute("orient", "auto-start-reverse");
+    const openPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    openPath.setAttribute("d", "M 0 0 L 10 5 L 0 10");
+    openPath.setAttribute("fill", "none");
+    openPath.setAttribute("stroke", "#4a5568");
+    openPath.setAttribute("stroke-width", "1.5");
+    openArrow.appendChild(openPath);
+    defs.appendChild(openArrow);
+
+    // Crow's-foot ERD markers (tip points along the edge toward the connected entity)
+    const addCf = (id, d, refX = 12) => {
+      const m = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+      m.setAttribute("id", id);
+      m.setAttribute("viewBox", "0 0 14 14");
+      m.setAttribute("refX", String(refX));
+      m.setAttribute("refY", "7");
+      m.setAttribute("markerWidth", "10");
+      m.setAttribute("markerHeight", "10");
+      m.setAttribute("orient", "auto");
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", d);
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke", "#4a5568");
+      p.setAttribute("stroke-width", "1.5");
+      p.setAttribute("stroke-linecap", "round");
+      m.appendChild(p);
+      defs.appendChild(m);
+    };
+    // Vertical bar = one
+    addCf("cf-one", "M 11 2 L 11 12");
+    // Crow's foot = many
+    addCf("cf-many", "M 12 7 L 2 2 M 12 7 L 2 7 M 12 7 L 2 12");
+    // Bar + crow's foot = one or many
+    addCf("cf-one-many", "M 13 2 L 13 12 M 11 7 L 1 2 M 11 7 L 1 7 M 11 7 L 1 12");
+    // Circle + bar = zero or one
+    addCf("cf-zero-one", "M 3 7 A 2.5 2.5 0 1 1 3.01 7 M 11 2 L 11 12", 12);
+    // Circle + crow's foot = zero or many
+    addCf("cf-zero-many", "M 3 7 A 2.5 2.5 0 1 1 3.01 7 M 12 7 L 5 2 M 12 7 L 5 7 M 12 7 L 5 12", 12);
   }
 
   _bindEvents() {
@@ -711,7 +757,8 @@ export class DiagramCanvas {
         edge.type === "realization" ||
         edge.type === "async_message" ||
         edge.type === "wireless" ||
-        edge.type === "return_message"
+        edge.type === "return_message" ||
+        edge.type === "message_flow"
       ) {
         line.setAttribute("stroke-dasharray", "6 4");
       }
@@ -733,30 +780,82 @@ export class DiagramCanvas {
   }
 
   _applyEdgeMarkers(line, edge) {
-    if (edge.type === "composition") {
+    const t = edge.type;
+    line.removeAttribute("marker-start");
+    line.removeAttribute("marker-end");
+
+    // Undirected / no arrowhead
+    if (t === "association" || t === "network_link" || t === "identifying") {
+      if (t === "identifying") {
+        line.setAttribute("stroke-width", "2.5");
+      }
+      return;
+    }
+
+    // UML diamonds / triangles
+    if (t === "composition") {
       line.setAttribute("marker-end", "url(#diamond-filled)");
       return;
     }
-    if (edge.type === "aggregation") {
+    if (t === "aggregation") {
       line.setAttribute("marker-end", "url(#diamond-end)");
       return;
     }
+    if (t === "inheritance" || t === "generalization" || t === "realization") {
+      line.setAttribute("marker-end", "url(#triangle-hollow)");
+      return;
+    }
+
+    // Open arrow (dependency / include / extend / message flow)
     if (
-      edge.type === "inheritance" ||
-      edge.type === "generalization" ||
-      edge.type === "realization"
+      t === "dependency" ||
+      t === "include" ||
+      t === "extend" ||
+      t === "message_flow"
     ) {
+      line.setAttribute("marker-end", "url(#arrow-open)");
+      return;
+    }
+
+    // Sequence async / return
+    if (t === "async_message" || t === "return_message") {
       line.setAttribute("marker-end", "url(#triangle-hollow)");
       return;
     }
-    if (edge.type === "async_message" || edge.type === "return_message") {
-      line.setAttribute("marker-end", "url(#triangle-hollow)");
+
+    // Crow's-foot ERD (marker on the "near entity" end = marker-end)
+    if (t === "one") {
+      line.setAttribute("marker-end", "url(#cf-one)");
       return;
     }
-    if (edge.type === "network_link") {
-      line.removeAttribute("marker-end");
+    if (t === "many") {
+      line.setAttribute("marker-end", "url(#cf-many)");
       return;
     }
+    if (t === "one_or_many") {
+      line.setAttribute("marker-end", "url(#cf-one-many)");
+      return;
+    }
+    if (t === "zero_or_one") {
+      line.setAttribute("marker-end", "url(#cf-zero-one)");
+      return;
+    }
+    if (t === "zero_or_many") {
+      line.setAttribute("marker-end", "url(#cf-zero-many)");
+      return;
+    }
+    if (t === "one_to_many") {
+      line.setAttribute("marker-start", "url(#cf-one)");
+      line.setAttribute("marker-end", "url(#cf-many)");
+      return;
+    }
+    if (t === "many_to_many") {
+      line.setAttribute("marker-start", "url(#cf-many)");
+      line.setAttribute("marker-end", "url(#cf-many)");
+      return;
+    }
+
+    // Default directed: filled arrow (flow, data_flow, connector, message, …)
     line.setAttribute("marker-end", "url(#arrow)");
   }
 
@@ -795,7 +894,7 @@ export class DiagramCanvas {
     this.nodesLayer.innerHTML = "";
     this.overlayLayer.innerHTML = "";
 
-    const zOrder = (type) => (["system_boundary", "lane", "package", "fragment"].includes(type) ? 0 : 1);
+    const zOrder = (type) => (["system_boundary", "pool", "lane", "package", "fragment"].includes(type) ? 0 : 1);
     const sorted = [...this.diagram.nodes].sort(
       (a, b) => zOrder(a.type) - zOrder(b.type) || a.y - b.y || a.x - b.x,
     );
@@ -816,16 +915,21 @@ export class DiagramCanvas {
         node.type !== "start" &&
         node.type !== "end" &&
         node.type !== "lane" &&
+        node.type !== "pool" &&
         node.type !== "system_boundary" &&
         node.type !== "relationship" &&
         node.type !== "package" &&
         node.type !== "fragment" &&
         node.type !== "class" &&
         node.type !== "interface" &&
+        node.type !== "entity" &&
+        node.type !== "weak_entity" &&
         node.type !== "use_case" &&
         node.type !== "actor" &&
         node.type !== "lifeline" &&
-        node.type !== "object"
+        node.type !== "object" &&
+        node.type !== "gateway_xor" &&
+        node.type !== "gateway_and"
       ) {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("x", node.width / 2);
@@ -846,16 +950,16 @@ export class DiagramCanvas {
         g.appendChild(label);
       } else if (node.type === "use_case" && node.label) {
         this._appendWrappedLabel(g, node.label, node.width / 2, node.height / 2, node.width - 16, node.height - 12, 11);
-      } else if (node.type === "lane") {
+      } else if (node.type === "lane" || node.type === "pool") {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("x", 16);
         label.setAttribute("y", 28);
         label.setAttribute("class", "lane-label");
         label.textContent = node.label;
         g.appendChild(label);
-      } else if (["class", "interface", "enum"].includes(node.type) && node.label) {
+      } else if (["class", "interface", "enum", "entity", "weak_entity"].includes(node.type) && node.label) {
         this._appendClassCompartments(g, node);
-      } else if (["package", "fragment", "lifeline", "object", "cloud"].includes(node.type) && node.label) {
+      } else if (["package", "fragment", "lifeline", "object", "cloud", "service", "api"].includes(node.type) && node.label) {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("x", node.width / 2);
         // Fixed head box — never mid-lifeline (height/2) when layout stretches h
@@ -1030,15 +1134,36 @@ export class DiagramCanvas {
     }
 
     if (type === "entity" || type === "weak_entity") {
+      // Table-style entity: header + attribute compartment (labels via _appendClassCompartments)
       const rect = document.createElementNS(ns, "rect");
       rect.setAttribute("width", w);
       rect.setAttribute("height", h);
       rect.setAttribute("rx", 4);
       rect.setAttribute("fill", "#eff6ff");
       rect.setAttribute("stroke", "#1d4ed8");
-      rect.setAttribute("stroke-width", "2");
-      if (type === "weak_entity") rect.setAttribute("stroke-dasharray", "6 3");
+      rect.setAttribute("stroke-width", type === "weak_entity" ? "3" : "2");
       g.appendChild(rect);
+      if (type === "weak_entity") {
+        const inner = document.createElementNS(ns, "rect");
+        inner.setAttribute("x", 4);
+        inner.setAttribute("y", 4);
+        inner.setAttribute("width", w - 8);
+        inner.setAttribute("height", h - 8);
+        inner.setAttribute("rx", 2);
+        inner.setAttribute("fill", "none");
+        inner.setAttribute("stroke", "#1d4ed8");
+        inner.setAttribute("stroke-width", "1.5");
+        g.appendChild(inner);
+      }
+      const headerH = 28;
+      const div = document.createElementNS(ns, "line");
+      div.setAttribute("x1", 0);
+      div.setAttribute("y1", headerH);
+      div.setAttribute("x2", w);
+      div.setAttribute("y2", headerH);
+      div.setAttribute("stroke", "#1d4ed8");
+      div.setAttribute("stroke-width", "1.5");
+      g.appendChild(div);
       return;
     }
 
@@ -1076,6 +1201,25 @@ export class DiagramCanvas {
       return;
     }
 
+    if (type === "pool") {
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("width", w);
+      rect.setAttribute("height", h);
+      rect.setAttribute("rx", 6);
+      rect.setAttribute("fill", "rgba(248,250,252,0.55)");
+      rect.setAttribute("stroke", "#475569");
+      rect.setAttribute("stroke-width", "2");
+      g.appendChild(rect);
+      const band = document.createElementNS(ns, "rect");
+      band.setAttribute("width", 28);
+      band.setAttribute("height", h);
+      band.setAttribute("fill", "#e2e8f0");
+      band.setAttribute("stroke", "#475569");
+      band.setAttribute("stroke-width", "1.5");
+      g.appendChild(band);
+      return;
+    }
+
     if (type === "lane") {
       const rect = document.createElementNS(ns, "rect");
       rect.setAttribute("width", w);
@@ -1095,7 +1239,7 @@ export class DiagramCanvas {
       return;
     }
 
-    if (type === "decision") {
+    if (type === "decision" || type === "gateway_xor" || type === "gateway_and") {
       const el = document.createElementNS(ns, "polygon");
       el.setAttribute(
         "points",
@@ -1105,17 +1249,60 @@ export class DiagramCanvas {
       el.setAttribute("stroke", "#b45309");
       el.setAttribute("stroke-width", "2");
       g.appendChild(el);
+      const cx = w / 2;
+      const cy = h / 2;
+      if (type === "gateway_xor" || (type === "decision" && this.diagram.diagram_type === "swim_lane")) {
+        const xMark = document.createElementNS(ns, "path");
+        const s = Math.min(w, h) * 0.22;
+        xMark.setAttribute("d", `M ${cx - s} ${cy - s} L ${cx + s} ${cy + s} M ${cx + s} ${cy - s} L ${cx - s} ${cy + s}`);
+        xMark.setAttribute("stroke", "#b45309");
+        xMark.setAttribute("stroke-width", "2.5");
+        xMark.setAttribute("stroke-linecap", "round");
+        g.appendChild(xMark);
+      } else if (type === "gateway_and") {
+        const plus = document.createElementNS(ns, "path");
+        const s = Math.min(w, h) * 0.22;
+        plus.setAttribute("d", `M ${cx - s} ${cy} L ${cx + s} ${cy} M ${cx} ${cy - s} L ${cx} ${cy + s}`);
+        plus.setAttribute("stroke", "#b45309");
+        plus.setAttribute("stroke-width", "2.5");
+        plus.setAttribute("stroke-linecap", "round");
+        g.appendChild(plus);
+      }
       return;
     }
 
-    if (type === "start" || type === "end" || type === "terminator") {
+    // BPMN start/end = event circles; flowchart terminator stays stadium
+    if (type === "start" || type === "end") {
+      const r = Math.min(w, h) / 2 - 2;
+      const el = document.createElementNS(ns, "circle");
+      el.setAttribute("cx", w / 2);
+      el.setAttribute("cy", h / 2);
+      el.setAttribute("r", r);
+      el.setAttribute("fill", type === "end" ? "#fee2e2" : "#dcfce7");
+      el.setAttribute("stroke", type === "end" ? "#dc2626" : "#16a34a");
+      el.setAttribute("stroke-width", type === "end" ? "3.5" : "2.5");
+      g.appendChild(el);
+      if (type === "end") {
+        const inner = document.createElementNS(ns, "circle");
+        inner.setAttribute("cx", w / 2);
+        inner.setAttribute("cy", h / 2);
+        inner.setAttribute("r", Math.max(4, r - 5));
+        inner.setAttribute("fill", "none");
+        inner.setAttribute("stroke", "#dc2626");
+        inner.setAttribute("stroke-width", "2");
+        g.appendChild(inner);
+      }
+      return;
+    }
+
+    if (type === "terminator") {
       const el = document.createElementNS(ns, "rect");
       el.setAttribute("width", w);
       el.setAttribute("height", h);
       el.setAttribute("rx", h / 2);
-      el.setAttribute("fill", type === "end" ? "#fee2e2" : "#dcfce7");
-      el.setAttribute("stroke", type === "end" ? "#dc2626" : "#16a34a");
-      el.setAttribute("stroke-width", type === "end" ? "3" : "2");
+      el.setAttribute("fill", "#dcfce7");
+      el.setAttribute("stroke", "#16a34a");
+      el.setAttribute("stroke-width", "2");
       g.appendChild(el);
       if (node.label) {
         const label = document.createElementNS(ns, "text");
@@ -1127,6 +1314,39 @@ export class DiagramCanvas {
         label.textContent = node.label;
         g.appendChild(label);
       }
+      return;
+    }
+
+    if (type === "service") {
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("width", w);
+      rect.setAttribute("height", h);
+      rect.setAttribute("rx", 10);
+      rect.setAttribute("fill", "#ecfdf5");
+      rect.setAttribute("stroke", "#059669");
+      rect.setAttribute("stroke-width", "2");
+      g.appendChild(rect);
+      const bar = document.createElementNS(ns, "rect");
+      bar.setAttribute("width", w);
+      bar.setAttribute("height", 10);
+      bar.setAttribute("rx", 10);
+      bar.setAttribute("fill", "#059669");
+      g.appendChild(bar);
+      return;
+    }
+
+    if (type === "api") {
+      // Hexagon-ish gateway look (distinct from service)
+      const el = document.createElementNS(ns, "polygon");
+      const inset = 18;
+      el.setAttribute(
+        "points",
+        `${inset},2 ${w - inset},2 ${w - 2},${h / 2} ${w - inset},${h - 2} ${inset},${h - 2} 2,${h / 2}`,
+      );
+      el.setAttribute("fill", "#eff6ff");
+      el.setAttribute("stroke", "#2563eb");
+      el.setAttribute("stroke-width", "2.5");
+      g.appendChild(el);
       return;
     }
 
@@ -1561,7 +1781,13 @@ export class DiagramCanvas {
     name.setAttribute("text-anchor", "middle");
     name.setAttribute("class", "node-label");
     name.setAttribute("font-weight", "600");
-    name.textContent = title || (node.type === "interface" ? "Interface" : "Class");
+    const fallbackName =
+      node.type === "interface"
+        ? "Interface"
+        : node.type === "entity" || node.type === "weak_entity"
+          ? "Entity"
+          : "Class";
+    name.textContent = title || fallbackName;
     g.appendChild(name);
 
     const lineHeight = 14;
