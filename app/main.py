@@ -41,7 +41,7 @@ _root_path = str(_settings["app_root_path"])
 app = FastAPI(
     title="GenAI Diagram Studio",
     description="AI-powered diagram designer with project storage and canvas export API",
-    version="2.3.2",
+    version="2.3.3",
 )
 
 # Public read APIs for client canvas demos (no API key). CORS enabled for integration testing.

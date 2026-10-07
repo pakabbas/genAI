@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.3.2";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.3.3";
 
 const GRID = 20;
 const MIN_ZOOM = 0.25;
@@ -822,13 +822,23 @@ export class DiagramCanvas {
         node.type !== "fragment" &&
         node.type !== "class" &&
         node.type !== "interface" &&
-        node.type !== "use_case"
+        node.type !== "use_case" &&
+        node.type !== "actor"
       ) {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("x", node.width / 2);
         label.setAttribute("y", node.height / 2);
         label.setAttribute("text-anchor", "middle");
         label.setAttribute("dominant-baseline", "middle");
+        label.setAttribute("class", "node-label");
+        label.textContent = node.label;
+        g.appendChild(label);
+      } else if (node.type === "actor" && node.label) {
+        // Keep label under the stick-figure head, not mid-lifeline
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("x", node.width / 2);
+        label.setAttribute("y", 102);
+        label.setAttribute("text-anchor", "middle");
         label.setAttribute("class", "node-label");
         label.textContent = node.label;
         g.appendChild(label);
@@ -922,33 +932,53 @@ export class DiagramCanvas {
     const ns = "http://www.w3.org/2000/svg";
 
     if (type === "actor") {
+      // Stick figure uses FIXED proportions (~72×96 toolbox default).
+      // Sequence layout may stretch node.height for hit-testing / message span,
+      // but legs must never scale to h — draw a dashed lifeline below the feet instead.
+      const cx = w / 2;
+      const figureH = 96;
+      const hipY = 58;
+      const footY = 88;
+
       const head = document.createElementNS(ns, "circle");
-      head.setAttribute("cx", w / 2);
+      head.setAttribute("cx", cx);
       head.setAttribute("cy", 18);
       head.setAttribute("r", 12);
       head.setAttribute("fill", "none");
       head.setAttribute("stroke", "#334155");
       head.setAttribute("stroke-width", "2");
       const body = document.createElementNS(ns, "line");
-      body.setAttribute("x1", w / 2);
+      body.setAttribute("x1", cx);
       body.setAttribute("y1", 30);
-      body.setAttribute("x2", w / 2);
-      body.setAttribute("y2", 58);
+      body.setAttribute("x2", cx);
+      body.setAttribute("y2", hipY);
       body.setAttribute("stroke", "#334155");
       body.setAttribute("stroke-width", "2");
       const arms = document.createElementNS(ns, "line");
-      arms.setAttribute("x1", w / 2 - 18);
+      arms.setAttribute("x1", cx - 18);
       arms.setAttribute("y1", 40);
-      arms.setAttribute("x2", w / 2 + 18);
+      arms.setAttribute("x2", cx + 18);
       arms.setAttribute("y2", 40);
       arms.setAttribute("stroke", "#334155");
       arms.setAttribute("stroke-width", "2");
       const legs = document.createElementNS(ns, "path");
-      legs.setAttribute("d", `M ${w / 2} 58 L ${w / 2 - 14} ${h - 8} M ${w / 2} 58 L ${w / 2 + 14} ${h - 8}`);
+      legs.setAttribute("d", `M ${cx} ${hipY} L ${cx - 14} ${footY} M ${cx} ${hipY} L ${cx + 14} ${footY}`);
       legs.setAttribute("stroke", "#334155");
       legs.setAttribute("stroke-width", "2");
       legs.setAttribute("fill", "none");
       g.append(head, body, arms, legs);
+
+      if (h > figureH + 8) {
+        const life = document.createElementNS(ns, "line");
+        life.setAttribute("x1", cx);
+        life.setAttribute("y1", footY);
+        life.setAttribute("x2", cx);
+        life.setAttribute("y2", h);
+        life.setAttribute("stroke", "#64748b");
+        life.setAttribute("stroke-width", "2");
+        life.setAttribute("stroke-dasharray", "6 4");
+        g.appendChild(life);
+      }
       return;
     }
 
