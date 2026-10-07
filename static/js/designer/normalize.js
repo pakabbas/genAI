@@ -1,4 +1,4 @@
-import { defaultNodeSize } from "./diagram-types.js?v=2.4.2";
+import { defaultNodeSize } from "./diagram-types.js?v=2.4.3";
 
 const BACKGROUND = new Set(["system_boundary", "pool", "lane", "package", "fragment"]);
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
@@ -118,25 +118,40 @@ function formatClassLabel(label, type) {
   return parts.join("\n");
 }
 
+function renumberSequenceLabels(edges) {
+  const msg = edges.filter((e) => SEQUENCE_MESSAGE_TYPES.has(e.type));
+  if (!msg.length) return edges;
+  const numbered = msg.some((e) => /^\d+\s*[.):\-]/.test(String(e.label || "").trim()));
+  if (!numbered) return edges;
+  const ordered = [...msg].sort(
+    (a, b) => Number(a.meta?.message_y || 0) - Number(b.meta?.message_y || 0) || String(a.id).localeCompare(String(b.id)),
+  );
+  const idToNum = new Map(ordered.map((e, i) => [e.id, i + 1]));
+  return edges.map((edge) => {
+    const num = idToNum.get(edge.id);
+    if (!num) return edge;
+    const label = String(edge.label || "").trim();
+    const m = label.match(/^\d+\s*[.):\-]\s*(.*)$/);
+    const rest = m ? m[1].trim() : label;
+    return { ...edge, label: rest ? `${num}. ${rest}` : `${num}.` };
+  });
+}
+
 function layoutSequenceMessages(diagram) {
   if (diagram.diagram_type !== "sequence") return diagram;
 
   let messageIndex = 0;
   let maxY = SEQUENCE_MESSAGE_START_Y;
-  const edges = (diagram.edges || []).map((edge) => {
+  let edges = (diagram.edges || []).map((edge) => {
     const resolved = resolveSequenceEdgeType(edge.type) || edge.type;
     const isMessage =
       SEQUENCE_MESSAGE_TYPES.has(resolved) ||
       SEQUENCE_MESSAGE_TYPES.has(edge.type) ||
-      // Remapped "connector" between participants still needs stacking
       (diagram.diagram_type === "sequence" && edge.type === "connector");
 
     if (!isMessage) return { ...edge, type: resolved || edge.type };
 
-    const existing = Number(edge.meta?.message_y);
-    const y = Number.isFinite(existing)
-      ? existing
-      : SEQUENCE_MESSAGE_START_Y + messageIndex * SEQUENCE_MESSAGE_STEP;
+    const y = SEQUENCE_MESSAGE_START_Y + messageIndex * SEQUENCE_MESSAGE_STEP;
     messageIndex += 1;
     maxY = Math.max(maxY, y + 24);
     return {
@@ -145,6 +160,7 @@ function layoutSequenceMessages(diagram) {
       meta: { ...(edge.meta || {}), message_y: y },
     };
   });
+  edges = renumberSequenceLabels(edges);
 
   const minHeight = maxY + 100;
   const nodes = (diagram.nodes || []).map((node) => {

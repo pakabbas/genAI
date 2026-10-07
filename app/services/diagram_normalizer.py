@@ -166,6 +166,39 @@ SEQUENCE_MESSAGE_START_Y = 88.0
 SEQUENCE_MESSAGE_STEP = 52.0
 
 
+_MSG_NUM_PREFIX = re.compile(r"^(\d+)\s*[.):\-]\s*(.*)$")
+
+
+def _renumber_sequence_labels(edges: list[DiagramEdge]) -> list[DiagramEdge]:
+    """Force 1..N message labels in stack order when AI skips numbers (e.g. 1,2,3,5)."""
+    msg_edges = [e for e in edges if e.type in SEQUENCE_MESSAGE_TYPES]
+    if not msg_edges:
+        return edges
+    if not any(_MSG_NUM_PREFIX.match((e.label or "").strip()) for e in msg_edges):
+        return edges
+
+    ordered = sorted(
+        msg_edges,
+        key=lambda e: (
+            float((e.meta or {}).get("message_y") or 0),
+            e.id,
+        ),
+    )
+    id_to_num = {e.id: i + 1 for i, e in enumerate(ordered)}
+    out: list[DiagramEdge] = []
+    for edge in edges:
+        num = id_to_num.get(edge.id)
+        if num is None:
+            out.append(edge)
+            continue
+        label = (edge.label or "").strip()
+        match = _MSG_NUM_PREFIX.match(label)
+        rest = match.group(2).strip() if match else label
+        new_label = f"{num}. {rest}".strip() if rest else f"{num}."
+        out.append(edge.model_copy(update={"label": new_label}))
+    return out
+
+
 def _layout_sequence_messages(document: DiagramDocument) -> DiagramDocument:
     """Assign horizontal message Y positions so sequence edges do not overlap."""
     if not any(e.type in SEQUENCE_MESSAGE_TYPES for e in document.edges):
@@ -186,6 +219,8 @@ def _layout_sequence_messages(document: DiagramDocument) -> DiagramDocument:
         meta = dict(edge.meta or {})
         meta["message_y"] = y
         edges.append(edge.model_copy(update={"meta": meta}))
+
+    edges = _renumber_sequence_labels(edges)
 
     updated_nodes: list[DiagramNode] = []
     min_height = max_y + 80

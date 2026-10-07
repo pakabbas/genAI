@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -41,7 +41,7 @@ _root_path = str(_settings["app_root_path"])
 app = FastAPI(
     title="GenAI Diagram Studio",
     description="AI-powered diagram designer with project storage and canvas export API",
-    version="2.4.2",
+    version="2.4.3",
 )
 
 # Public read APIs for client canvas demos (no API key). CORS enabled for integration testing.
@@ -68,6 +68,11 @@ def _db_unavailable() -> HTTPException:
         status_code=503,
         detail="Database is not configured or unavailable. Set DB_* variables in .env.",
     )
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> FileResponse:
+    return FileResponse(BASE_DIR / "static" / "favicon.svg", media_type="image/svg+xml")
 
 
 @app.get("/", response_class=HTMLResponse)

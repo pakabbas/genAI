@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.4.2";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.4.3";
 
 const GRID = 20;
 const MIN_ZOOM = 0.25;
@@ -646,12 +646,20 @@ export class DiagramCanvas {
     this.render();
   }
 
-  _onMouseUp() {
+  _onMouseUp(e) {
     if (this.dragState) {
       const moved = this.dragState.moved;
       this.dragState = null;
       if (moved) this.onChange(this.getDiagram());
       else this.render();
+    }
+    // Drag-to-connect: release on a different node to create the edge
+    if (this.mode === "connect" && this.connectFrom && e) {
+      const hit = this._hitFromEvent(e);
+      if (hit?.kind === "node" && hit.id !== this.connectFrom) {
+        this.addEdge(this.connectFrom, hit.id, this.pendingEdgeType || "connector");
+        this.connectFrom = null;
+      }
     }
     this.panState = null;
   }

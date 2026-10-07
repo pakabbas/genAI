@@ -135,11 +135,14 @@ input {
 .header-center {
   display: flex;
   justify-content: center;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .diagram-title-input {
   width: 100%;
-  max-width: 420px;
+  max-width: min(640px, 100%);
+  min-width: 0;
   padding: 0.55rem 0.85rem;
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -148,6 +151,9 @@ input {
   text-align: center;
   font-weight: 600;
   box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .diagram-title-input:focus {

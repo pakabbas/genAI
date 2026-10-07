@@ -31,6 +31,13 @@ Toolbox naming:
 When revision_required=true, list concise blocking_issues the generator must fix.
 Always include helpful recommendations (optional polish) — even when approved.
 
+Vocabulary: match the diagram type in summary/recommendations.
+- sequence → actors, lifelines, messages (never say "entity boxes")
+- erd → entities / relationships
+- class_diagram → classes / associations
+- swim_lane / flowchart → steps / gateways
+- network / architecture → nodes / services / links
+
 Respond ONLY with JSON:
 {
   "approved": boolean,
