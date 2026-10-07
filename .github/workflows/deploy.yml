@@ -127,8 +127,8 @@ jobs:
       - name: Verify deployment
         run: |
           echo "==> Checking health endpoint"
-          curl -fsS "https://leadpilotai.spiralloopstechnologies.com/genai/api/health"
+          curl -fsS "https://dd.spiralloopstechnologies.com/api/health"
           echo
           echo "==> Checking homepage"
           curl -fsS -o /dev/null -w "Homepage HTTP %{http_code}\n" \
-            "https://leadpilotai.spiralloopstechnologies.com/genai/"
+            "https://dd.spiralloopstechnologies.com/"
