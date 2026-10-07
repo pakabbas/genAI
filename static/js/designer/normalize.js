@@ -1,4 +1,4 @@
-import { defaultNodeSize } from "./diagram-types.js";
+import { defaultNodeSize } from "./diagram-types.js?v=2.3.2";
 
 const BACKGROUND = new Set(["system_boundary", "lane", "package", "fragment"]);
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
@@ -61,7 +61,12 @@ function resolveSequenceEdgeType(rawType) {
 
 function formatClassLabel(label, type) {
   if (!["class", "interface", "enum"].includes(type)) return label;
-  let text = String(label || "").replace(/\\n/g, "\n").trim();
+  let text = String(label || "")
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\n")
+    .replace(/\\t/g, "\t")
+    .trim();
   if (!text) return type === "interface" ? "Interface" : "Class";
   if (/\n-{2,}\n/.test(text) || text.includes("\n--\n")) return text;
 

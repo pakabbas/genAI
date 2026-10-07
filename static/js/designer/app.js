@@ -1,6 +1,7 @@
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js";
-import { DiagramCanvas } from "./canvas.js";
-import { normalizeDiagram } from "./normalize.js";
+// Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.3.2";
+import { DiagramCanvas } from "./canvas.js?v=2.3.2";
+import { normalizeDiagram } from "./normalize.js?v=2.3.2";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -556,11 +557,13 @@ import { normalizeDiagram } from "./normalize.js";
   function applyDiagramToCanvas(diagram, badge = "Ready") {
     state.suppressDirty = true;
     try {
+      // Prefer the UI-selected type so sequence layout always engages
       const payload = {
         ...diagram,
-        diagram_type: diagram.diagram_type || state.diagramType,
+        diagram_type: state.diagramType || diagram.diagram_type,
       };
       const normalized = normalizeDiagram(payload, state.toolbox);
+      canvas.setDiagramType(payload.diagram_type);
       canvas.loadNormalizedDiagram(normalized);
       if (els.diagramTitle) els.diagramTitle.value = normalized.title;
       clearDirty();
@@ -1007,11 +1010,15 @@ import { normalizeDiagram } from "./normalize.js";
   function loadSample() {
     const sample = SAMPLE_DIAGRAMS[state.diagramType];
     if (!sample) {
-      showToast("No sample for this diagram type yet.", "error");
+      const available = Object.keys(SAMPLE_DIAGRAMS).join(", ") || "(none)";
+      showToast(`No sample for “${state.diagramType}”. Available: ${available}`, "error");
       return;
     }
-    applyDiagramToCanvas(sample, "Sample");
-    showToast("Sample loaded — every element is an editable toolbox shape.", "success");
+    // Deep clone so message_y / labels are not shared across loads
+    const clone = JSON.parse(JSON.stringify(sample));
+    clone.diagram_type = state.diagramType;
+    applyDiagramToCanvas(clone, "Sample");
+    showToast(`Sample loaded (${DIAGRAM_TYPE_LABELS[state.diagramType] || state.diagramType}).`, "success");
   }
 
   function clearCanvas({ skipConfirm = false } = {}) {
@@ -1117,6 +1124,10 @@ import { normalizeDiagram } from "./normalize.js";
   els.clearBtn.addEventListener("click", clearCanvas);
   els.deleteBtn.addEventListener("click", () => canvas.deleteSelection());
   els.undoBtn?.addEventListener("click", () => {
+    if (typeof canvas.undo !== "function") {
+      showToast("Undo unavailable — hard-refresh the page (Cmd+Shift+R).", "error");
+      return;
+    }
     if (!canvas.undo()) showToast("Nothing to undo.", "info");
   });
   els.duplicateBtn?.addEventListener("click", duplicateSelection);

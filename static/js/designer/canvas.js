@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.3.2";
 
 const GRID = 20;
 const MIN_ZOOM = 0.25;
@@ -600,6 +600,8 @@ export class DiagramCanvas {
     let index = 0;
     let maxY = startY;
 
+    // Always re-stack: never trust a shared/collapsed message_y from the model
+    // (lifeline vertical centers are ~370 and look like "all edges at one y").
     for (const edge of this.diagram.edges) {
       const from = this.diagram.nodes.find((n) => n.id === edge.from);
       const to = this.diagram.nodes.find((n) => n.id === edge.to);
@@ -614,10 +616,8 @@ export class DiagramCanvas {
         edge.type = "message";
       }
 
-      edge.meta = edge.meta || {};
-      const existing = Number(edge.meta.message_y);
-      const y = Number.isFinite(existing) ? existing : startY + index * step;
-      edge.meta.message_y = y;
+      const y = startY + index * step;
+      edge.meta = { ...(edge.meta || {}), message_y: y };
       index += 1;
       maxY = Math.max(maxY, y + 24);
     }
@@ -643,6 +643,7 @@ export class DiagramCanvas {
 
   _drawEdges() {
     this.edgesLayer.innerHTML = "";
+    let sequenceIndex = 0;
     for (const edge of this.diagram.edges) {
       const from = this.diagram.nodes.find((n) => n.id === edge.from);
       const to = this.diagram.nodes.find((n) => n.id === edge.to);
@@ -653,7 +654,22 @@ export class DiagramCanvas {
       g.dataset.kind = "edge";
       g.setAttribute("class", `diagram-edge${this.selectedIds.has(edge.id) ? " is-selected" : ""}`);
 
-      const { x1, y1, x2, y2 } = this._edgePoints(from, to, edge);
+      // Draw-time sequence Y: do not depend on meta surviving normalize/export
+      let points;
+      if (this.diagram.diagram_type === "sequence") {
+        const isMsg =
+          SEQUENCE_MESSAGE_TYPES.has(edge.type) ||
+          (this._isSequenceParticipant(from) && this._isSequenceParticipant(to));
+        if (isMsg) {
+          const y = 88 + sequenceIndex * 52;
+          sequenceIndex += 1;
+          edge.meta = { ...(edge.meta || {}), message_y: y };
+          const cx1 = from.x + from.width / 2;
+          const cx2 = to.x + to.width / 2;
+          points = { x1: cx1, y1: y, x2: cx2, y2: y };
+        }
+      }
+      const { x1, y1, x2, y2 } = points || this._edgePoints(from, to, edge);
       const isSelected = this.selectedIds.has(edge.id);
 
       const hitLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -748,7 +764,7 @@ export class DiagramCanvas {
     const cx1 = from.x + from.width / 2;
     const cx2 = to.x + to.width / 2;
     if (this.diagram.diagram_type === "sequence" && edge) {
-      const yRaw = Number(edge.meta?.message_y);
+      const yRaw = Number(edge.message_y ?? edge.meta?.message_y);
       if (Number.isFinite(yRaw)) {
         return { x1: cx1, y1: yRaw, x2: cx2, y2: yRaw };
       }
@@ -756,8 +772,18 @@ export class DiagramCanvas {
         SEQUENCE_MESSAGE_TYPES.has(edge.type) ||
         (this._isSequenceParticipant(from) && this._isSequenceParticipant(to))
       ) {
-        const fallback = from.y + 88;
-        return { x1: cx1, y1: fallback, x2: cx2, y2: fallback };
+        // Last resort: derive from edge list order (never use lifeline center)
+        const msgEdges = this.diagram.edges.filter((e) => {
+          const a = this.diagram.nodes.find((n) => n.id === e.from);
+          const b = this.diagram.nodes.find((n) => n.id === e.to);
+          return (
+            SEQUENCE_MESSAGE_TYPES.has(e.type) ||
+            (this._isSequenceParticipant(a) && this._isSequenceParticipant(b))
+          );
+        });
+        const idx = Math.max(0, msgEdges.findIndex((e) => e.id === edge.id));
+        const y = 88 + idx * 52;
+        return { x1: cx1, y1: y, x2: cx2, y2: y };
       }
     }
     const cy1 = from.y + from.height / 2;
@@ -1448,17 +1474,40 @@ export class DiagramCanvas {
     return lines.length ? lines : [text.slice(0, approxChar)];
   }
 
+  _decodeLabel(label) {
+    // Gemini often emits literal backslash-n instead of real newlines
+    return String(label ?? "")
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\n")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n");
+  }
+
   _appendClassCompartments(g, node) {
     const ns = "http://www.w3.org/2000/svg";
-    const raw = String(node.label || "");
-    const sections = raw.split(/\n--\n|\n-{2,}\n|\|--\|/);
-    const title = (sections[0] || "").split("\n")[0].trim();
+    const raw = this._decodeLabel(node.label);
+    // Split on real newlines OR literal "--" compartment markers
+    const sections = raw
+      .split(/\n-{2,}\n|\n--\n|(?:^|\n)\s*--\s*(?:\n|$)|\|--\|/)
+      .map((s) => s.trim())
+      .filter((s, i, arr) => s || i === 0 || i < arr.length - 1);
+
+    let title = (sections[0] || "").split("\n")[0].trim();
+    title = title.replace(/^«\s*interface\s*»\s*/i, "").trim();
+
     const bodyLines = [];
     for (let i = 1; i < sections.length; i += 1) {
       for (const line of sections[i].split("\n")) {
         const trimmed = line.trim();
-        if (trimmed) bodyLines.push(trimmed);
+        if (trimmed && trimmed !== "--") bodyLines.push(trimmed);
       }
+    }
+
+    // Fallback: single blob with spaces — still show full label as wrapped lines
+    if (!bodyLines.length && sections[0] && sections[0].includes("\n")) {
+      const extra = sections[0].split("\n").slice(1).map((l) => l.trim()).filter(Boolean);
+      bodyLines.push(...extra);
     }
 
     if (node.type === "interface") {
@@ -1474,27 +1523,30 @@ export class DiagramCanvas {
 
     const name = document.createElementNS(ns, "text");
     name.setAttribute("x", node.width / 2);
-    name.setAttribute("y", node.type === "interface" ? 26 : 18);
+    name.setAttribute("y", node.type === "interface" ? 28 : 18);
     name.setAttribute("text-anchor", "middle");
     name.setAttribute("class", "node-label");
-    name.textContent = title || node.type;
+    name.setAttribute("font-weight", "600");
+    name.textContent = title || (node.type === "interface" ? "Interface" : "Class");
     g.appendChild(name);
 
-    const y = 40;
     const lineHeight = 14;
-    const maxLines = Math.floor((node.height - 44) / lineHeight);
-    const text = document.createElementNS(ns, "text");
-    text.setAttribute("x", 8);
-    text.setAttribute("y", y);
-    text.setAttribute("class", "node-label");
-    text.setAttribute("font-size", "11");
-    bodyLines.slice(0, maxLines).forEach((line, index) => {
-      const tspan = document.createElementNS(ns, "tspan");
-      tspan.setAttribute("x", 8);
-      tspan.setAttribute("dy", index === 0 ? 0 : lineHeight);
-      tspan.textContent = line;
-      text.appendChild(tspan);
-    });
-    if (bodyLines.length) g.appendChild(text);
+    const startY = node.type === "interface" ? 48 : 40;
+    const maxLines = Math.max(0, Math.floor((node.height - startY - 6) / lineHeight));
+    if (bodyLines.length && maxLines > 0) {
+      const text = document.createElementNS(ns, "text");
+      text.setAttribute("x", 8);
+      text.setAttribute("y", startY);
+      text.setAttribute("class", "node-label");
+      text.setAttribute("font-size", "11");
+      bodyLines.slice(0, maxLines).forEach((line, index) => {
+        const tspan = document.createElementNS(ns, "tspan");
+        tspan.setAttribute("x", 8);
+        tspan.setAttribute("dy", index === 0 ? 0 : lineHeight);
+        tspan.textContent = line;
+        text.appendChild(tspan);
+      });
+      g.appendChild(text);
+    }
   }
 }

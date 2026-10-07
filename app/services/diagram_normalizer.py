@@ -248,7 +248,7 @@ def _format_class_compartments(label: str, shape: str) -> str:
     """Ensure class/interface/enum labels use name / -- / attrs / -- / methods."""
     if shape not in {"class", "interface", "enum"}:
         return label
-    text = (label or "").replace("\\n", "\n").strip()
+    text = (label or "").replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n").strip()
     if not text:
         return "Interface" if shape == "interface" else "Class"
     if re.search(r"\n-{2,}\n", text) or "\n--\n" in text:
