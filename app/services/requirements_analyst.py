@@ -18,6 +18,7 @@ from app.schemas.generation import (
     RequirementsChatResponse,
 )
 from app.services.diagram_generator import _extract_json_object
+from app.services.prompt_guard import check_non_diagram_intent
 
 MAX_CLARIFICATION_ROUNDS = 2
 
@@ -48,6 +49,17 @@ def run_requirements_turn(
     ]
     if not payload:
         raise ValueError("Send at least one message describing your diagram.")
+
+    user_text = "\n".join(m["content"] for m in payload if m["role"] == "user")
+    refusal = check_non_diagram_intent(user_text)
+    if refusal:
+        return RequirementsChatResponse(
+            status="rejected",
+            assistant_message=refusal,
+            enhanced_prompt=None,
+            assumptions=[],
+            questions_asked=[],
+        )
 
     user_content = build_requirements_user_prompt(
         diagram_type,

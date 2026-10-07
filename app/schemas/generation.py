@@ -40,7 +40,7 @@ class RequirementsChatRequest(BaseModel):
 
 
 class RequirementsChatResponse(BaseModel):
-    status: Literal["need_more_info", "ready"]
+    status: Literal["need_more_info", "ready", "rejected"]
     assistant_message: str
     enhanced_prompt: str | None = None
     assumptions: list[str] = Field(default_factory=list)

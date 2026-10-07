@@ -12,6 +12,7 @@ DIAGRAM_TYPE_LABELS: dict[DiagramType, str] = {
     "sequence": "Sequence Diagram",
     "class_diagram": "Class Diagram",
     "network": "Network Diagram",
+    "architecture": "Architecture Diagram",
 }
 
 TOOLBOX: dict[DiagramType, list[ToolboxItem]] = {
@@ -100,12 +101,25 @@ TOOLBOX: dict[DiagramType, list[ToolboxItem]] = {
         ToolboxItem(id="switch", label="Switch", kind="node", shape="switch", default_width=88, default_height=48),
         ToolboxItem(id="firewall", label="Firewall", kind="node", shape="firewall", default_width=72, default_height=72),
         ToolboxItem(id="server", label="Server", kind="node", shape="server", default_width=72, default_height=96),
-        ToolboxItem(id="database", label="Database", kind="node", shape="data_store", default_width=100, default_height=64),
+        # id and shape both data_store — label "Database" (avoids QC fighting database vs data_store)
+        ToolboxItem(id="data_store", label="Database", kind="node", shape="data_store", default_width=100, default_height=64),
         ToolboxItem(id="client", label="Client", kind="node", shape="client", default_width=72, default_height=72),
         ToolboxItem(id="workstation", label="Workstation", kind="node", shape="workstation", default_width=80, default_height=64),
         ToolboxItem(id="text_box", label="Label", kind="node", shape="text_box", default_width=100, default_height=40),
         ToolboxItem(id="network_link", label="Ethernet Link", kind="edge", shape="network_link"),
         ToolboxItem(id="wireless", label="Wireless", kind="edge", shape="wireless"),
+    ],
+    "architecture": [
+        ToolboxItem(id="actor", label="User / Actor", kind="node", shape="actor", default_width=72, default_height=96),
+        ToolboxItem(id="service", label="Service", kind="node", shape="process", default_width=160, default_height=72),
+        ToolboxItem(id="api", label="API Gateway", kind="node", shape="process", default_width=160, default_height=64),
+        ToolboxItem(id="package", label="Subsystem", kind="node", shape="package", default_width=240, default_height=160),
+        ToolboxItem(id="cloud", label="External System", kind="node", shape="cloud", default_width=140, default_height=88),
+        ToolboxItem(id="data_store", label="Database", kind="node", shape="data_store", default_width=100, default_height=64),
+        ToolboxItem(id="note", label="Note", kind="node", shape="note", default_width=120, default_height=80),
+        ToolboxItem(id="text_box", label="Component", kind="node", shape="text_box", default_width=140, default_height=48),
+        ToolboxItem(id="dependency", label="Dependency", kind="edge", shape="dependency"),
+        ToolboxItem(id="connector", label="Data Flow", kind="edge", shape="connector"),
     ],
 }
 
@@ -116,7 +130,14 @@ DIAGRAM_TYPE_GUIDANCE: dict[DiagramType, str] = {
     "flowchart": "Standard flowchart symbols: terminators, processes, decisions, I/O, database.",
     "sequence": "UML sequence: lifelines top-to-bottom, sync/async/return messages between lifelines.",
     "class_diagram": "UML class diagram: classes, interfaces, packages, inheritance and associations.",
-    "network": "Network topology: cloud, routers, switches, servers, clients, links.",
+    "network": (
+        "Network topology: cloud, routers, switches, servers, clients, links. "
+        "Use node type data_store for databases (toolbox label is Database)."
+    ),
+    "architecture": (
+        "Software/system architecture (C4-style or layered): actors, services, API gateways, "
+        "databases, external systems, subsystem boundaries, and data-flow dependencies."
+    ),
 }
 
 DIAGRAM_SYSTEM_INSTRUCTION = """You assemble diagrams from a fixed TOOLBOX of editable shapes — like Lucidchart or Visio building blocks.

@@ -3,6 +3,8 @@ import { defaultNodeSize, nextId } from "./diagram-types.js";
 const GRID = 20;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.5;
+const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
+const MAX_UNDO = 48;
 
 export class DiagramCanvas {
   constructor(container, options = {}) {
@@ -26,7 +28,8 @@ export class DiagramCanvas {
     this.pendingEdgeType = "association";
     this.dragState = null;
     this.panState = null;
-
+    this._history = [];
+    this._historyIndex = -1;
     this._buildDom();
     this._bindEvents();
     this.render();
@@ -64,9 +67,51 @@ export class DiagramCanvas {
     this.container.appendChild(this.viewport);
   }
 
+  _resetHistory() {
+    const snap = JSON.stringify(this.diagram);
+    this._history = [snap];
+    this._historyIndex = 0;
+  }
+
+  _saveUndoPoint() {
+    const snap = JSON.stringify(this.diagram);
+    this._history = this._history.slice(0, this._historyIndex + 1);
+    this._history.push(snap);
+    if (this._history.length > MAX_UNDO) {
+      this._history.shift();
+    } else {
+      this._historyIndex += 1;
+    }
+  }
+
+  undo() {
+    if (this._historyIndex <= 0) return false;
+    this._historyIndex -= 1;
+    this.diagram = JSON.parse(this._history[this._historyIndex]);
+    this.selectedIds.clear();
+    this.connectFrom = null;
+    this.render();
+    this.onChange(this.getDiagram());
+    this.onSelectionChange(this.getSelection());
+    return true;
+  }
+
   _buildMarkers() {
     const defs = this.defs;
     defs.innerHTML = "";
+
+    const gridPattern = document.createElementNS("http://www.w3.org/2000/svg", "pattern");
+    gridPattern.setAttribute("id", "grid");
+    gridPattern.setAttribute("width", String(GRID));
+    gridPattern.setAttribute("height", String(GRID));
+    gridPattern.setAttribute("patternUnits", "userSpaceOnUse");
+    const gridPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    gridPath.setAttribute("d", `M ${GRID} 0 L 0 0 0 ${GRID}`);
+    gridPath.setAttribute("fill", "none");
+    gridPath.setAttribute("stroke", "#e8ecf4");
+    gridPath.setAttribute("stroke-width", "1");
+    gridPattern.appendChild(gridPath);
+    defs.appendChild(gridPattern);
 
     const arrow = document.createElementNS("http://www.w3.org/2000/svg", "marker");
     arrow.setAttribute("id", "arrow");
@@ -92,9 +137,41 @@ export class DiagramCanvas {
     diamond.setAttribute("orient", "auto");
     const diamondPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
     diamondPath.setAttribute("d", "M 5 0 L 10 5 L 5 10 L 0 5 Z");
-    diamondPath.setAttribute("fill", "#4a5568");
+    diamondPath.setAttribute("fill", "#fff");
+    diamondPath.setAttribute("stroke", "#4a5568");
+    diamondPath.setAttribute("stroke-width", "1.5");
     diamond.appendChild(diamondPath);
     defs.appendChild(diamond);
+
+    const diamondFilled = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+    diamondFilled.setAttribute("id", "diamond-filled");
+    diamondFilled.setAttribute("viewBox", "0 0 10 10");
+    diamondFilled.setAttribute("refX", "5");
+    diamondFilled.setAttribute("refY", "5");
+    diamondFilled.setAttribute("markerWidth", "8");
+    diamondFilled.setAttribute("markerHeight", "8");
+    diamondFilled.setAttribute("orient", "auto");
+    const diamondFilledPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    diamondFilledPath.setAttribute("d", "M 5 0 L 10 5 L 5 10 L 0 5 Z");
+    diamondFilledPath.setAttribute("fill", "#4a5568");
+    diamondFilled.appendChild(diamondFilledPath);
+    defs.appendChild(diamondFilled);
+
+    const triangle = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+    triangle.setAttribute("id", "triangle-hollow");
+    triangle.setAttribute("viewBox", "0 0 10 10");
+    triangle.setAttribute("refX", "9");
+    triangle.setAttribute("refY", "5");
+    triangle.setAttribute("markerWidth", "7");
+    triangle.setAttribute("markerHeight", "7");
+    triangle.setAttribute("orient", "auto");
+    const trianglePath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    trianglePath.setAttribute("d", "M 0 0 L 10 5 L 0 10 Z");
+    trianglePath.setAttribute("fill", "#fff");
+    trianglePath.setAttribute("stroke", "#4a5568");
+    trianglePath.setAttribute("stroke-width", "1.5");
+    triangle.appendChild(trianglePath);
+    defs.appendChild(triangle);
   }
 
   _bindEvents() {
@@ -118,6 +195,7 @@ export class DiagramCanvas {
     this.diagram = JSON.parse(JSON.stringify(diagram));
     this.selectedIds.clear();
     this.connectFrom = null;
+    this._resetHistory();
     this.render();
     this.onChange(this.getDiagram());
     this.onSelectionChange(this.getSelection());
@@ -153,6 +231,7 @@ export class DiagramCanvas {
   }
 
   addNode(type, label = "", x = 120, y = 120) {
+    this._saveUndoPoint();
     const [w, h] = defaultNodeSize(type);
     const node = {
       id: nextId("n", this.diagram.nodes),
@@ -173,6 +252,7 @@ export class DiagramCanvas {
 
   addEdge(fromId, toId, type = "connector", label = "") {
     if (fromId === toId) return null;
+    this._saveUndoPoint();
     const exists = this.diagram.edges.some(
       (e) => e.from === fromId && e.to === toId && e.type === type,
     );
@@ -193,6 +273,7 @@ export class DiagramCanvas {
   }
 
   renameItem(id, label) {
+    this._saveUndoPoint();
     const node = this.diagram.nodes.find((n) => n.id === id);
     if (node) {
       node.label = label;
@@ -222,6 +303,8 @@ export class DiagramCanvas {
   }
 
   deleteSelection() {
+    if (!this.selectedIds.size) return;
+    this._saveUndoPoint();
     const nodeIds = new Set(
       this.diagram.nodes.filter((n) => this.selectedIds.has(n.id)).map((n) => n.id),
     );
@@ -434,6 +517,7 @@ export class DiagramCanvas {
     if (kind === "node") {
       const node = this.diagram.nodes.find((n) => n.id === id);
       if (node) {
+        this._saveUndoPoint();
         this.dragState = {
           id,
           offsetX: world.x - node.x,
@@ -482,6 +566,10 @@ export class DiagramCanvas {
 
   _onKeyDown(e) {
     if (e.target.matches("input, textarea, select")) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+      e.preventDefault();
+      if (this.undo()) return;
+    }
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       this.deleteSelection();
@@ -501,19 +589,6 @@ export class DiagramCanvas {
 
   _drawGrid() {
     this.gridLayer.innerHTML = "";
-    const pattern = document.createElementNS("http://www.w3.org/2000/svg", "pattern");
-    pattern.setAttribute("id", "grid");
-    pattern.setAttribute("width", String(GRID));
-    pattern.setAttribute("height", String(GRID));
-    pattern.setAttribute("patternUnits", "userSpaceOnUse");
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", `M ${GRID} 0 L 0 0 0 ${GRID}`);
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke", "#e8ecf4");
-    path.setAttribute("stroke-width", "1");
-    pattern.appendChild(path);
-    this.defs.appendChild(pattern);
-
     const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     rect.setAttribute("x", "-2000");
     rect.setAttribute("y", "-2000");
@@ -535,7 +610,7 @@ export class DiagramCanvas {
       g.dataset.kind = "edge";
       g.setAttribute("class", `diagram-edge${this.selectedIds.has(edge.id) ? " is-selected" : ""}`);
 
-      const { x1, y1, x2, y2 } = this._edgePoints(from, to);
+      const { x1, y1, x2, y2 } = this._edgePoints(from, to, edge);
       const isSelected = this.selectedIds.has(edge.id);
 
       const hitLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -568,7 +643,7 @@ export class DiagramCanvas {
       line.setAttribute("y2", y2);
       line.setAttribute("stroke", "#4a5568");
       line.setAttribute("stroke-width", "2");
-      line.setAttribute("marker-end", "url(#arrow)");
+      this._applyEdgeMarkers(line, edge);
 
       if (edge.type === "include" || edge.type === "extend" || edge.type === "dependency" || edge.type === "async_message" || edge.type === "wireless" || edge.type === "return_message") {
         line.setAttribute("stroke-dasharray", "6 4");
@@ -590,17 +665,39 @@ export class DiagramCanvas {
     }
   }
 
-  _edgePoints(from, to) {
+  _applyEdgeMarkers(line, edge) {
+    if (edge.type === "composition") {
+      line.setAttribute("marker-end", "url(#diamond-filled)");
+      return;
+    }
+    if (edge.type === "aggregation") {
+      line.setAttribute("marker-end", "url(#diamond-end)");
+      return;
+    }
+    if (edge.type === "inheritance" || edge.type === "generalization") {
+      line.setAttribute("marker-end", "url(#triangle-hollow)");
+      return;
+    }
+    line.setAttribute("marker-end", "url(#arrow)");
+  }
+
+  _edgePoints(from, to, edge = null) {
     const cx1 = from.x + from.width / 2;
-    const cy1 = from.y + from.height / 2;
     const cx2 = to.x + to.width / 2;
+    if (
+      this.diagram.diagram_type === "sequence" &&
+      edge &&
+      SEQUENCE_MESSAGE_TYPES.has(edge.type)
+    ) {
+      const y =
+        typeof edge.meta?.message_y === "number"
+          ? edge.meta.message_y
+          : from.y + Math.min(from.height * 0.35, 120);
+      return { x1: cx1, y1: y, x2: cx2, y2: y };
+    }
+    const cy1 = from.y + from.height / 2;
     const cy2 = to.y + to.height / 2;
-    return {
-      x1: cx1,
-      y1: cy1,
-      x2: cx2,
-      y2: cy2,
-    };
+    return { x1: cx1, y1: cy1, x2: cx2, y2: cy2 };
   }
 
   _drawNodes() {
@@ -633,7 +730,8 @@ export class DiagramCanvas {
         node.type !== "package" &&
         node.type !== "fragment" &&
         node.type !== "class" &&
-        node.type !== "interface"
+        node.type !== "interface" &&
+        node.type !== "use_case"
       ) {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("x", node.width / 2);
@@ -643,6 +741,8 @@ export class DiagramCanvas {
         label.setAttribute("class", "node-label");
         label.textContent = node.label;
         g.appendChild(label);
+      } else if (node.type === "use_case" && node.label) {
+        this._appendWrappedLabel(g, node.label, node.width / 2, node.height / 2, node.width - 16, node.height - 12, 11);
       } else if (node.type === "lane") {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("x", 16);
@@ -650,11 +750,13 @@ export class DiagramCanvas {
         label.setAttribute("class", "lane-label");
         label.textContent = node.label;
         g.appendChild(label);
-      } else if (["package", "fragment", "lifeline", "object", "cloud", "class", "enum"].includes(node.type) && node.label) {
+      } else if (["class", "interface", "enum"].includes(node.type) && node.label) {
+        this._appendClassCompartments(g, node);
+      } else if (["package", "fragment", "lifeline", "object", "cloud"].includes(node.type) && node.label) {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        label.setAttribute("x", node.type === "lane" ? 16 : node.width / 2);
-        label.setAttribute("y", node.type === "class" || node.type === "enum" ? 18 : node.type === "lifeline" ? 24 : 20);
-        label.setAttribute("text-anchor", node.type === "lane" ? "start" : "middle");
+        label.setAttribute("x", node.width / 2);
+        label.setAttribute("y", node.type === "lifeline" ? 24 : 20);
+        label.setAttribute("text-anchor", "middle");
         label.setAttribute("class", "node-label");
         label.textContent = node.label;
         g.appendChild(label);
@@ -692,7 +794,7 @@ export class DiagramCanvas {
       const from = this.diagram.nodes.find((n) => n.id === edge.from);
       const to = this.diagram.nodes.find((n) => n.id === edge.to);
       if (!from || !to) continue;
-      const { x1, y1, x2, y2 } = this._edgePoints(from, to);
+      const { x1, y1, x2, y2 } = this._edgePoints(from, to, edge);
       const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
       g.setAttribute("class", "selection-handles selection-handles-edge");
       g.setAttribute("pointer-events", "none");
@@ -1118,15 +1220,6 @@ export class DiagramCanvas {
       line2.setAttribute("y2", 52);
       line2.setAttribute("stroke", "#1e293b");
       g.appendChild(line2);
-      if (type === "interface") {
-        const tag = document.createElementNS(ns, "text");
-        tag.setAttribute("x", w / 2);
-        tag.setAttribute("y", 18);
-        tag.setAttribute("text-anchor", "middle");
-        tag.setAttribute("class", "node-label");
-        tag.textContent = "«interface»";
-        g.appendChild(tag);
-      }
       return;
     }
 
@@ -1221,5 +1314,100 @@ export class DiagramCanvas {
     rect.setAttribute("stroke", "#334155");
     rect.setAttribute("stroke-width", "2");
     g.appendChild(rect);
+  }
+
+  _appendWrappedLabel(parent, text, cx, cy, maxWidth, maxHeight, fontSize = 12) {
+    const lines = this._wrapLabelLines(String(text), maxWidth, fontSize, maxHeight);
+    const lineHeight = fontSize + 2;
+    const startY = cy - ((lines.length - 1) * lineHeight) / 2;
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    label.setAttribute("x", cx);
+    label.setAttribute("y", startY);
+    label.setAttribute("text-anchor", "middle");
+    label.setAttribute("class", "node-label");
+    lines.forEach((line, index) => {
+      const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+      tspan.setAttribute("x", cx);
+      tspan.setAttribute("dy", index === 0 ? 0 : lineHeight);
+      tspan.setAttribute("font-size", String(fontSize));
+      tspan.textContent = line;
+      label.appendChild(tspan);
+    });
+    parent.appendChild(label);
+  }
+
+  _wrapLabelLines(text, maxWidth, fontSize, maxHeight) {
+    const approxChar = Math.max(4, Math.floor(maxWidth / (fontSize * 0.55)));
+    const maxLines = Math.max(1, Math.floor(maxHeight / (fontSize + 2)));
+    const words = text.split(/\s+/).filter(Boolean);
+    const lines = [];
+    let current = "";
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length > approxChar && current) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = next;
+      }
+      if (lines.length >= maxLines) break;
+    }
+    if (current && lines.length < maxLines) lines.push(current);
+    if (lines.length > maxLines) return lines.slice(0, maxLines);
+    if (lines.length === maxLines && words.join(" ").length > lines.join(" ").length) {
+      const last = lines[maxLines - 1];
+      lines[maxLines - 1] = last.length > 3 ? `${last.slice(0, Math.max(0, last.length - 1))}…` : `${last}…`;
+    }
+    return lines.length ? lines : [text.slice(0, approxChar)];
+  }
+
+  _appendClassCompartments(g, node) {
+    const ns = "http://www.w3.org/2000/svg";
+    const raw = String(node.label || "");
+    const sections = raw.split(/\n--\n|\n-{2,}\n|\|--\|/);
+    const title = (sections[0] || "").split("\n")[0].trim();
+    const bodyLines = [];
+    for (let i = 1; i < sections.length; i += 1) {
+      for (const line of sections[i].split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed) bodyLines.push(trimmed);
+      }
+    }
+
+    if (node.type === "interface") {
+      const tag = document.createElementNS(ns, "text");
+      tag.setAttribute("x", node.width / 2);
+      tag.setAttribute("y", 14);
+      tag.setAttribute("text-anchor", "middle");
+      tag.setAttribute("class", "node-label");
+      tag.setAttribute("font-size", "10");
+      tag.textContent = "«interface»";
+      g.appendChild(tag);
+    }
+
+    const name = document.createElementNS(ns, "text");
+    name.setAttribute("x", node.width / 2);
+    name.setAttribute("y", node.type === "interface" ? 26 : 18);
+    name.setAttribute("text-anchor", "middle");
+    name.setAttribute("class", "node-label");
+    name.textContent = title || node.type;
+    g.appendChild(name);
+
+    const y = 40;
+    const lineHeight = 14;
+    const maxLines = Math.floor((node.height - 44) / lineHeight);
+    const text = document.createElementNS(ns, "text");
+    text.setAttribute("x", 8);
+    text.setAttribute("y", y);
+    text.setAttribute("class", "node-label");
+    text.setAttribute("font-size", "11");
+    bodyLines.slice(0, maxLines).forEach((line, index) => {
+      const tspan = document.createElementNS(ns, "tspan");
+      tspan.setAttribute("x", 8);
+      tspan.setAttribute("dy", index === 0 ? 0 : lineHeight);
+      tspan.textContent = line;
+      text.appendChild(tspan);
+    });
+    if (bodyLines.length) g.appendChild(text);
   }
 }

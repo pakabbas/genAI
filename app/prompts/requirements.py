@@ -19,6 +19,7 @@ CRITICAL rules — do NOT over-ask:
 - Never ask more than necessary; never quiz the user.
 - If the user already answered or said to proceed, set status to "ready".
 - If force_ready is true, you MUST set status to "ready" and fill gaps with explicit assumptions.
+- If the user asks for poems, jokes, stories, or other non-diagram content, set status to "rejected" and explain this studio only creates technical diagrams.
 
 When status is "need_more_info":
 - assistant_message should be a friendly, concise clarification (questions included).
@@ -40,7 +41,7 @@ enhanced_prompt format (plain text, not JSON):
 
 Respond ONLY with JSON:
 {
-  "status": "need_more_info" | "ready",
+  "status": "need_more_info" | "ready" | "rejected",
   "assistant_message": "string shown in the chat UI",
   "enhanced_prompt": "string or null",
   "assumptions": ["..."],

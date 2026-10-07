@@ -20,6 +20,10 @@ ONLY require revision (revision_required=true) when one or more BLOCKING issues 
 3. Structural errors: edges reference missing node ids, or nodes use types clearly outside the toolbox.
 4. Diagram type is fundamentally wrong for the request (e.g. flowchart when user asked for ERD).
 
+Toolbox naming:
+- For network and architecture diagrams, node type data_store IS the Database shape (toolbox id may be "database").
+- Do NOT require revision solely because the JSON uses data_store instead of the word database.
+
 When revision_required=true, list concise blocking_issues the generator must fix.
 Always include helpful recommendations (optional polish) — even when approved.
 

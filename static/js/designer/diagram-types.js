@@ -6,6 +6,7 @@ export const DIAGRAM_TYPE_LABELS = {
   sequence: "Sequence Diagram",
   class_diagram: "Class Diagram",
   network: "Network Diagram",
+  architecture: "Architecture Diagram",
 };
 
 export const SAMPLE_DIAGRAMS = {
@@ -64,6 +65,26 @@ export const SAMPLE_DIAGRAMS = {
       { id: "e2", from: "n5", to: "n6", label: "", type: "flow" },
       { id: "e3", from: "n6", to: "n7", label: "", type: "flow" },
       { id: "e4", from: "n7", to: "n8", label: "", type: "flow" },
+    ],
+  },
+  architecture: {
+    diagram_type: "architecture",
+    title: "E-Commerce Platform",
+    nodes: [
+      { id: "n1", type: "actor", label: "Customer", x: 40, y: 160, width: 72, height: 96 },
+      { id: "n2", type: "cloud", label: "Payment Provider", x: 640, y: 40, width: 140, height: 88 },
+      { id: "n3", type: "package", label: "Platform", x: 160, y: 80, width: 420, height: 280 },
+      { id: "n4", type: "process", label: "Web App", x: 200, y: 140, width: 140, height: 64 },
+      { id: "n5", type: "process", label: "Order API", x: 380, y: 140, width: 140, height: 64 },
+      { id: "n6", type: "data_store", label: "Orders DB", x: 240, y: 260, width: 100, height: 64 },
+      { id: "n7", type: "data_store", label: "Catalog DB", x: 400, y: 260, width: 100, height: 64 },
+    ],
+    edges: [
+      { id: "e1", from: "n1", to: "n4", label: "Browse", type: "connector" },
+      { id: "e2", from: "n4", to: "n5", label: "Checkout", type: "connector" },
+      { id: "e3", from: "n5", to: "n6", label: "Persist", type: "dependency" },
+      { id: "e4", from: "n5", to: "n7", label: "Lookup", type: "dependency" },
+      { id: "e5", from: "n5", to: "n2", label: "Charge", type: "dependency" },
     ],
   },
   flowchart: {

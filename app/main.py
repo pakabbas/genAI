@@ -30,6 +30,7 @@ from app.schemas.project import (
     ProjectUpdate,
 )
 from app.services.diagram_pipeline import generate_diagram_with_qc
+from app.services.prompt_guard import PromptRejectedError
 from app.services.requirements_analyst import run_requirements_turn
 from app.services import project_repository as projects
 
@@ -40,7 +41,7 @@ _root_path = str(_settings["app_root_path"])
 app = FastAPI(
     title="GenAI Diagram Studio",
     description="AI-powered diagram designer with project storage and canvas export API",
-    version="2.2.0",
+    version="2.3.0",
 )
 
 # Public read APIs for client canvas demos (no API key). CORS enabled for integration testing.
@@ -123,6 +124,8 @@ async def requirements_chat_endpoint(
             request.messages,
             force_ready=request.force_ready,
         )
+    except PromptRejectedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
@@ -144,8 +147,14 @@ async def generate_diagram_endpoint(
             prompt_enhanced=request.prompt_enhanced,
             original_prompt=request.original_prompt,
         )
+    except PromptRejectedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        msg = str(exc)
+        # Misconfigured API key stays 503; prompt refusals are 400
+        if "only creates technical diagrams" in msg:
+            raise HTTPException(status_code=400, detail=msg) from exc
+        raise HTTPException(status_code=503, detail=msg) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=502,

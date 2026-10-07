@@ -61,6 +61,8 @@ See [deploy/README.md](deploy/README.md) for GitHub secrets and workflow details
   - `trace` — step-by-step agent log (Requirements Analyst, Generator, QC Auditor) for the **AI thinking log** UI
 - `POST /api/validate-diagram` — validate diagram JSON
 
+**Access:** Project and canvas APIs remain **open (no login)** for demos and LeadPilot integration. Poem/off-topic prompts are rejected; destructive UI actions use confirmation dialogs.
+
 ### Projects (MySQL)
 
 - `GET /api/projects` — list saved projects

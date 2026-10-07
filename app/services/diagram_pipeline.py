@@ -23,6 +23,7 @@ from app.schemas.diagram import DiagramDocument, DiagramType
 from app.schemas.generation import AgentTraceEntry, GenerateDiagramResponse, QCAuditResult
 from app.services.diagram_generator import _extract_json_object, _parse_diagram_json
 from app.services.diagram_normalizer import normalize_diagram
+from app.services.prompt_guard import reject_if_non_diagram
 
 TraceCallback = Callable[[AgentTraceEntry], None]
 
@@ -138,6 +139,9 @@ def generate_diagram_with_qc(
     all_recommendations: list[str] = []
     generation_prompt = user_prompt
     qc_prompt = original_prompt.strip() if original_prompt and original_prompt.strip() else user_prompt
+
+    # Refuse poems / off-topic on BOTH original chat text and enhanced brief.
+    reject_if_non_diagram(original_prompt, user_prompt, qc_prompt)
 
     _append_trace(
         trace,

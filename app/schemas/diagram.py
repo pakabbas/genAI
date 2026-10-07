@@ -11,6 +11,7 @@ DiagramType = Literal[
     "sequence",
     "class_diagram",
     "network",
+    "architecture",
 ]
 
 

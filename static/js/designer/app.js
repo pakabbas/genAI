@@ -9,6 +9,25 @@ import { normalizeDiagram } from "./normalize.js";
     return `${APP_ROOT}${path}`;
   }
 
+  function formatApiError(data, fallback = "Request failed.") {
+    const detail = data?.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      return detail
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item.msg === "string") return item.msg;
+          if (item && typeof item.message === "string") return item.message;
+          return JSON.stringify(item);
+        })
+        .join("; ");
+    }
+    if (detail && typeof detail === "object") {
+      return detail.message || JSON.stringify(detail);
+    }
+    return fallback;
+  }
+
   const WELCOME_MESSAGE =
     "Tell me what diagram you need. I’ll only ask if something important is unclear, then I’ll shape a clear brief for generation.";
 
@@ -61,6 +80,7 @@ import { normalizeDiagram } from "./normalize.js";
     sampleBtn: document.getElementById("sampleBtn"),
     clearBtn: document.getElementById("clearBtn"),
     deleteBtn: document.getElementById("deleteBtn"),
+    undoBtn: document.getElementById("undoBtn"),
     duplicateBtn: document.getElementById("duplicateBtn"),
     selectTool: document.getElementById("selectTool"),
     panTool: document.getElementById("panTool"),
@@ -384,8 +404,8 @@ import { normalizeDiagram } from "./normalize.js";
 
   async function sendRequirementsMessage({ forceReady = false } = {}) {
     const text = els.promptInput.value.trim();
-    if (!forceReady && text.length < 2) {
-      showToast("Type a short description first.", "error");
+    if (!forceReady && text.length < 3) {
+      showToast("Describe your diagram (at least 3 characters).", "error");
       els.promptInput.focus();
       return;
     }
@@ -422,12 +442,18 @@ import { normalizeDiagram } from "./normalize.js";
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(typeof data.detail === "string" ? data.detail : "Requirements chat failed.");
+        throw new Error(formatApiError(data, "Requirements chat failed."));
       }
 
       const reply = (data.assistant_message || "").trim() || "Got it.";
       state.chatMessages.push({ role: "assistant", content: reply });
       renderChatMessages();
+
+      if (data.status === "rejected") {
+        setBriefReady(false);
+        showToast(reply, "error");
+        return;
+      }
 
       if (data.status === "ready" && data.enhanced_prompt) {
         const assumptionNote = data.assumptions?.length
@@ -530,16 +556,19 @@ import { normalizeDiagram } from "./normalize.js";
     canvas.setDiagramType(type);
     loadToolbox(type).then(() => {
       if (clearCanvasOnChange) {
-        clearCanvas();
+        clearCanvas({ skipConfirm: true });
       }
     });
   }
 
   async function loadToolbox(type) {
+    state.toolbox = [];
+    renderToolbox([]);
+    if (els.toolboxHint) els.toolboxHint.textContent = "Loading shape library…";
     try {
       const res = await fetch(withRoot(`/api/toolbox/${type}`));
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to load toolbox");
+      if (!res.ok) throw new Error(formatApiError(data, "Failed to load toolbox"));
       state.toolbox = data.items;
       renderToolbox(data.items);
       els.toolboxHint.textContent = data.label;
@@ -715,14 +744,18 @@ import { normalizeDiagram } from "./normalize.js";
     try {
       const res = await fetch(withRoot(`/api/projects/${projectId}`));
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Load failed.");
+      if (!res.ok) throw new Error(formatApiError(data, "Load failed."));
 
       state.currentProjectId = data.id;
       state.externalProjectId = data.external_project_id || null;
       els.projectNameInput.value = data.name;
-      els.diagramTitle.value = data.title;
+      const diagramPayload = {
+        ...(data.diagram || {}),
+        diagram_type: data.diagram_type,
+        title: data.title || data.diagram?.title || "Untitled Diagram",
+      };
       selectDiagramType(data.diagram_type);
-      applyDiagramToCanvas(data.diagram, "Loaded");
+      applyDiagramToCanvas(diagramPayload, "Loaded");
       state.isDirty = false;
       setProjectStatus(`Saved · ${data.id.slice(0, 8)}…`);
       updateApiDemoLink(data.id);
@@ -781,7 +814,7 @@ import { normalizeDiagram } from "./normalize.js";
         });
       }
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Save failed.");
+      if (!res.ok) throw new Error(formatApiError(data, "Save failed."));
 
       state.currentProjectId = data.id;
       state.externalProjectId = data.external_project_id || null;
@@ -790,7 +823,8 @@ import { normalizeDiagram } from "./normalize.js";
       updateApiDemoLink(data.id);
       await refreshProjectList();
       els.projectSelect.value = data.id;
-      showToast("Project saved.", "success");
+      const demoUrl = `${withRoot("/demo")}?project=${encodeURIComponent(data.id)}`;
+      showToast(`Project saved. Share demo: ${demoUrl}`, "success");
     } catch (err) {
       showToast(err.message, "error");
     }
@@ -806,7 +840,7 @@ import { normalizeDiagram } from "./normalize.js";
     try {
       const res = await fetch(withRoot(`/api/projects/${state.currentProjectId}`), { method: "DELETE" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Delete failed.");
+      if (!res.ok) throw new Error(formatApiError(data, "Delete failed."));
       newProject();
       await refreshProjectList();
       showToast("Project deleted.", "success");
@@ -825,6 +859,13 @@ import { normalizeDiagram } from "./normalize.js";
       showToast("Select a target project.", "error");
       return;
     }
+    if (
+      !confirm(
+        "Send this diagram to the selected target project? The target copy will be replaced.",
+      )
+    ) {
+      return;
+    }
 
     const payload = { replace: true, target_project_id: targetId };
     if (state.externalProjectId) {
@@ -838,7 +879,7 @@ import { normalizeDiagram } from "./normalize.js";
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Transfer failed.");
+      if (!res.ok) throw new Error(formatApiError(data, "Transfer failed."));
       await refreshProjectList();
       showToast("Diagram JSON sent — use export API or client canvas to render.", "success");
     } catch (err) {
@@ -898,7 +939,7 @@ import { normalizeDiagram } from "./normalize.js";
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(typeof data.detail === "string" ? data.detail : "Generation failed.");
+        throw new Error(formatApiError(data, "Generation failed."));
       }
 
       state.lastGenerationTrace = data.trace || [];
@@ -934,7 +975,14 @@ import { normalizeDiagram } from "./normalize.js";
     showToast("Sample loaded — every element is an editable toolbox shape.", "success");
   }
 
-  function clearCanvas() {
+  function clearCanvas({ skipConfirm = false } = {}) {
+    if (
+      !skipConfirm &&
+      canvas.diagram.nodes.length &&
+      !confirm("Clear all shapes from the canvas?")
+    ) {
+      return;
+    }
     canvas.setDiagram({
       diagram_type: state.diagramType,
       title: "Untitled Diagram",
@@ -973,6 +1021,18 @@ import { normalizeDiagram } from "./normalize.js";
   }
 
   function onDiagramTypeChange(value) {
+    if (value === state.diagramType) return;
+    if (canvas.diagram.nodes.length) {
+      if (
+        !confirm(
+          "Change diagram type? The canvas will be cleared and the title reset to Untitled.",
+        )
+      ) {
+        if (els.diagramTypeSelect) els.diagramTypeSelect.value = state.diagramType;
+        if (els.diagramTypeSelectLeft) els.diagramTypeSelectLeft.value = state.diagramType;
+        return;
+      }
+    }
     selectDiagramType(value, { clearCanvasOnChange: canvas.diagram.nodes.length > 0 });
     resetRequirementsChat({ quiet: true });
   }
@@ -1002,6 +1062,9 @@ import { normalizeDiagram } from "./normalize.js";
   els.sampleBtn.addEventListener("click", loadSample);
   els.clearBtn.addEventListener("click", clearCanvas);
   els.deleteBtn.addEventListener("click", () => canvas.deleteSelection());
+  els.undoBtn?.addEventListener("click", () => {
+    if (!canvas.undo()) showToast("Nothing to undo.", "info");
+  });
   els.duplicateBtn?.addEventListener("click", duplicateSelection);
 
   els.selectTool.addEventListener("click", () => setActiveTool("select"));
@@ -1092,6 +1155,13 @@ import { normalizeDiagram } from "./normalize.js";
   els.deleteProjectBtn?.addEventListener("click", deleteCurrentProject);
   els.transferProjectBtn?.addEventListener("click", transferProject);
   els.copyCanvasExportBtn?.addEventListener("click", copyCanvasExport);
+
+  window.addEventListener("beforeunload", (e) => {
+    if (state.isDirty) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
 
   resetRequirementsChat({ quiet: true });
   updateCharCount();
