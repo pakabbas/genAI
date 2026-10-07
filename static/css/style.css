@@ -690,9 +690,48 @@ input {
   padding: 0 0.15rem;
 }
 
-.btn-send-chat {
-  min-width: 4.5rem;
-  border-radius: 999px;
+.btn-send-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #0f172a;
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, opacity 0.15s, transform 0.15s;
+}
+
+.btn-send-icon:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-send-icon:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+.btn-send-icon:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn-send-icon .btn-send-icon-svg {
+  display: block;
+}
+
+.btn-send-icon.is-loading .btn-send-icon-svg {
+  display: none;
+}
+
+.btn-send-icon .btn-spinner {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  border-top-color: #fff;
 }
 
 .panel-actions-chat {

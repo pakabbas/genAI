@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.3.6" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.3.7" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -164,8 +164,10 @@
               ></textarea>
               <div class="req-chat-compose-footer">
                 <span class="char-count" id="charCount">0 / 8000</span>
-                <button type="button" class="btn btn-primary btn-sm btn-send-chat" id="sendChatBtn">
-                  <span class="btn-label">Send</span>
+                <button type="button" class="btn-send-icon" id="sendChatBtn" title="Send" aria-label="Send">
+                  <svg class="btn-send-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 19V5M12 5l-6 6M12 5l6 6" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
                   <span class="btn-spinner" hidden aria-hidden="true"></span>
                 </button>
               </div>
@@ -275,6 +277,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.3.6"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.3.7"></script>
 </body>
 </html>
