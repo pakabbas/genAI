@@ -42,12 +42,26 @@ import { normalizeDiagram } from "./normalize.js";
     isChatting: false,
     isGenerating: false,
     isDirty: false,
+    suppressDirty: false,
     currentProjectId: null,
     externalProjectId: null,
     dbConnected: false,
     lastGenerationTrace: [],
     lastRecommendations: [],
   };
+
+  function markDirty() {
+    if (state.suppressDirty) return;
+    state.isDirty = true;
+    if (els.canvasBadge) {
+      els.canvasBadge.textContent = "Edited";
+      els.canvasBadge.classList.add("is-live");
+    }
+  }
+
+  function clearDirty() {
+    state.isDirty = false;
+  }
 
   const els = {
     apiStatus: document.getElementById("apiStatus"),
@@ -261,10 +275,8 @@ import { normalizeDiagram } from "./normalize.js";
 
   const canvas = new DiagramCanvas(els.canvasHost, {
     onChange: () => {
-      state.isDirty = true;
-      els.canvasBadge.textContent = "Edited";
-      els.canvasBadge.classList.add("is-live");
-      if (els.diagramTitle.value !== canvas.diagram.title) {
+      markDirty();
+      if (els.diagramTitle && els.diagramTitle.value !== canvas.diagram.title) {
         els.diagramTitle.value = canvas.diagram.title;
       }
     },
@@ -376,9 +388,12 @@ import { normalizeDiagram } from "./normalize.js";
   }
 
   function setBriefReady(ready, enhancedPrompt = "", note = "") {
-    state.briefReady = ready;
-    state.enhancedPrompt = ready ? (enhancedPrompt || "").trim() : "";
-    if (els.reqReadyBanner) els.reqReadyBanner.hidden = !ready;
+    state.briefReady = Boolean(ready);
+    state.enhancedPrompt = ready ? String(enhancedPrompt || "").trim() : "";
+    if (els.reqReadyBanner) {
+      els.reqReadyBanner.hidden = !ready;
+      els.reqReadyBanner.toggleAttribute("hidden", !ready);
+    }
     if (els.reqReadyText) {
       els.reqReadyText.textContent =
         note ||
@@ -403,72 +418,78 @@ import { normalizeDiagram } from "./normalize.js";
   }
 
   async function sendRequirementsMessage({ forceReady = false } = {}) {
-    const text = els.promptInput.value.trim();
-    if (!forceReady && text.length < 3) {
-      showToast("Describe your diagram (at least 3 characters).", "error");
-      els.promptInput.focus();
-      return;
-    }
-    if (state.isChatting || state.isGenerating) return;
-
-    if (text) {
-      state.chatMessages.push({ role: "user", content: text });
-      if (!state.originalPrompt) state.originalPrompt = text;
-      else state.originalPrompt = `${state.originalPrompt}\n${text}`.slice(0, 8000);
-      els.promptInput.value = "";
-      updateCharCount();
-      renderChatMessages();
-    } else if (forceReady && !state.chatMessages.some((m) => m.role === "user")) {
-      showToast("Describe your diagram before proceeding.", "error");
-      return;
-    }
-
-    // Drop welcome-only turns from API history (keep user + real assistant replies)
-    const apiMessages = state.chatMessages.filter(
-      (m, idx) => !(idx === 0 && m.role === "assistant" && m.content === WELCOME_MESSAGE),
-    );
-
-    setChatting(true);
-    setBriefReady(false);
     try {
-      const res = await fetch(withRoot("/api/requirements-chat"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          diagram_type: state.diagramType,
-          messages: apiMessages,
-          force_ready: forceReady,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(formatApiError(data, "Requirements chat failed."));
+      const text = (els.promptInput?.value || "").trim();
+      if (!forceReady && text.length < 3) {
+        showToast("Describe your diagram (at least 3 characters).", "error");
+        els.promptInput?.focus();
+        return;
       }
+      if (state.isChatting || state.isGenerating) return;
 
-      const reply = (data.assistant_message || "").trim() || "Got it.";
-      state.chatMessages.push({ role: "assistant", content: reply });
-      renderChatMessages();
-
-      if (data.status === "rejected") {
-        setBriefReady(false);
-        showToast(reply, "error");
+      if (text) {
+        state.chatMessages.push({ role: "user", content: text });
+        if (!state.originalPrompt) state.originalPrompt = text;
+        else state.originalPrompt = `${state.originalPrompt}\n${text}`.slice(0, 8000);
+        if (els.promptInput) els.promptInput.value = "";
+        updateCharCount();
+        renderChatMessages();
+      } else if (forceReady && !state.chatMessages.some((m) => m.role === "user")) {
+        showToast("Describe your diagram before proceeding.", "error");
         return;
       }
 
-      if (data.status === "ready" && data.enhanced_prompt) {
-        const assumptionNote = data.assumptions?.length
-          ? ` Assumptions: ${data.assumptions.slice(0, 3).join("; ")}`
-          : "";
-        setBriefReady(true, data.enhanced_prompt, `Brief ready.${assumptionNote}`);
-        showToast("Brief ready — click Generate with AI.", "success");
-      } else {
-        setBriefReady(false);
-        showToast("Answer the Analyst’s question, then continue.", "info");
+      const apiMessages = state.chatMessages.filter(
+        (m) => !(m.role === "assistant" && m.content === WELCOME_MESSAGE),
+      );
+      if (!apiMessages.length) {
+        showToast("Describe your diagram first.", "error");
+        return;
+      }
+
+      setChatting(true);
+      try {
+        const res = await fetch(withRoot("/api/requirements-chat"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            diagram_type: state.diagramType,
+            messages: apiMessages,
+            force_ready: forceReady,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(formatApiError(data, "Requirements chat failed."));
+        }
+
+        const reply = (data.assistant_message || "").trim() || "Got it.";
+        state.chatMessages.push({ role: "assistant", content: reply });
+        renderChatMessages();
+
+        if (data.status === "rejected") {
+          setBriefReady(false);
+          showToast(reply, "error");
+          return;
+        }
+
+        const enhanced = (data.enhanced_prompt || "").trim();
+        if (data.status === "ready" && enhanced) {
+          const assumptionNote = data.assumptions?.length
+            ? ` Assumptions: ${data.assumptions.slice(0, 3).join("; ")}`
+            : "";
+          setBriefReady(true, enhanced, `Brief ready.${assumptionNote}`);
+          showToast("Brief ready — click Generate with AI.", "success");
+        } else {
+          setBriefReady(false);
+          showToast("Answer the Analyst’s question, then continue.", "info");
+        }
+      } finally {
+        setChatting(false);
       }
     } catch (err) {
-      showToast(err.message || "Chat failed.", "error");
-    } finally {
       setChatting(false);
+      showToast(err.message || "Chat failed.", "error");
     }
   }
 
@@ -533,13 +554,22 @@ import { normalizeDiagram } from "./normalize.js";
   }
 
   function applyDiagramToCanvas(diagram, badge = "Ready") {
-    const normalized = normalizeDiagram(diagram, state.toolbox);
-    canvas.loadNormalizedDiagram(normalized);
-    els.diagramTitle.value = normalized.title;
-    state.isDirty = false;
-    canvas.scheduleFitToContent();
-    els.canvasBadge.textContent = badge;
-    els.canvasBadge.classList.add("is-live");
+    state.suppressDirty = true;
+    try {
+      const payload = {
+        ...diagram,
+        diagram_type: diagram.diagram_type || state.diagramType,
+      };
+      const normalized = normalizeDiagram(payload, state.toolbox);
+      canvas.loadNormalizedDiagram(normalized);
+      if (els.diagramTitle) els.diagramTitle.value = normalized.title;
+      clearDirty();
+      canvas.scheduleFitToContent();
+      els.canvasBadge.textContent = badge;
+      els.canvasBadge.classList.add("is-live");
+    } finally {
+      state.suppressDirty = false;
+    }
   }
 
   function selectDiagramType(type, { clearCanvasOnChange = false } = {}) {
@@ -554,6 +584,16 @@ import { normalizeDiagram } from "./normalize.js";
       els.activeTypeLabel.textContent = DIAGRAM_TYPE_LABELS[type] || type;
     }
     canvas.setDiagramType(type);
+    // Clear stale shapes immediately so previous type is never clickable
+    state.toolbox = [];
+    renderToolbox([]);
+    if (els.toolboxHint) els.toolboxHint.textContent = "Loading shape library…";
+    if (els.toolboxNodes) {
+      els.toolboxNodes.innerHTML =
+        '<p class="block-subtitle" style="margin:0;grid-column:1/-1">Loading shapes…</p>';
+    }
+    if (els.toolboxEdges) els.toolboxEdges.innerHTML = "";
+
     loadToolbox(type).then(() => {
       if (clearCanvasOnChange) {
         clearCanvas({ skipConfirm: true });
@@ -562,18 +602,17 @@ import { normalizeDiagram } from "./normalize.js";
   }
 
   async function loadToolbox(type) {
-    state.toolbox = [];
-    renderToolbox([]);
-    if (els.toolboxHint) els.toolboxHint.textContent = "Loading shape library…";
     try {
       const res = await fetch(withRoot(`/api/toolbox/${type}`));
       const data = await res.json();
       if (!res.ok) throw new Error(formatApiError(data, "Failed to load toolbox"));
+      if (state.diagramType !== type) return; // stale response
       state.toolbox = data.items;
       renderToolbox(data.items);
-      els.toolboxHint.textContent = data.label;
+      if (els.toolboxHint) els.toolboxHint.textContent = data.label;
     } catch (err) {
       showToast(err.message, "error");
+      if (els.toolboxHint) els.toolboxHint.textContent = "Failed to load shapes";
     }
   }
 
@@ -756,7 +795,7 @@ import { normalizeDiagram } from "./normalize.js";
       };
       selectDiagramType(data.diagram_type);
       applyDiagramToCanvas(diagramPayload, "Loaded");
-      state.isDirty = false;
+      clearDirty();
       setProjectStatus(`Saved · ${data.id.slice(0, 8)}…`);
       updateApiDemoLink(data.id);
       await refreshProjectList();
@@ -818,7 +857,7 @@ import { normalizeDiagram } from "./normalize.js";
 
       state.currentProjectId = data.id;
       state.externalProjectId = data.external_project_id || null;
-      state.isDirty = false;
+      clearDirty();
       setProjectStatus(`Saved · ${data.id.slice(0, 8)}…`);
       updateApiDemoLink(data.id);
       await refreshProjectList();
@@ -983,16 +1022,21 @@ import { normalizeDiagram } from "./normalize.js";
     ) {
       return;
     }
-    canvas.setDiagram({
-      diagram_type: state.diagramType,
-      title: "Untitled Diagram",
-      nodes: [],
-      edges: [],
-    });
-    els.diagramTitle.value = "Untitled Diagram";
-    state.isDirty = false;
-    els.canvasBadge.textContent = "Empty";
-    els.canvasBadge.classList.remove("is-live");
+    state.suppressDirty = true;
+    try {
+      canvas.setDiagram({
+        diagram_type: state.diagramType,
+        title: "Untitled Diagram",
+        nodes: [],
+        edges: [],
+      });
+      if (els.diagramTitle) els.diagramTitle.value = "Untitled Diagram";
+      clearDirty();
+      els.canvasBadge.textContent = "Empty";
+      els.canvasBadge.classList.remove("is-live");
+    } finally {
+      state.suppressDirty = false;
+    }
   }
 
   function exportSvg() {
@@ -1052,7 +1096,17 @@ import { normalizeDiagram } from "./normalize.js";
       sendRequirementsMessage();
     }
   });
-  els.sendChatBtn?.addEventListener("click", () => sendRequirementsMessage());
+  // Bind Send reliably (click + pointerup fallback)
+  const onSendChat = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    sendRequirementsMessage();
+  };
+  els.sendChatBtn?.addEventListener("click", onSendChat);
+  document.getElementById("reqChat")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("#sendChatBtn");
+    if (btn) onSendChat(e);
+  });
   els.forceReadyBtn?.addEventListener("click", () => sendRequirementsMessage({ forceReady: true }));
   els.resetChatBtn?.addEventListener("click", () => resetRequirementsChat());
   els.generateBtn.addEventListener("click", generateDiagram);
@@ -1119,7 +1173,15 @@ import { normalizeDiagram } from "./normalize.js";
 
   els.diagramTitle.addEventListener("change", () => {
     canvas.diagram.title = els.diagramTitle.value.trim() || "Untitled Diagram";
-    state.isDirty = true;
+    markDirty();
+  });
+
+  // Register leave warning as early as possible
+  window.addEventListener("beforeunload", (e) => {
+    if (!state.isDirty) return;
+    e.preventDefault();
+    e.returnValue = "You have unsaved diagram changes.";
+    return e.returnValue;
   });
 
   els.zoomInBtn.addEventListener("click", () => {
@@ -1156,13 +1218,6 @@ import { normalizeDiagram } from "./normalize.js";
   els.transferProjectBtn?.addEventListener("click", transferProject);
   els.copyCanvasExportBtn?.addEventListener("click", copyCanvasExport);
 
-  window.addEventListener("beforeunload", (e) => {
-    if (state.isDirty) {
-      e.preventDefault();
-      e.returnValue = "";
-    }
-  });
-
   resetRequirementsChat({ quiet: true });
   updateCharCount();
   checkHealth();
@@ -1170,4 +1225,5 @@ import { normalizeDiagram } from "./normalize.js";
   canvas.resetView();
   initMobileLayout();
   updateApiDemoLink(null);
+  clearDirty();
 })();

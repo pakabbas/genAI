@@ -21,8 +21,12 @@ ONLY require revision (revision_required=true) when one or more BLOCKING issues 
 4. Diagram type is fundamentally wrong for the request (e.g. flowchart when user asked for ERD).
 
 Toolbox naming:
-- For network and architecture diagrams, node type data_store IS the Database shape (toolbox id may be "database").
+- For network and architecture diagrams, node type data_store IS the Database shape.
 - Do NOT require revision solely because the JSON uses data_store instead of the word database.
+- Load balancers must be type load_balancer (not router). Prefer recommendation over blocking if a router is used as LB.
+- Architecture valid node types: actor, service, api, package, cloud, data_store, note, text_box
+  (service/api may appear as process after normalization — that is OK).
+- Sequence message edges must be message / async_message / return_message.
 
 When revision_required=true, list concise blocking_issues the generator must fix.
 Always include helpful recommendations (optional polish) — even when approved.

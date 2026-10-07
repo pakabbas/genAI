@@ -87,6 +87,83 @@ export const SAMPLE_DIAGRAMS = {
       { id: "e5", from: "n5", to: "n2", label: "Charge", type: "dependency" },
     ],
   },
+  sequence: {
+    diagram_type: "sequence",
+    title: "Email OTP Login",
+    nodes: [
+      { id: "n1", type: "actor", label: "User", x: 60, y: 40, width: 72, height: 420 },
+      { id: "n2", type: "lifeline", label: "WebApp", x: 260, y: 40, width: 80, height: 420 },
+      { id: "n3", type: "lifeline", label: "AuthAPI", x: 460, y: 40, width: 80, height: 420 },
+      { id: "n4", type: "lifeline", label: "Mailer", x: 660, y: 40, width: 80, height: 420 },
+    ],
+    edges: [
+      { id: "e1", from: "n1", to: "n2", label: "enterEmail()", type: "message", meta: { message_y: 100 } },
+      { id: "e2", from: "n2", to: "n3", label: "requestOTP()", type: "message", meta: { message_y: 152 } },
+      { id: "e3", from: "n3", to: "n4", label: "sendMail()", type: "async_message", meta: { message_y: 204 } },
+      { id: "e4", from: "n4", to: "n3", label: "queued", type: "return_message", meta: { message_y: 256 } },
+      { id: "e5", from: "n3", to: "n2", label: "otpSent", type: "return_message", meta: { message_y: 308 } },
+      { id: "e6", from: "n1", to: "n2", label: "submitOTP()", type: "message", meta: { message_y: 360 } },
+      { id: "e7", from: "n2", to: "n3", label: "verifyOTP()", type: "message", meta: { message_y: 412 } },
+      { id: "e8", from: "n3", to: "n2", label: "token", type: "return_message", meta: { message_y: 464 } },
+    ],
+  },
+  class_diagram: {
+    diagram_type: "class_diagram",
+    title: "Orders Domain",
+    nodes: [
+      {
+        id: "n1",
+        type: "class",
+        label: "Customer\n--\n-id: UUID\n-email: String\n--\n+placeOrder()",
+        x: 80,
+        y: 80,
+        width: 180,
+        height: 140,
+      },
+      {
+        id: "n2",
+        type: "class",
+        label: "Order\n--\n-id: UUID\n-total: Money\n--\n+pay()",
+        x: 360,
+        y: 80,
+        width: 180,
+        height: 140,
+      },
+      {
+        id: "n3",
+        type: "interface",
+        label: "Payable\n--\n+charge()",
+        x: 360,
+        y: 280,
+        width: 160,
+        height: 110,
+      },
+    ],
+    edges: [
+      { id: "e1", from: "n1", to: "n2", label: "1..*", type: "association" },
+      { id: "e2", from: "n2", to: "n3", label: "", type: "realization" },
+    ],
+  },
+  network: {
+    diagram_type: "network",
+    title: "Web Tier",
+    nodes: [
+      { id: "n1", type: "cloud", label: "Internet", x: 40, y: 120, width: 140, height: 88 },
+      { id: "n2", type: "load_balancer", label: "LB", x: 240, y: 130, width: 100, height: 64 },
+      { id: "n3", type: "server", label: "App A", x: 420, y: 60, width: 72, height: 96 },
+      { id: "n4", type: "server", label: "App B", x: 420, y: 200, width: 72, height: 96 },
+      { id: "n5", type: "data_store", label: "Postgres", x: 580, y: 120, width: 100, height: 64 },
+      { id: "n6", type: "client", label: "Browser", x: 40, y: 280, width: 72, height: 72 },
+    ],
+    edges: [
+      { id: "e1", from: "n1", to: "n2", label: "", type: "network_link" },
+      { id: "e2", from: "n2", to: "n3", label: "", type: "network_link" },
+      { id: "e3", from: "n2", to: "n4", label: "", type: "network_link" },
+      { id: "e4", from: "n3", to: "n5", label: "", type: "network_link" },
+      { id: "e5", from: "n4", to: "n5", label: "", type: "network_link" },
+      { id: "e6", from: "n6", to: "n1", label: "", type: "wireless" },
+    ],
+  },
   flowchart: {
     diagram_type: "flowchart",
     title: "Login Flow",
@@ -151,6 +228,7 @@ export function defaultNodeSize(type) {
     server: [72, 96],
     client: [72, 72],
     workstation: [80, 64],
+    load_balancer: [100, 64],
   };
   return sizes[type] || [120, 60];
 }

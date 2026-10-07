@@ -90,6 +90,7 @@ TOOLBOX: dict[DiagramType, list[ToolboxItem]] = {
         ToolboxItem(id="package", label="Package", kind="node", shape="package", default_width=220, default_height=140),
         ToolboxItem(id="note", label="Note", kind="node", shape="note", default_width=120, default_height=80),
         ToolboxItem(id="inheritance", label="Inheritance", kind="edge", shape="inheritance"),
+        ToolboxItem(id="realization", label="Realization", kind="edge", shape="realization"),
         ToolboxItem(id="association", label="Association", kind="edge", shape="association"),
         ToolboxItem(id="composition", label="Composition", kind="edge", shape="composition"),
         ToolboxItem(id="aggregation", label="Aggregation", kind="edge", shape="aggregation"),
@@ -100,6 +101,7 @@ TOOLBOX: dict[DiagramType, list[ToolboxItem]] = {
         ToolboxItem(id="router", label="Router", kind="node", shape="router", default_width=80, default_height=56),
         ToolboxItem(id="switch", label="Switch", kind="node", shape="switch", default_width=88, default_height=48),
         ToolboxItem(id="firewall", label="Firewall", kind="node", shape="firewall", default_width=72, default_height=72),
+        ToolboxItem(id="load_balancer", label="Load Balancer", kind="node", shape="load_balancer", default_width=100, default_height=64),
         ToolboxItem(id="server", label="Server", kind="node", shape="server", default_width=72, default_height=96),
         # id and shape both data_store — label "Database" (avoids QC fighting database vs data_store)
         ToolboxItem(id="data_store", label="Database", kind="node", shape="data_store", default_width=100, default_height=64),
@@ -128,15 +130,26 @@ DIAGRAM_TYPE_GUIDANCE: dict[DiagramType, str] = {
     "erd": "Chen ERD: entities (rectangles), attributes (ovals linked to entities), relationship diamonds, cardinality on edges. Include all core entities for the domain (e.g. school: Student, Course, Teacher, Enrollment).",
     "swim_lane": "BPMN-style swim lanes with tasks, gateways, start/end events, sequence flows.",
     "flowchart": "Standard flowchart symbols: terminators, processes, decisions, I/O, database.",
-    "sequence": "UML sequence: lifelines top-to-bottom, sync/async/return messages between lifelines.",
-    "class_diagram": "UML class diagram: classes, interfaces, packages, inheritance and associations.",
+    "sequence": (
+        "UML sequence: lifelines top-to-bottom. Message edges MUST use types "
+        "message, async_message, or return_message only (never connector). "
+        "Put optional meta.message_y for vertical order; the pipeline also stacks them."
+    ),
+    "class_diagram": (
+        "UML class diagram. Class/interface labels MUST use compartments separated by "
+        "a line containing only --  e.g. 'Order\\n--\\n+id: UUID\\n+total: Money\\n--\\n+pay()'. "
+        "Use realization (dashed) for interface implementation; inheritance for extends."
+    ),
     "network": (
-        "Network topology: cloud, routers, switches, servers, clients, links. "
-        "Use node type data_store for databases (toolbox label is Database)."
+        "Network topology: cloud, routers, switches, load_balancer, servers, clients, links. "
+        "Use node type data_store for databases. Use load_balancer (not router) for LB/HAProxy/NLB. "
+        "Ethernet network_link has no arrowhead."
     ),
     "architecture": (
-        "Software/system architecture (C4-style or layered): actors, services, API gateways, "
-        "databases, external systems, subsystem boundaries, and data-flow dependencies."
+        "Software/system architecture. ONLY use toolbox ids: actor, service, api, package, "
+        "cloud, data_store, note, text_box, dependency, connector. "
+        "Map User→actor, microservice→service, API Gateway→api, Subsystem→package, "
+        "External System→cloud, Database→data_store, Component→text_box."
     ),
 }
 
@@ -162,7 +175,9 @@ Layout rules:
 3. Include every major entity the user asked for — do not stop after partial output.
 4. Edges must reference existing node ids; connect attributes to entities and relationships to entities.
 5. Put containers (system_boundary, lane, package, fragment) behind content with larger width/height.
-6. Labels concise and professional."""
+6. Labels concise and professional.
+7. For class/interface/enum labels use name then '\\n--\\n' then attributes then '\\n--\\n' then methods.
+8. For sequence diagrams only use edge types message / async_message / return_message."""
 
 
 def toolbox_catalog(diagram_type: DiagramType) -> str:

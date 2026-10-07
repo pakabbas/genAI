@@ -227,7 +227,8 @@ export class DiagramCanvas {
 
   setDiagramType(type) {
     this.diagram.diagram_type = type;
-    this.onChange(this.getDiagram());
+    // Do not notify onChange — type switches are handled by the app shell
+    // and must not flip the dirty flag by themselves.
   }
 
   addNode(type, label = "", x = 120, y = 120) {
@@ -581,10 +582,52 @@ export class DiagramCanvas {
   }
 
   render() {
+    this._ensureSequenceMessageLayout();
     this._drawGrid();
     this._drawEdges();
     this._drawNodes();
     this._applyViewTransform();
+  }
+
+  _isSequenceParticipant(node) {
+    return node && ["lifeline", "object", "actor", "activation"].includes(node.type);
+  }
+
+  _ensureSequenceMessageLayout() {
+    if (this.diagram.diagram_type !== "sequence") return;
+    const startY = 88;
+    const step = 52;
+    let index = 0;
+    let maxY = startY;
+
+    for (const edge of this.diagram.edges) {
+      const from = this.diagram.nodes.find((n) => n.id === edge.from);
+      const to = this.diagram.nodes.find((n) => n.id === edge.to);
+      if (!from || !to) continue;
+
+      const typedMessage = SEQUENCE_MESSAGE_TYPES.has(edge.type);
+      const betweenParticipants =
+        this._isSequenceParticipant(from) && this._isSequenceParticipant(to);
+      if (!typedMessage && !betweenParticipants) continue;
+
+      if (!SEQUENCE_MESSAGE_TYPES.has(edge.type)) {
+        edge.type = "message";
+      }
+
+      edge.meta = edge.meta || {};
+      const existing = Number(edge.meta.message_y);
+      const y = Number.isFinite(existing) ? existing : startY + index * step;
+      edge.meta.message_y = y;
+      index += 1;
+      maxY = Math.max(maxY, y + 24);
+    }
+
+    const minHeight = maxY + 100;
+    for (const node of this.diagram.nodes) {
+      if (["lifeline", "object", "actor"].includes(node.type) && node.height < minHeight) {
+        node.height = minHeight;
+      }
+    }
   }
 
   _drawGrid() {
@@ -645,7 +688,15 @@ export class DiagramCanvas {
       line.setAttribute("stroke-width", "2");
       this._applyEdgeMarkers(line, edge);
 
-      if (edge.type === "include" || edge.type === "extend" || edge.type === "dependency" || edge.type === "async_message" || edge.type === "wireless" || edge.type === "return_message") {
+      if (
+        edge.type === "include" ||
+        edge.type === "extend" ||
+        edge.type === "dependency" ||
+        edge.type === "realization" ||
+        edge.type === "async_message" ||
+        edge.type === "wireless" ||
+        edge.type === "return_message"
+      ) {
         line.setAttribute("stroke-dasharray", "6 4");
       }
 
@@ -674,8 +725,20 @@ export class DiagramCanvas {
       line.setAttribute("marker-end", "url(#diamond-end)");
       return;
     }
-    if (edge.type === "inheritance" || edge.type === "generalization") {
+    if (
+      edge.type === "inheritance" ||
+      edge.type === "generalization" ||
+      edge.type === "realization"
+    ) {
       line.setAttribute("marker-end", "url(#triangle-hollow)");
+      return;
+    }
+    if (edge.type === "async_message" || edge.type === "return_message") {
+      line.setAttribute("marker-end", "url(#triangle-hollow)");
+      return;
+    }
+    if (edge.type === "network_link") {
+      line.removeAttribute("marker-end");
       return;
     }
     line.setAttribute("marker-end", "url(#arrow)");
@@ -684,16 +747,18 @@ export class DiagramCanvas {
   _edgePoints(from, to, edge = null) {
     const cx1 = from.x + from.width / 2;
     const cx2 = to.x + to.width / 2;
-    if (
-      this.diagram.diagram_type === "sequence" &&
-      edge &&
-      SEQUENCE_MESSAGE_TYPES.has(edge.type)
-    ) {
-      const y =
-        typeof edge.meta?.message_y === "number"
-          ? edge.meta.message_y
-          : from.y + Math.min(from.height * 0.35, 120);
-      return { x1: cx1, y1: y, x2: cx2, y2: y };
+    if (this.diagram.diagram_type === "sequence" && edge) {
+      const yRaw = Number(edge.meta?.message_y);
+      if (Number.isFinite(yRaw)) {
+        return { x1: cx1, y1: yRaw, x2: cx2, y2: yRaw };
+      }
+      if (
+        SEQUENCE_MESSAGE_TYPES.has(edge.type) ||
+        (this._isSequenceParticipant(from) && this._isSequenceParticipant(to))
+      ) {
+        const fallback = from.y + 88;
+        return { x1: cx1, y1: fallback, x2: cx2, y2: fallback };
+      }
     }
     const cy1 = from.y + from.height / 2;
     const cy2 = to.y + to.height / 2;
@@ -1302,6 +1367,28 @@ export class DiagramCanvas {
       base.setAttribute("height", 8);
       base.setAttribute("fill", "#64748b");
       g.appendChild(base);
+      return;
+    }
+
+    if (type === "load_balancer") {
+      const el = document.createElementNS(ns, "polygon");
+      el.setAttribute(
+        "points",
+        `${w * 0.2},2 ${w * 0.8},2 ${w - 2},${h / 2} ${w * 0.8},${h - 2} ${w * 0.2},${h - 2} 2,${h / 2}`,
+      );
+      el.setAttribute("fill", "#ecfdf5");
+      el.setAttribute("stroke", "#059669");
+      el.setAttribute("stroke-width", "2");
+      g.appendChild(el);
+      const tag = document.createElementNS(ns, "text");
+      tag.setAttribute("x", w / 2);
+      tag.setAttribute("y", h / 2 + 4);
+      tag.setAttribute("text-anchor", "middle");
+      tag.setAttribute("class", "node-label");
+      tag.setAttribute("font-size", "11");
+      tag.setAttribute("font-weight", "700");
+      tag.textContent = "LB";
+      g.appendChild(tag);
       return;
     }
 

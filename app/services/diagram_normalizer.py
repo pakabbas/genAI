@@ -76,6 +76,12 @@ NODE_ALIASES: dict[str, str] = {
     "client": "client",
     "workstation": "workstation",
     "switch": "switch",
+    "load_balancer": "load_balancer",
+    "loadbalancer": "load_balancer",
+    "lb": "load_balancer",
+    "haproxy": "load_balancer",
+    "nlb": "load_balancer",
+    "alb": "load_balancer",
     "service": "process",
     "microservice": "process",
     "api": "process",
@@ -111,12 +117,22 @@ EDGE_ALIASES: dict[str, str] = {
     "connector": "connector",
     "arrow": "connector",
     "message": "message",
+    "sync": "message",
+    "sync_message": "message",
+    "call": "message",
     "async_message": "async_message",
+    "async": "async_message",
+    "asynchronous": "async_message",
     "return_message": "return_message",
+    "return": "return_message",
+    "reply": "return_message",
     "inheritance": "inheritance",
+    "realization": "realization",
+    "implements": "realization",
     "composition": "composition",
     "aggregation": "aggregation",
     "network_link": "network_link",
+    "ethernet": "network_link",
     "wireless": "wireless",
 }
 
@@ -196,7 +212,7 @@ def _resolve_node_type(raw: str, allowed: dict[str, str], fallback: str = "proce
     return allowed.get(fallback, fallback if fallback in allowed.values() else next(iter(allowed.values())))
 
 
-def _resolve_edge_type(raw: str, allowed: dict[str, str]) -> str:
+def _resolve_edge_type(raw: str, allowed: dict[str, str], diagram_type: DiagramType | None = None) -> str:
     key = _clean_key(raw)
     if key in allowed:
         return allowed[key]
@@ -204,6 +220,10 @@ def _resolve_edge_type(raw: str, allowed: dict[str, str]) -> str:
         mapped = EDGE_ALIASES[key]
         if mapped in allowed.values() or mapped in allowed:
             return allowed.get(mapped, mapped)
+    if diagram_type == "sequence":
+        # Never collapse sequence traffic onto a generic connector
+        if "message" in allowed or "message" in allowed.values():
+            return allowed.get("message", "message")
     default = "connector" if "connector" in allowed else "association" if "association" in allowed else "flow"
     return allowed.get(default, default)
 
@@ -216,7 +236,46 @@ def _sanitize_meta(meta: dict) -> dict:
         if isinstance(value, str) and ("<svg" in value.lower() or "data:image" in value.lower()):
             continue
         clean[key] = value
+    if "message_y" in clean:
+        try:
+            clean["message_y"] = float(clean["message_y"])
+        except (TypeError, ValueError):
+            clean.pop("message_y", None)
     return clean
+
+
+def _format_class_compartments(label: str, shape: str) -> str:
+    """Ensure class/interface/enum labels use name / -- / attrs / -- / methods."""
+    if shape not in {"class", "interface", "enum"}:
+        return label
+    text = (label or "").replace("\\n", "\n").strip()
+    if not text:
+        return "Interface" if shape == "interface" else "Class"
+    if re.search(r"\n-{2,}\n", text) or "\n--\n" in text:
+        return text
+
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+    if len(lines) <= 1:
+        chunks = [c.strip() for c in re.split(r"\s*\|\s*|\s*;\s*", text) if c.strip()]
+        if len(chunks) <= 1:
+            return text
+        name, rest = chunks[0], chunks[1:]
+    else:
+        name, rest = lines[0], lines[1:]
+
+    methods = [ln for ln in rest if "(" in ln or ln.startswith("+")]
+    attrs = [ln for ln in rest if ln not in methods]
+    parts = [name]
+    if attrs:
+        parts.append("--")
+        parts.extend(attrs)
+    if methods:
+        parts.append("--")
+        parts.extend(methods)
+    elif not attrs and rest:
+        parts.append("--")
+        parts.extend(rest)
+    return "\n".join(parts)
 
 
 def normalize_diagram(diagram_type: DiagramType, document: DiagramDocument) -> DiagramDocument:
@@ -244,6 +303,7 @@ def normalize_diagram(diagram_type: DiagramType, document: DiagramDocument) -> D
         label = (node.label or "").strip()
         if not label and shape == "text_box":
             label = "Label"
+        label = _format_class_compartments(label, shape)
 
         nodes.append(
             DiagramNode(
@@ -273,7 +333,7 @@ def normalize_diagram(diagram_type: DiagramType, document: DiagramDocument) -> D
                     "from": src,
                     "to": dst,
                     "label": (edge.label or "").strip(),
-                    "type": _resolve_edge_type(edge.type, allowed_edges),
+                    "type": _resolve_edge_type(edge.type, allowed_edges, diagram_type),
                     "meta": _sanitize_meta(edge.meta),
                 },
             )
