@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.3.5";
-import { DiagramCanvas } from "./canvas.js?v=2.3.5";
-import { normalizeDiagram } from "./normalize.js?v=2.3.5";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.3.6";
+import { DiagramCanvas } from "./canvas.js?v=2.3.6";
+import { normalizeDiagram } from "./normalize.js?v=2.3.6";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -30,7 +30,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.3.5";
   }
 
   const WELCOME_MESSAGE =
-    "Tell me what diagram you need. I’ll only ask if something important is unclear, then I’ll shape a clear brief for generation.";
+    "Tell me what diagram you need. Only ask if something important is unclear — then I'll shape a clear brief for your generation.";
 
   const state = {
     diagramType: "use_case",
@@ -381,8 +381,9 @@ import { normalizeDiagram } from "./normalize.js?v=2.3.5";
     for (const msg of state.chatMessages) {
       const bubble = document.createElement("div");
       bubble.className = `req-chat-bubble ${msg.role === "user" ? "is-user" : "is-assistant"}`;
-      const who = msg.role === "user" ? "You" : "Requirements Analyst";
+      const who = msg.role === "user" ? "You" : "Assistant";
       bubble.innerHTML = `<span class="req-chat-bubble-meta">${who}</span>${escapeHtml(msg.content)}`;
+      bubble.setAttribute("aria-label", who);
       els.reqChatMessages.appendChild(bubble);
     }
     els.reqChatMessages.scrollTop = els.reqChatMessages.scrollHeight;
@@ -415,7 +416,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.3.5";
       els.promptInput.value = "";
       updateCharCount();
     }
-    if (!quiet) showToast("Chat reset — describe your diagram.", "info");
+    if (!quiet) showToast("New chat started.", "info");
   }
 
   async function sendRequirementsMessage({ forceReady = false } = {}) {

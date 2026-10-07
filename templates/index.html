@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.3.5" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.3.6" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -137,39 +137,34 @@
       </div>
 
       <div class="sidebar-tab-panels">
-        <div class="tab-panel is-active" id="panelAi" role="tabpanel" aria-labelledby="tabAi">
-          <p class="block-subtitle tab-intro">Chat with the Requirements Analyst to clarify your brief, then Generator + QC deliver the diagram.</p>
-
-          <label class="field-label" for="diagramTypeSelect">Diagram type</label>
-          <select id="diagramTypeSelect" class="select-input select-input-tight" aria-label="Diagram type">
-            {% for key, label in diagram_types.items() %}
-            <option value="{{ key }}"{% if key == 'use_case' %} selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-
-          <div class="req-chat" id="reqChat">
-            <div class="req-chat-header">
-              <div>
-                <p class="field-label req-chat-title">Describe your diagram</p>
-                <p class="req-chat-sub">Agent 0 · Requirements Analyst</p>
-              </div>
-              <button type="button" class="btn btn-ghost btn-sm" id="resetChatBtn" title="Start a new brief">Reset</button>
+        <div class="tab-panel is-active chat-panel" id="panelAi" role="tabpanel" aria-labelledby="tabAi">
+          <div class="req-chat req-chat-shell" id="reqChat">
+            <div class="req-chat-toolbar">
+              <label class="req-chat-type-wrap" for="diagramTypeSelect">
+                <span class="visually-hidden">Diagram type</span>
+                <select id="diagramTypeSelect" class="select-input select-input-chat" aria-label="Diagram type">
+                  {% for key, label in diagram_types.items() %}
+                  <option value="{{ key }}"{% if key == 'use_case' %} selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <button type="button" class="btn btn-ghost btn-sm" id="resetChatBtn" title="New chat">New chat</button>
             </div>
             <div class="req-chat-messages" id="reqChatMessages" aria-live="polite"></div>
             <div class="req-ready-banner" id="reqReadyBanner" hidden>
               <p class="req-ready-title">Brief ready</p>
-              <p class="req-ready-text" id="reqReadyText">Enhanced prompt prepared for the Generator.</p>
+              <p class="req-ready-text" id="reqReadyText">Ready to generate on the canvas.</p>
             </div>
             <div class="req-chat-compose">
               <textarea
                 id="promptInput"
                 class="prompt-input req-chat-input"
-                rows="3"
-                placeholder="Describe what you need… e.g. Online library — members borrow books, librarian manages catalog"
+                rows="2"
+                placeholder='Describe what you need (e.g. "online library member, borrow book, librarian").'
               ></textarea>
               <div class="req-chat-compose-footer">
                 <span class="char-count" id="charCount">0 / 8000</span>
-                <button type="button" class="btn btn-secondary btn-sm" id="sendChatBtn">
+                <button type="button" class="btn btn-primary btn-sm btn-send-chat" id="sendChatBtn">
                   <span class="btn-label">Send</span>
                   <span class="btn-spinner" hidden aria-hidden="true"></span>
                 </button>
@@ -177,18 +172,20 @@
             </div>
           </div>
 
-          <div class="panel-actions">
+          <div class="panel-actions panel-actions-chat">
             <button type="button" class="btn btn-primary btn-generate" id="generateBtn" disabled title="Chat until the brief is ready, or use Proceed">
               <span class="btn-label">Generate with AI</span>
               <span class="btn-spinner" hidden aria-hidden="true"></span>
             </button>
-            <button type="button" class="btn btn-ghost btn-sm" id="forceReadyBtn" disabled title="Skip further questions and enhance with assumptions">
-              Proceed with what I have
-            </button>
-            <button type="button" class="btn btn-secondary" id="sampleBtn">Load sample diagram</button>
-            <button type="button" class="btn btn-ghost ai-log-btn" id="aiThinkingLogBtn" disabled title="Run a generation first">
-              AI thinking log
-            </button>
+            <div class="panel-actions-row">
+              <button type="button" class="btn btn-ghost btn-sm" id="forceReadyBtn" disabled title="Skip further questions and enhance with assumptions">
+                Proceed
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" id="sampleBtn">Sample</button>
+              <button type="button" class="btn btn-ghost btn-sm ai-log-btn" id="aiThinkingLogBtn" disabled title="Run a generation first">
+                Log
+              </button>
+            </div>
           </div>
           <div class="qc-recommendations" id="qcRecommendations" hidden>
             <p class="qc-recommendations-title">QC suggestions (optional)</p>
@@ -278,6 +275,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.3.5"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.3.6"></script>
 </body>
 </html>
