@@ -1,4 +1,4 @@
-import { defaultNodeSize } from "./diagram-types.js?v=2.3.3";
+import { defaultNodeSize } from "./diagram-types.js?v=2.3.4";
 
 const BACKGROUND = new Set(["system_boundary", "lane", "package", "fragment"]);
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
@@ -20,6 +20,10 @@ const SEQUENCE_EDGE_ALIASES = {
 };
 
 const NODE_ALIASES = {
+  actor: "actor",
+  user: "actor",
+  person: "actor",
+  stickfigure: "actor",
   database: "data_store",
   db: "data_store",
   load_balancer: "load_balancer",
@@ -29,6 +33,16 @@ const NODE_ALIASES = {
   api: "process",
   api_gateway: "process",
 };
+
+const HUMAN_PARTICIPANT =
+  /^(user|actor|customer|person|human|visitor|guest|member|admin|employee|student|patient|buyer|seller|operator|clerk|cashier|driver|rider|end[\s_-]?user|enduser)s?\b/i;
+
+function isHumanSequenceLabel(label) {
+  const text = String(label || "").trim();
+  if (!text) return false;
+  if (HUMAN_PARTICIPANT.test(text)) return true;
+  return ["user", "actor", "customer", "person", "admin"].includes(text.toLowerCase());
+}
 
 function sanitizeMeta(meta) {
   if (!meta || typeof meta !== "object") return {};
@@ -159,6 +173,7 @@ export function normalizeDiagram(diagram, toolboxItems = []) {
   const defaultNode = toolboxItems.find((i) => i.kind === "node")?.shape || "process";
   const defaultEdge = toolboxItems.find((i) => i.kind === "edge")?.shape || "connector";
   const isSequence = diagram.diagram_type === "sequence";
+  const actorAllowed = Boolean(nodesById.actor) || toolboxItems.some((i) => i.shape === "actor");
 
   const out = {
     diagram_type: diagram.diagram_type,
@@ -186,9 +201,22 @@ export function normalizeDiagram(diagram, toolboxItems = []) {
       type = nodesById[aliased] || aliased;
     }
 
-    const [dw, dh] = defaultNodeSize(type);
     let label = String(node.label || "").trim();
+
+    // Sequence: humans must stay type actor (stick figure), never lifeline/object box
+    if (isSequence && actorAllowed && (type === "lifeline" || type === "object") && isHumanSequenceLabel(label)) {
+      type = nodesById.actor || "actor";
+    }
+
+    const [dw, dh] = defaultNodeSize(type);
     label = formatClassLabel(label, type);
+
+    let width = Number(node.width) > 0 ? Number(node.width) : dw;
+    let height = Number(node.height) > 0 ? Number(node.height) : dh;
+    if (type === "actor") {
+      width = dw;
+      height = Math.max(dh, height);
+    }
 
     out.nodes.push({
       id,
@@ -196,8 +224,8 @@ export function normalizeDiagram(diagram, toolboxItems = []) {
       label,
       x: Number(node.x) || 40 + index * 24,
       y: Number(node.y) || 40 + index * 24,
-      width: Number(node.width) > 0 ? Number(node.width) : dw,
-      height: Number(node.height) > 0 ? Number(node.height) : dh,
+      width,
+      height,
       meta: sanitizeMeta(node.meta),
     });
   });

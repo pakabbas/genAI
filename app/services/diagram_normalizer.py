@@ -278,10 +278,29 @@ def _format_class_compartments(label: str, shape: str) -> str:
     return "\n".join(parts)
 
 
+_HUMAN_PARTICIPANT = re.compile(
+    r"^(user|actor|customer|person|human|visitor|guest|member|admin|employee|"
+    r"student|patient|buyer|seller|operator|clerk|cashier|driver|rider|"
+    r"end[\s_-]?user|enduser)s?\b",
+    re.I,
+)
+
+
+def _is_human_sequence_label(label: str) -> bool:
+    text = (label or "").strip()
+    if not text:
+        return False
+    if _HUMAN_PARTICIPANT.match(text):
+        return True
+    # Exact short names often used for the left-most participant
+    return text.lower() in {"user", "actor", "customer", "person", "admin"}
+
+
 def normalize_diagram(diagram_type: DiagramType, document: DiagramDocument) -> DiagramDocument:
     """Coerce AI output to toolbox shape ids with safe sizes and valid edges."""
     allowed_nodes, allowed_edges, sizes = _toolbox_maps(diagram_type)
     default_node = "process" if "process" in allowed_nodes else next(iter(allowed_nodes))
+    actor_allowed = "actor" in allowed_nodes
 
     nodes: list[DiagramNode] = []
     seen_ids: set[str] = set()
@@ -293,6 +312,17 @@ def normalize_diagram(diagram_type: DiagramType, document: DiagramDocument) -> D
         seen_ids.add(node_id)
 
         shape = _resolve_node_type(node.type, allowed_nodes, default_node)
+        label = (node.label or "").strip()
+
+        # Sequence: never draw humans as lifeline/object boxes — keep type actor
+        if (
+            diagram_type == "sequence"
+            and actor_allowed
+            and shape in {"lifeline", "object"}
+            and _is_human_sequence_label(label)
+        ):
+            shape = allowed_nodes.get("actor", "actor")
+
         width, height = sizes.get(shape, (node.width, node.height))
         if node.width <= 0 or node.height <= 0:
             node_width, node_height = width, height
@@ -300,7 +330,13 @@ def normalize_diagram(diagram_type: DiagramType, document: DiagramDocument) -> D
             node_width = max(width * 0.75, min(node.width, width * 2))
             node_height = max(height * 0.75, min(node.height, height * 2))
 
-        label = (node.label or "").strip()
+        # Actor stick figure is ~72 wide; keep that even if model sent a wide lifeline box
+        if shape == "actor":
+            aw, ah = sizes.get("actor", (72.0, 96.0))
+            node_width = float(aw)
+            # Keep tall height from model/layout for message span; visual legs stay fixed
+            node_height = max(float(ah), float(node_height))
+
         if not label and shape == "text_box":
             label = "Label"
         label = _format_class_compartments(label, shape)

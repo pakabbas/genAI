@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.3.3";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.3.4";
 
 const GRID = 20;
 const MIN_ZOOM = 0.25;
@@ -823,7 +823,9 @@ export class DiagramCanvas {
         node.type !== "class" &&
         node.type !== "interface" &&
         node.type !== "use_case" &&
-        node.type !== "actor"
+        node.type !== "actor" &&
+        node.type !== "lifeline" &&
+        node.type !== "object"
       ) {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("x", node.width / 2);
@@ -856,7 +858,8 @@ export class DiagramCanvas {
       } else if (["package", "fragment", "lifeline", "object", "cloud"].includes(node.type) && node.label) {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("x", node.width / 2);
-        label.setAttribute("y", node.type === "lifeline" ? 24 : 20);
+        // Fixed head box — never mid-lifeline (height/2) when layout stretches h
+        label.setAttribute("y", node.type === "lifeline" || node.type === "object" ? 24 : 20);
         label.setAttribute("text-anchor", "middle");
         label.setAttribute("class", "node-label");
         label.textContent = node.label;
@@ -936,9 +939,10 @@ export class DiagramCanvas {
       // Sequence layout may stretch node.height for hit-testing / message span,
       // but legs must never scale to h — draw a dashed lifeline below the feet instead.
       const cx = w / 2;
-      const figureH = 96;
       const hipY = 58;
       const footY = 88;
+      // Leave room for the name under the feet before the dashed lifeline
+      const lifeStartY = 112;
 
       const head = document.createElementNS(ns, "circle");
       head.setAttribute("cx", cx);
@@ -968,10 +972,10 @@ export class DiagramCanvas {
       legs.setAttribute("fill", "none");
       g.append(head, body, arms, legs);
 
-      if (h > figureH + 8) {
+      if (h > lifeStartY + 8) {
         const life = document.createElementNS(ns, "line");
         life.setAttribute("x1", cx);
-        life.setAttribute("y1", footY);
+        life.setAttribute("y1", lifeStartY);
         life.setAttribute("x2", cx);
         life.setAttribute("y2", h);
         life.setAttribute("stroke", "#64748b");

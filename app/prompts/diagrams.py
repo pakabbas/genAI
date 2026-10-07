@@ -131,8 +131,11 @@ DIAGRAM_TYPE_GUIDANCE: dict[DiagramType, str] = {
     "swim_lane": "BPMN-style swim lanes with tasks, gateways, start/end events, sequence flows.",
     "flowchart": "Standard flowchart symbols: terminators, processes, decisions, I/O, database.",
     "sequence": (
-        "UML sequence: lifelines top-to-bottom. Message edges MUST use types "
-        "message, async_message, or return_message only (never connector). "
+        "UML sequence: lifelines top-to-bottom. "
+        "Human participants (User, Customer, Actor, Person, Admin, etc.) MUST use node type "
+        "actor (stick figure) — never lifeline or object for humans. "
+        "Systems/services/APIs/DBs use type lifeline (or object). "
+        "Message edges MUST use types message, async_message, or return_message only (never connector). "
         "Put optional meta.message_y for vertical order; the pipeline also stacks them."
     ),
     "class_diagram": (
