@@ -1,6 +1,6 @@
 ## Deployment (GCP 3 + GitHub Actions)
 
-Production URL: **https://leadpilotai.spiralloopstechnologies.com/genai/**
+Production URL: **https://dd.spiralloopstechnologies.com/**
 
 The app runs as systemd service **`genai-leadpilot.service`** on port **8011**, proxied by nginx under `/genai/`.
 
