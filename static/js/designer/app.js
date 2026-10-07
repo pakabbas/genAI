@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.3.8";
-import { DiagramCanvas } from "./canvas.js?v=2.3.8";
-import { normalizeDiagram } from "./normalize.js?v=2.3.8";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.3.7";
+import { DiagramCanvas } from "./canvas.js?v=2.3.7";
+import { normalizeDiagram } from "./normalize.js?v=2.3.7";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -30,7 +30,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.3.8";
   }
 
   const WELCOME_MESSAGE =
-    "Tell me what diagram you need. Only ask if something important is unclear — then I'll shape a clear brief for your generation.";
+    "Tell me what diagram you need. I will ask questions if something important is unclear — then I'll shape a clear brief for your generation.";
 
   const state = {
     diagramType: "use_case",
@@ -398,10 +398,8 @@ import { normalizeDiagram } from "./normalize.js?v=2.3.8";
     }
     if (els.reqReadyText) {
       els.reqReadyText.textContent =
-        note ||
-        (ready
-          ? "Enhanced prompt prepared for the Generator. You can still refine in chat, then Generate."
-          : "");
+        note || (ready ? "You can generate the diagram on the canvas." : "");
+      els.reqReadyText.hidden = !ready || !els.reqReadyText.textContent;
     }
     updateActionButtons();
   }
@@ -478,9 +476,9 @@ import { normalizeDiagram } from "./normalize.js?v=2.3.8";
         const enhanced = (data.enhanced_prompt || "").trim();
         if (data.status === "ready" && enhanced) {
           const assumptionNote = data.assumptions?.length
-            ? ` Assumptions: ${data.assumptions.slice(0, 3).join("; ")}`
-            : "";
-          setBriefReady(true, enhanced, `Brief ready.${assumptionNote}`);
+            ? data.assumptions.slice(0, 2).join(" · ")
+            : "You can generate the diagram on the canvas.";
+          setBriefReady(true, enhanced, assumptionNote);
           showToast("Brief ready — click Generate with AI.", "success");
         } else {
           setBriefReady(false);

@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.3.8" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.3.9" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -152,8 +152,11 @@
             </div>
             <div class="req-chat-messages" id="reqChatMessages" aria-live="polite"></div>
             <div class="req-ready-banner" id="reqReadyBanner" hidden>
-              <p class="req-ready-title">Brief ready</p>
-              <p class="req-ready-text" id="reqReadyText">Ready to generate on the canvas.</p>
+              <span class="req-ready-dot" aria-hidden="true"></span>
+              <div class="req-ready-copy">
+                <p class="req-ready-title">Brief ready</p>
+                <p class="req-ready-text" id="reqReadyText"></p>
+              </div>
             </div>
             <div class="req-chat-compose">
               <textarea
@@ -277,6 +280,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.3.8"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.3.9"></script>
 </body>
 </html>

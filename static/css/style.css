@@ -574,6 +574,7 @@ input {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  overflow: hidden;
 }
 
 .req-chat-toolbar {
@@ -738,6 +739,10 @@ input {
   margin-top: 0;
   flex-shrink: 0;
   gap: 0.45rem;
+  position: relative;
+  z-index: 1;
+  background: var(--surface);
+  padding-top: 0.15rem;
 }
 
 .panel-actions-row {
@@ -747,30 +752,56 @@ input {
 }
 
 .req-ready-banner {
-  padding: 0.45rem 0.7rem;
-  border-radius: 999px;
-  border: 1px solid #86efac;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid #bbf7d0;
   background: #f0fdf4;
   flex-shrink: 0;
+  max-height: 4.5rem;
+  overflow: hidden;
 }
 
 .req-ready-banner[hidden] {
   display: none;
 }
 
+.req-ready-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 0.35rem;
+  border-radius: 50%;
+  background: #16a34a;
+  flex-shrink: 0;
+}
+
+.req-ready-copy {
+  min-width: 0;
+  flex: 1;
+}
+
 .req-ready-title {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 700;
   color: #166534;
-  letter-spacing: 0.02em;
 }
 
 .req-ready-text {
-  margin: 0.1rem 0 0;
+  margin: 0.15rem 0 0;
   font-size: 0.72rem;
-  color: #14532d;
+  color: #15803d;
   line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.req-ready-text[hidden] {
+  display: none;
 }
 
 .prompt-input:focus,
