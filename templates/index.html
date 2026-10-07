@@ -121,7 +121,7 @@
         <div class="canvas-loading" id="canvasLoading" hidden>
           <div class="loading-orbit" aria-hidden="true"></div>
           <p id="canvasLoadingTitle">Placing toolbox shapes…</p>
-          <span class="loading-sub" id="canvasLoadingSub">Generator → QC Auditor pipeline running…</span>
+          <span class="loading-sub" id="canvasLoadingSub">Requirements Analyst → Generator → QC Auditor…</span>
         </div>
       </div>
     </section>
@@ -134,7 +134,7 @@
 
       <div class="sidebar-tab-panels">
         <div class="tab-panel is-active" id="panelAi" role="tabpanel" aria-labelledby="tabAi">
-          <p class="block-subtitle tab-intro">Generator composes toolbox shapes; QC Auditor checks for missing modules or errors before delivery.</p>
+          <p class="block-subtitle tab-intro">Chat with the Requirements Analyst to clarify your brief, then Generator + QC deliver the diagram.</p>
 
           <label class="field-label" for="diagramTypeSelect">Diagram type</label>
           <select id="diagramTypeSelect" class="select-input select-input-tight" aria-label="Diagram type">
@@ -143,20 +143,43 @@
             {% endfor %}
           </select>
 
-          <label class="field-label" for="promptInput">Describe your diagram</label>
-          <textarea
-            id="promptInput"
-            class="prompt-input"
-            rows="8"
-            placeholder="Example: Online library — Member borrows books, Librarian manages catalog, Admin generates reports…"
-          ></textarea>
-          <div class="prompt-footer">
-            <span class="char-count" id="charCount">0 / 8000</span>
+          <div class="req-chat" id="reqChat">
+            <div class="req-chat-header">
+              <div>
+                <p class="field-label req-chat-title">Describe your diagram</p>
+                <p class="req-chat-sub">Agent 0 · Requirements Analyst</p>
+              </div>
+              <button type="button" class="btn btn-ghost btn-sm" id="resetChatBtn" title="Start a new brief">Reset</button>
+            </div>
+            <div class="req-chat-messages" id="reqChatMessages" aria-live="polite"></div>
+            <div class="req-ready-banner" id="reqReadyBanner" hidden>
+              <p class="req-ready-title">Brief ready</p>
+              <p class="req-ready-text" id="reqReadyText">Enhanced prompt prepared for the Generator.</p>
+            </div>
+            <div class="req-chat-compose">
+              <textarea
+                id="promptInput"
+                class="prompt-input req-chat-input"
+                rows="3"
+                placeholder="Describe what you need… e.g. Online library — members borrow books, librarian manages catalog"
+              ></textarea>
+              <div class="req-chat-compose-footer">
+                <span class="char-count" id="charCount">0 / 8000</span>
+                <button type="button" class="btn btn-secondary btn-sm" id="sendChatBtn">
+                  <span class="btn-label">Send</span>
+                  <span class="btn-spinner" hidden aria-hidden="true"></span>
+                </button>
+              </div>
+            </div>
           </div>
+
           <div class="panel-actions">
-            <button type="button" class="btn btn-primary btn-generate" id="generateBtn">
+            <button type="button" class="btn btn-primary btn-generate" id="generateBtn" disabled title="Chat until the brief is ready, or use Proceed">
               <span class="btn-label">Generate with AI</span>
               <span class="btn-spinner" hidden aria-hidden="true"></span>
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm" id="forceReadyBtn" disabled title="Skip further questions and enhance with assumptions">
+              Proceed with what I have
             </button>
             <button type="button" class="btn btn-secondary" id="sampleBtn">Load sample diagram</button>
             <button type="button" class="btn btn-ghost ai-log-btn" id="aiThinkingLogBtn" disabled title="Run a generation first">
@@ -243,7 +266,7 @@
       <header class="ai-thinking-header">
         <div>
           <h2 id="aiThinkingTitle">AI thinking log</h2>
-          <p class="ai-thinking-sub">Generator and QC Auditor communication for the last run.</p>
+          <p class="ai-thinking-sub">Requirements Analyst, Generator, and QC Auditor for the last run.</p>
         </div>
         <button type="button" class="btn btn-ghost btn-icon-only" id="closeAiThinkingBtn" aria-label="Close">✕</button>
       </header>

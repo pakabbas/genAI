@@ -1,4 +1,4 @@
-"""Two-agent diagram generation: Generator → QC Auditor (with optional one revision)."""
+"""Multi-agent diagram generation: Requirements Analyst → Generator → QC Auditor."""
 
 from __future__ import annotations
 
@@ -128,21 +128,42 @@ def generate_diagram_with_qc(
     user_prompt: str,
     existing: DiagramDocument | None = None,
     on_trace: TraceCallback | None = None,
+    *,
+    prompt_enhanced: bool = False,
+    original_prompt: str | None = None,
 ) -> GenerateDiagramResponse:
     trace: list[AgentTraceEntry] = []
     step = 1
     revision_applied = False
     all_recommendations: list[str] = []
+    generation_prompt = user_prompt
+    qc_prompt = original_prompt.strip() if original_prompt and original_prompt.strip() else user_prompt
 
     _append_trace(
         trace,
         step=step,
         agent="system",
         phase="start",
-        message="Starting two-agent generation pipeline (Generator → QC Auditor).",
+        message=(
+            "Starting three-agent pipeline (Requirements Analyst → Generator → QC Auditor)."
+            if prompt_enhanced
+            else "Starting generation pipeline (Generator → QC Auditor)."
+        ),
         on_entry=on_trace,
     )
     step += 1
+
+    if prompt_enhanced:
+        _append_trace(
+            trace,
+            step=step,
+            agent="requirements_analyst",
+            phase="brief_ready",
+            message="Requirements Analyst handed off an enhanced brief to the Generator.",
+            detail=generation_prompt[:2500],
+            on_entry=on_trace,
+        )
+        step += 1
 
     _append_trace(
         trace,
@@ -155,7 +176,7 @@ def generate_diagram_with_qc(
     )
     step += 1
 
-    diagram = _generate_diagram_document(diagram_type, user_prompt, existing)
+    diagram = _generate_diagram_document(diagram_type, generation_prompt, existing)
     diagram = normalize_diagram(diagram_type, diagram)
 
     _append_trace(
@@ -179,7 +200,7 @@ def generate_diagram_with_qc(
     )
     step += 1
 
-    audit = _run_qc_audit(diagram_type, user_prompt, diagram)
+    audit = _run_qc_audit(diagram_type, qc_prompt, diagram)
     all_recommendations.extend(audit.recommendations)
 
     _append_trace(
@@ -208,7 +229,7 @@ def generate_diagram_with_qc(
 
         revision_prompt = build_revision_prompt(
             diagram_type,
-            user_prompt,
+            generation_prompt,
             diagram,
             audit.blocking_issues,
         )
@@ -224,7 +245,7 @@ def generate_diagram_with_qc(
 
         diagram = _generate_diagram_document(
             diagram_type,
-            user_prompt,
+            generation_prompt,
             revision_context=revision_prompt,
         )
         diagram = normalize_diagram(diagram_type, diagram)
@@ -249,7 +270,7 @@ def generate_diagram_with_qc(
         )
         step += 1
 
-        audit = _run_qc_audit(diagram_type, user_prompt, diagram)
+        audit = _run_qc_audit(diagram_type, qc_prompt, diagram)
         for rec in audit.recommendations:
             if rec not in all_recommendations:
                 all_recommendations.append(rec)
@@ -287,6 +308,7 @@ def generate_diagram_with_qc(
         qc_approved=qc_approved,
         revision_applied=revision_applied,
         recommendations=all_recommendations[:8],
+        enhanced_prompt=generation_prompt if prompt_enhanced else None,
         trace=trace,
     )
 

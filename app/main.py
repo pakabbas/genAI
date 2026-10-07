@@ -15,7 +15,11 @@ from app.schemas.diagram import (
     GenerateDiagramRequest,
     ToolboxResponse,
 )
-from app.schemas.generation import GenerateDiagramResponse
+from app.schemas.generation import (
+    GenerateDiagramResponse,
+    RequirementsChatRequest,
+    RequirementsChatResponse,
+)
 from app.schemas.project import (
     CanvasExportV1,
     ProjectCreate,
@@ -26,6 +30,7 @@ from app.schemas.project import (
     ProjectUpdate,
 )
 from app.services.diagram_pipeline import generate_diagram_with_qc
+from app.services.requirements_analyst import run_requirements_turn
 from app.services import project_repository as projects
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -35,7 +40,7 @@ _root_path = str(_settings["app_root_path"])
 app = FastAPI(
     title="GenAI Diagram Studio",
     description="AI-powered diagram designer with project storage and canvas export API",
-    version="2.1.0",
+    version="2.2.0",
 )
 
 # Public read APIs for client canvas demos (no API key). CORS enabled for integration testing.
@@ -107,6 +112,26 @@ async def toolbox(diagram_type: DiagramType) -> ToolboxResponse:
     )
 
 
+@app.post("/api/requirements-chat", response_model=RequirementsChatResponse)
+async def requirements_chat_endpoint(
+    request: RequirementsChatRequest,
+) -> RequirementsChatResponse:
+    """Agent 0 — Requirements Analyst: clarify if needed, then enhance the prompt."""
+    try:
+        return run_requirements_turn(
+            request.diagram_type,
+            request.messages,
+            force_ready=request.force_ready,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Requirements chat failed: {exc}",
+        ) from exc
+
+
 @app.post("/api/generate-diagram", response_model=GenerateDiagramResponse)
 async def generate_diagram_endpoint(
     request: GenerateDiagramRequest,
@@ -116,6 +141,8 @@ async def generate_diagram_endpoint(
             request.diagram_type,
             request.prompt,
             request.existing,
+            prompt_enhanced=request.prompt_enhanced,
+            original_prompt=request.original_prompt,
         )
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

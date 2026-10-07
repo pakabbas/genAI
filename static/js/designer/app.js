@@ -9,10 +9,18 @@ import { normalizeDiagram } from "./normalize.js";
     return `${APP_ROOT}${path}`;
   }
 
+  const WELCOME_MESSAGE =
+    "Tell me what diagram you need. I’ll only ask if something important is unclear, then I’ll shape a clear brief for generation.";
+
   const state = {
     diagramType: "use_case",
     toolbox: [],
     lastPrompt: "",
+    originalPrompt: "",
+    enhancedPrompt: "",
+    briefReady: false,
+    chatMessages: [],
+    isChatting: false,
     isGenerating: false,
     isDirty: false,
     currentProjectId: null,
@@ -34,6 +42,12 @@ import { normalizeDiagram } from "./normalize.js";
     diagramTitle: document.getElementById("diagramTitle"),
     promptInput: document.getElementById("promptInput"),
     charCount: document.getElementById("charCount"),
+    sendChatBtn: document.getElementById("sendChatBtn"),
+    resetChatBtn: document.getElementById("resetChatBtn"),
+    forceReadyBtn: document.getElementById("forceReadyBtn"),
+    reqChatMessages: document.getElementById("reqChatMessages"),
+    reqReadyBanner: document.getElementById("reqReadyBanner"),
+    reqReadyText: document.getElementById("reqReadyText"),
     generateBtn: document.getElementById("generateBtn"),
     aiThinkingLogBtn: document.getElementById("aiThinkingLogBtn"),
     aiThinkingModal: document.getElementById("aiThinkingModal"),
@@ -272,20 +286,48 @@ import { normalizeDiagram } from "./normalize.js";
 
   function setGenerating(isGenerating, stageTitle = "Placing toolbox shapes…", stageSub = "") {
     state.isGenerating = isGenerating;
-    els.generateBtn.disabled = isGenerating;
+    updateActionButtons();
     els.generateBtn.classList.toggle("is-loading", isGenerating);
-    els.generateBtn.querySelector(".btn-spinner").hidden = !isGenerating;
+    const spinner = els.generateBtn.querySelector(".btn-spinner");
+    if (spinner) spinner.hidden = !isGenerating;
     els.canvasLoading.hidden = !isGenerating;
     els.canvasBadge.classList.toggle("is-loading", isGenerating);
     if (els.canvasLoadingTitle) els.canvasLoadingTitle.textContent = stageTitle;
     if (els.canvasLoadingSub) {
       els.canvasLoadingSub.textContent =
-        stageSub || "Generator composes shapes, then QC Auditor checks for missing modules or errors.";
+        stageSub || "Requirements Analyst → Generator → QC Auditor";
     }
+  }
+
+  function setChatting(isChatting) {
+    state.isChatting = isChatting;
+    updateActionButtons();
+    if (els.sendChatBtn) {
+      els.sendChatBtn.classList.toggle("is-loading", isChatting);
+      const spinner = els.sendChatBtn.querySelector(".btn-spinner");
+      if (spinner) spinner.hidden = !isChatting;
+    }
+  }
+
+  function updateActionButtons() {
+    const busy = state.isGenerating || state.isChatting;
+    if (els.sendChatBtn) els.sendChatBtn.disabled = busy;
+    if (els.forceReadyBtn) {
+      els.forceReadyBtn.disabled = busy || !state.chatMessages.some((m) => m.role === "user");
+    }
+    if (els.generateBtn) {
+      els.generateBtn.disabled = busy || !state.briefReady || !state.enhancedPrompt;
+      els.generateBtn.title = state.briefReady
+        ? "Generate diagram from the enhanced brief"
+        : "Chat until the brief is ready, or use Proceed";
+    }
+    if (els.promptInput) els.promptInput.disabled = busy;
+    if (els.resetChatBtn) els.resetChatBtn.disabled = busy;
   }
 
   function agentLabel(agent) {
     const map = {
+      requirements_analyst: "Requirements Analyst",
       generator: "Diagram Generator",
       qc_auditor: "QC Auditor",
       system: "Pipeline",
@@ -294,9 +336,114 @@ import { normalizeDiagram } from "./normalize.js";
   }
 
   function agentClass(agent) {
+    if (agent === "requirements_analyst") return "is-requirements";
     if (agent === "generator") return "is-generator";
     if (agent === "qc_auditor") return "is-qc";
     return "is-system";
+  }
+
+  function renderChatMessages() {
+    if (!els.reqChatMessages) return;
+    els.reqChatMessages.innerHTML = "";
+    for (const msg of state.chatMessages) {
+      const bubble = document.createElement("div");
+      bubble.className = `req-chat-bubble ${msg.role === "user" ? "is-user" : "is-assistant"}`;
+      const who = msg.role === "user" ? "You" : "Requirements Analyst";
+      bubble.innerHTML = `<span class="req-chat-bubble-meta">${who}</span>${escapeHtml(msg.content)}`;
+      els.reqChatMessages.appendChild(bubble);
+    }
+    els.reqChatMessages.scrollTop = els.reqChatMessages.scrollHeight;
+  }
+
+  function setBriefReady(ready, enhancedPrompt = "", note = "") {
+    state.briefReady = ready;
+    state.enhancedPrompt = ready ? (enhancedPrompt || "").trim() : "";
+    if (els.reqReadyBanner) els.reqReadyBanner.hidden = !ready;
+    if (els.reqReadyText) {
+      els.reqReadyText.textContent =
+        note ||
+        (ready
+          ? "Enhanced prompt prepared for the Generator. You can still refine in chat, then Generate."
+          : "");
+    }
+    updateActionButtons();
+  }
+
+  function resetRequirementsChat({ quiet = false } = {}) {
+    state.chatMessages = [{ role: "assistant", content: WELCOME_MESSAGE }];
+    state.originalPrompt = "";
+    state.lastPrompt = "";
+    setBriefReady(false);
+    renderChatMessages();
+    if (els.promptInput) {
+      els.promptInput.value = "";
+      updateCharCount();
+    }
+    if (!quiet) showToast("Chat reset — describe your diagram.", "info");
+  }
+
+  async function sendRequirementsMessage({ forceReady = false } = {}) {
+    const text = els.promptInput.value.trim();
+    if (!forceReady && text.length < 2) {
+      showToast("Type a short description first.", "error");
+      els.promptInput.focus();
+      return;
+    }
+    if (state.isChatting || state.isGenerating) return;
+
+    if (text) {
+      state.chatMessages.push({ role: "user", content: text });
+      if (!state.originalPrompt) state.originalPrompt = text;
+      else state.originalPrompt = `${state.originalPrompt}\n${text}`.slice(0, 8000);
+      els.promptInput.value = "";
+      updateCharCount();
+      renderChatMessages();
+    } else if (forceReady && !state.chatMessages.some((m) => m.role === "user")) {
+      showToast("Describe your diagram before proceeding.", "error");
+      return;
+    }
+
+    // Drop welcome-only turns from API history (keep user + real assistant replies)
+    const apiMessages = state.chatMessages.filter(
+      (m, idx) => !(idx === 0 && m.role === "assistant" && m.content === WELCOME_MESSAGE),
+    );
+
+    setChatting(true);
+    setBriefReady(false);
+    try {
+      const res = await fetch(withRoot("/api/requirements-chat"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          diagram_type: state.diagramType,
+          messages: apiMessages,
+          force_ready: forceReady,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(typeof data.detail === "string" ? data.detail : "Requirements chat failed.");
+      }
+
+      const reply = (data.assistant_message || "").trim() || "Got it.";
+      state.chatMessages.push({ role: "assistant", content: reply });
+      renderChatMessages();
+
+      if (data.status === "ready" && data.enhanced_prompt) {
+        const assumptionNote = data.assumptions?.length
+          ? ` Assumptions: ${data.assumptions.slice(0, 3).join("; ")}`
+          : "";
+        setBriefReady(true, data.enhanced_prompt, `Brief ready.${assumptionNote}`);
+        showToast("Brief ready — click Generate with AI.", "success");
+      } else {
+        setBriefReady(false);
+        showToast("Answer the Analyst’s question, then continue.", "info");
+      }
+    } catch (err) {
+      showToast(err.message || "Chat failed.", "error");
+    } finally {
+      setChatting(false);
+    }
   }
 
   function renderThinkingLog(trace) {
@@ -717,21 +864,27 @@ import { normalizeDiagram } from "./normalize.js";
   }
 
   async function generateDiagram() {
-    const prompt = els.promptInput.value.trim();
-    if (prompt.length < 3) {
-      showToast("Describe your diagram (at least 3 characters).", "error");
-      els.promptInput.focus();
+    if (!state.briefReady || !state.enhancedPrompt) {
+      showToast("Finish the Requirements chat first (or click Proceed).", "error");
+      els.promptInput?.focus();
       return;
     }
 
+    const prompt = state.enhancedPrompt.trim();
     state.lastPrompt = prompt;
-    setGenerating(true, "Generator drafting diagram…", "Step 1 of 2 — building toolbox shapes from your prompt.");
+    setGenerating(
+      true,
+      "Generator drafting diagram…",
+      "Enhanced brief → Generator → QC Auditor",
+    );
     if (els.aiThinkingLogBtn) els.aiThinkingLogBtn.disabled = true;
     showRecommendations([]);
 
     const payload = {
       prompt,
       diagram_type: state.diagramType,
+      prompt_enhanced: true,
+      original_prompt: state.originalPrompt || prompt,
     };
     if (state.isDirty && canvas.diagram.nodes.length) {
       payload.existing = canvas.getDiagram();
@@ -821,6 +974,7 @@ import { normalizeDiagram } from "./normalize.js";
 
   function onDiagramTypeChange(value) {
     selectDiagramType(value, { clearCanvasOnChange: canvas.diagram.nodes.length > 0 });
+    resetRequirementsChat({ quiet: true });
   }
 
   els.diagramTypeSelect?.addEventListener("change", () => {
@@ -831,7 +985,16 @@ import { normalizeDiagram } from "./normalize.js";
     onDiagramTypeChange(els.diagramTypeSelectLeft.value);
   });
 
-  els.promptInput.addEventListener("input", updateCharCount);
+  els.promptInput?.addEventListener("input", updateCharCount);
+  els.promptInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendRequirementsMessage();
+    }
+  });
+  els.sendChatBtn?.addEventListener("click", () => sendRequirementsMessage());
+  els.forceReadyBtn?.addEventListener("click", () => sendRequirementsMessage({ forceReady: true }));
+  els.resetChatBtn?.addEventListener("click", () => resetRequirementsChat());
   els.generateBtn.addEventListener("click", generateDiagram);
   els.aiThinkingLogBtn?.addEventListener("click", openThinkingLog);
   els.closeAiThinkingBtn?.addEventListener("click", closeThinkingLog);
@@ -930,6 +1093,7 @@ import { normalizeDiagram } from "./normalize.js";
   els.transferProjectBtn?.addEventListener("click", transferProject);
   els.copyCanvasExportBtn?.addEventListener("click", copyCanvasExport);
 
+  resetRequirementsChat({ quiet: true });
   updateCharCount();
   checkHealth();
   selectDiagramType("use_case");
