@@ -2,7 +2,9 @@
 
 Production URL: **https://dd.spiralloopstechnologies.com/**
 
-The app runs as systemd service **`genai-leadpilot.service`** on port **8011**, proxied by nginx under `/genai/`.
+> **Migration note:** GenAI has moved from `https://leadpilotai.spiralloopstechnologies.com/genai/` to the new root URL above. See [`DECOMMISSION.md`](./DECOMMISSION.md) for steps to remove the old `/genai` path from the leadpilotai host after cutover.
+
+The app runs as systemd service **`genai-leadpilot.service`** on port **8011**, proxied by nginx.
 
 ### Production server facts
 
