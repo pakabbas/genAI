@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.3.7";
-import { DiagramCanvas } from "./canvas.js?v=2.3.7";
-import { normalizeDiagram } from "./normalize.js?v=2.3.7";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.4.0";
+import { DiagramCanvas } from "./canvas.js?v=2.4.0";
+import { normalizeDiagram } from "./normalize.js?v=2.4.0";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -80,14 +80,19 @@ import { normalizeDiagram } from "./normalize.js?v=2.3.7";
     resetChatBtn: document.getElementById("resetChatBtn"),
     forceReadyBtn: document.getElementById("forceReadyBtn"),
     reqChatMessages: document.getElementById("reqChatMessages"),
-    reqReadyBanner: document.getElementById("reqReadyBanner"),
-    reqReadyText: document.getElementById("reqReadyText"),
+    viewBriefBtn: document.getElementById("viewBriefBtn"),
     generateBtn: document.getElementById("generateBtn"),
     aiThinkingLogBtn: document.getElementById("aiThinkingLogBtn"),
     aiThinkingModal: document.getElementById("aiThinkingModal"),
     aiThinkingBody: document.getElementById("aiThinkingBody"),
     aiThinkingBackdrop: document.getElementById("aiThinkingBackdrop"),
     closeAiThinkingBtn: document.getElementById("closeAiThinkingBtn"),
+    briefModal: document.getElementById("briefModal"),
+    briefBackdrop: document.getElementById("briefBackdrop"),
+    briefEditor: document.getElementById("briefEditor"),
+    closeBriefBtn: document.getElementById("closeBriefBtn"),
+    cancelBriefBtn: document.getElementById("cancelBriefBtn"),
+    saveBriefBtn: document.getElementById("saveBriefBtn"),
     qcRecommendations: document.getElementById("qcRecommendations"),
     qcRecommendationsList: document.getElementById("qcRecommendationsList"),
     canvasLoadingTitle: document.getElementById("canvasLoadingTitle"),
@@ -348,10 +353,13 @@ import { normalizeDiagram } from "./normalize.js?v=2.3.7";
     if (els.forceReadyBtn) {
       els.forceReadyBtn.disabled = busy || !state.chatMessages.some((m) => m.role === "user");
     }
+    if (els.viewBriefBtn) {
+      els.viewBriefBtn.disabled = busy || !state.briefReady || !state.enhancedPrompt;
+    }
     if (els.generateBtn) {
       els.generateBtn.disabled = busy || !state.briefReady || !state.enhancedPrompt;
       els.generateBtn.title = state.briefReady
-        ? "Generate diagram from the enhanced brief"
+        ? "Generate diagram from the brief"
         : "Chat until the brief is ready, or use Proceed";
     }
     if (els.promptInput) els.promptInput.disabled = busy;
@@ -389,19 +397,39 @@ import { normalizeDiagram } from "./normalize.js?v=2.3.7";
     els.reqChatMessages.scrollTop = els.reqChatMessages.scrollHeight;
   }
 
-  function setBriefReady(ready, enhancedPrompt = "", note = "") {
+  function setBriefReady(ready, enhancedPrompt = "") {
     state.briefReady = Boolean(ready);
     state.enhancedPrompt = ready ? String(enhancedPrompt || "").trim() : "";
-    if (els.reqReadyBanner) {
-      els.reqReadyBanner.hidden = !ready;
-      els.reqReadyBanner.toggleAttribute("hidden", !ready);
-    }
-    if (els.reqReadyText) {
-      els.reqReadyText.textContent =
-        note || (ready ? "You can generate the diagram on the canvas." : "");
-      els.reqReadyText.hidden = !ready || !els.reqReadyText.textContent;
-    }
+    if (!ready) closeBriefModal();
     updateActionButtons();
+  }
+
+  function openBriefModal() {
+    if (!state.briefReady || !state.enhancedPrompt) {
+      showToast("No brief yet — chat until it is ready, or click Proceed.", "info");
+      return;
+    }
+    if (els.briefEditor) els.briefEditor.value = state.enhancedPrompt;
+    if (els.briefModal) els.briefModal.hidden = false;
+    els.briefEditor?.focus();
+  }
+
+  function closeBriefModal() {
+    if (els.briefModal) els.briefModal.hidden = true;
+  }
+
+  function saveBriefFromModal() {
+    const next = (els.briefEditor?.value || "").trim();
+    if (next.length < 3) {
+      showToast("Brief is too short.", "error");
+      els.briefEditor?.focus();
+      return;
+    }
+    state.enhancedPrompt = next;
+    state.briefReady = true;
+    updateActionButtons();
+    closeBriefModal();
+    showToast("Brief saved.", "success");
   }
 
   function resetRequirementsChat({ quiet = false } = {}) {
@@ -475,11 +503,8 @@ import { normalizeDiagram } from "./normalize.js?v=2.3.7";
 
         const enhanced = (data.enhanced_prompt || "").trim();
         if (data.status === "ready" && enhanced) {
-          const assumptionNote = data.assumptions?.length
-            ? data.assumptions.slice(0, 2).join(" · ")
-            : "You can generate the diagram on the canvas.";
-          setBriefReady(true, enhanced, assumptionNote);
-          showToast("Brief ready — click Generate with AI.", "success");
+          setBriefReady(true, enhanced);
+          showToast("Brief ready — View Brief or Generate Now.", "success");
         } else {
           setBriefReady(false);
           showToast("Answer the Analyst’s question, then continue.", "info");
@@ -1121,6 +1146,11 @@ import { normalizeDiagram } from "./normalize.js?v=2.3.7";
   els.forceReadyBtn?.addEventListener("click", () => sendRequirementsMessage({ forceReady: true }));
   els.resetChatBtn?.addEventListener("click", () => resetRequirementsChat());
   els.generateBtn.addEventListener("click", generateDiagram);
+  els.viewBriefBtn?.addEventListener("click", openBriefModal);
+  els.closeBriefBtn?.addEventListener("click", closeBriefModal);
+  els.cancelBriefBtn?.addEventListener("click", closeBriefModal);
+  els.briefBackdrop?.addEventListener("click", closeBriefModal);
+  els.saveBriefBtn?.addEventListener("click", saveBriefFromModal);
   els.aiThinkingLogBtn?.addEventListener("click", openThinkingLog);
   els.closeAiThinkingBtn?.addEventListener("click", closeThinkingLog);
   els.aiThinkingBackdrop?.addEventListener("click", closeThinkingLog);
@@ -1175,6 +1205,18 @@ import { normalizeDiagram } from "./normalize.js?v=2.3.7";
   });
 
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (els.briefModal && !els.briefModal.hidden) {
+        e.preventDefault();
+        closeBriefModal();
+        return;
+      }
+      if (els.aiThinkingModal && !els.aiThinkingModal.hidden) {
+        e.preventDefault();
+        closeThinkingLog();
+        return;
+      }
+    }
     if (e.target.matches("input, textarea, select") && e.key !== "Escape") return;
     if (e.key === "F2") {
       const sel = canvas.getSelection();

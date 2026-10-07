@@ -270,7 +270,8 @@ input {
   flex: 1;
   min-height: 0;
   height: 100%;
-  gap: 0.65rem;
+  gap: 0.55rem;
+  overflow: hidden;
 }
 
 .tab-intro {
@@ -662,11 +663,14 @@ input {
   display: grid;
   gap: 0.4rem;
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;
   padding: 0.55rem;
   border: 1px solid var(--border);
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  margin-bottom: 0.15rem;
 }
 
 .req-chat-input {
@@ -740,9 +744,22 @@ input {
   flex-shrink: 0;
   gap: 0.45rem;
   position: relative;
-  z-index: 1;
+  z-index: 2;
   background: var(--surface);
-  padding-top: 0.15rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border);
+}
+
+.panel-actions-primary {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 0.4rem;
+}
+
+.panel-actions-primary .btn-generate {
+  min-height: 2.35rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.88rem;
 }
 
 .panel-actions-row {
@@ -751,57 +768,38 @@ input {
   gap: 0.4rem;
 }
 
-.req-ready-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.55rem 0.7rem;
-  border-radius: 12px;
-  border: 1px solid #bbf7d0;
-  background: #f0fdf4;
-  flex-shrink: 0;
-  max-height: 4.5rem;
-  overflow: hidden;
+.brief-modal-panel {
+  width: min(720px, 100%);
 }
 
-.req-ready-banner[hidden] {
-  display: none;
-}
-
-.req-ready-dot {
-  width: 8px;
-  height: 8px;
-  margin-top: 0.35rem;
-  border-radius: 50%;
-  background: #16a34a;
-  flex-shrink: 0;
-}
-
-.req-ready-copy {
-  min-width: 0;
+.brief-editor {
+  display: block;
+  width: 100%;
   flex: 1;
-}
-
-.req-ready-title {
+  min-height: 240px;
   margin: 0;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: #166534;
+  padding: 0.85rem 1rem;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text);
+  background: #fff;
 }
 
-.req-ready-text {
-  margin: 0.15rem 0 0;
-  font-size: 0.72rem;
-  color: #15803d;
-  line-height: 1.35;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.brief-editor:focus {
+  outline: none;
+  background: #f8fafc;
 }
 
-.req-ready-text[hidden] {
-  display: none;
+.brief-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
 }
 
 .prompt-input:focus,

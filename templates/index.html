@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.3.9" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.4.0" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -151,13 +151,6 @@
               <button type="button" class="btn btn-ghost btn-sm" id="resetChatBtn" title="New chat">New chat</button>
             </div>
             <div class="req-chat-messages" id="reqChatMessages" aria-live="polite"></div>
-            <div class="req-ready-banner" id="reqReadyBanner" hidden>
-              <span class="req-ready-dot" aria-hidden="true"></span>
-              <div class="req-ready-copy">
-                <p class="req-ready-title">Brief ready</p>
-                <p class="req-ready-text" id="reqReadyText"></p>
-              </div>
-            </div>
             <div class="req-chat-compose">
               <textarea
                 id="promptInput"
@@ -178,10 +171,15 @@
           </div>
 
           <div class="panel-actions panel-actions-chat">
-            <button type="button" class="btn btn-primary btn-generate" id="generateBtn" disabled title="Chat until the brief is ready, or use Proceed">
-              <span class="btn-label">Generate with AI</span>
-              <span class="btn-spinner" hidden aria-hidden="true"></span>
-            </button>
+            <div class="panel-actions-primary">
+              <button type="button" class="btn btn-secondary btn-sm" id="viewBriefBtn" disabled title="View and edit the generation brief">
+                View Brief
+              </button>
+              <button type="button" class="btn btn-primary btn-generate" id="generateBtn" disabled title="Chat until the brief is ready, or use Proceed">
+                <span class="btn-label">Generate Now</span>
+                <span class="btn-spinner" hidden aria-hidden="true"></span>
+              </button>
+            </div>
             <div class="panel-actions-row">
               <button type="button" class="btn btn-ghost btn-sm" id="forceReadyBtn" disabled title="Skip further questions and enhance with assumptions">
                 Proceed
@@ -280,6 +278,24 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.3.9"></script>
+  <div id="briefModal" class="ai-thinking-modal" hidden role="dialog" aria-modal="true" aria-labelledby="briefModalTitle">
+    <div class="ai-thinking-backdrop" id="briefBackdrop"></div>
+    <div class="ai-thinking-panel brief-modal-panel">
+      <header class="ai-thinking-header">
+        <div>
+          <h2 id="briefModalTitle">Generation brief</h2>
+          <p class="ai-thinking-sub">Edit the brief used by Generate Now. Your changes are saved for this chat.</p>
+        </div>
+        <button type="button" class="btn btn-ghost btn-icon-only" id="closeBriefBtn" aria-label="Close">✕</button>
+      </header>
+      <textarea id="briefEditor" class="brief-editor" rows="14" aria-label="Editable generation brief"></textarea>
+      <footer class="brief-modal-footer">
+        <button type="button" class="btn btn-ghost btn-sm" id="cancelBriefBtn">Close</button>
+        <button type="button" class="btn btn-primary btn-sm" id="saveBriefBtn">Save brief</button>
+      </footer>
+    </div>
+  </div>
+
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.4.0"></script>
 </body>
 </html>
