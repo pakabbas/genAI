@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.3.7";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.3.8";
 
 const GRID = 20;
 const MIN_ZOOM = 0.25;
