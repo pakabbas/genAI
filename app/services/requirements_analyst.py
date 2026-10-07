@@ -20,7 +20,7 @@ from app.schemas.generation import (
 from app.services.diagram_generator import _extract_json_object
 from app.services.prompt_guard import check_non_diagram_intent
 
-MAX_CLARIFICATION_ROUNDS = 2
+MAX_CLARIFICATION_ROUNDS = 3
 
 
 def _count_assistant_question_rounds(messages: list[ChatMessage]) -> int:
