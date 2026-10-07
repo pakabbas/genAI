@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.4.1";
-import { DiagramCanvas } from "./canvas.js?v=2.4.1";
-import { normalizeDiagram } from "./normalize.js?v=2.4.1";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.4.2";
+import { DiagramCanvas } from "./canvas.js?v=2.4.2";
+import { normalizeDiagram } from "./normalize.js?v=2.4.2";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -687,13 +687,17 @@ import { normalizeDiagram } from "./normalize.js?v=2.4.1";
       setActiveTool("select");
       const center = canvas.viewport.getBoundingClientRect();
       const world = canvas._screenToWorld(center.left + center.width / 2, center.top + center.height / 2);
-      canvas.addNode(item.shape, "", world.x - item.default_width / 2, world.y - item.default_height / 2);
+      const dw = Number(item.default_width) || 120;
+      const dh = Number(item.default_height) || 60;
+      canvas.addNode(item.shape, "", world.x - dw / 2, world.y - dh / 2);
       showToast(`Added ${item.label}`, "success");
     } else {
-      canvas.setMode("connect", item.shape);
+      const edgeType = item.shape || item.id;
+      canvas.setMode("connect", edgeType);
       setActiveTool("connect");
       els.connectHint.hidden = false;
       els.connectHint.textContent = `Connect: click source, then target (${item.label})`;
+      showToast(`Connect mode: ${item.label}`, "info");
     }
   }
 
@@ -729,7 +733,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.4.1";
       return;
     }
     for (const node of sel.nodes) {
-      canvas.addNode(node.type, node.label, node.x + 24, node.y + 24);
+      canvas.addNode(node.type, node.label, node.x + 40, node.y + 40, { exact: true });
     }
     showToast("Duplicated selection.", "success");
   }

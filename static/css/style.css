@@ -1057,6 +1057,10 @@ input {
   filter: drop-shadow(0 0 10px rgba(37, 99, 235, 0.35));
 }
 
+.diagram-node.is-connect-from {
+  filter: drop-shadow(0 0 12px rgba(16, 185, 129, 0.55));
+}
+
 .diagram-node.is-selected rect,
 .diagram-node.is-selected ellipse,
 .diagram-node.is-selected polygon,

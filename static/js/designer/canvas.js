@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.4.1";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.4.2";
 
 const GRID = 20;
 const MIN_ZOOM = 0.25;
@@ -277,15 +277,29 @@ export class DiagramCanvas {
     // and must not flip the dirty flag by themselves.
   }
 
-  addNode(type, label = "", x = 120, y = 120) {
+  addNode(type, label = "", x = 120, y = 120, opts = {}) {
     this._saveUndoPoint();
     const [w, h] = defaultNodeSize(type);
+    let nx = Math.round((Number.isFinite(x) ? x : 120) / GRID) * GRID;
+    let ny = Math.round((Number.isFinite(y) ? y : 120) / GRID) * GRID;
+    // Palette drops: nudge until the top-left does not sit on an existing node
+    if (!opts.exact) {
+      let guard = 0;
+      while (
+        guard < 40 &&
+        this.diagram.nodes.some((n) => Math.abs(n.x - nx) < 12 && Math.abs(n.y - ny) < 12)
+      ) {
+        nx += GRID * 2;
+        ny += GRID;
+        guard += 1;
+      }
+    }
     const node = {
       id: nextId("n", this.diagram.nodes),
       type,
       label: label || type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      x: Math.round(x / GRID) * GRID,
-      y: Math.round(y / GRID) * GRID,
+      x: nx,
+      y: ny,
       width: w,
       height: h,
       meta: {},
@@ -298,7 +312,9 @@ export class DiagramCanvas {
   }
 
   addEdge(fromId, toId, type = "connector", label = "") {
-    if (fromId === toId) return null;
+    if (!fromId || !toId || fromId === toId) return null;
+    if (!this.diagram.nodes.some((n) => n.id === fromId)) return null;
+    if (!this.diagram.nodes.some((n) => n.id === toId)) return null;
     this._saveUndoPoint();
     const exists = this.diagram.edges.some(
       (e) => e.from === fromId && e.to === toId && e.type === type,
@@ -309,14 +325,36 @@ export class DiagramCanvas {
       from: fromId,
       to: toId,
       label,
-      type,
+      type: type || "connector",
       meta: {},
     };
+    // Sequence messages need an initial Y so they draw immediately
+    if (
+      this.diagram.diagram_type === "sequence" &&
+      SEQUENCE_MESSAGE_TYPES.has(edge.type)
+    ) {
+      const prior = this.diagram.edges.filter((e) => SEQUENCE_MESSAGE_TYPES.has(e.type)).length;
+      edge.meta.message_y = 88 + prior * 52;
+    }
     this.diagram.edges.push(edge);
     this.selectOnly(edge.id);
     this.render();
     this.onChange(this.getDiagram());
     return edge;
+  }
+
+  /** Resolve click target — use attributes (SVG dataset is unreliable in some engines). */
+  _hitFromEvent(e) {
+    const el = e.target?.closest?.("[data-id]");
+    if (!el) return null;
+    const id = el.getAttribute("data-id");
+    if (!id) return null;
+    let kind = el.getAttribute("data-kind") || "";
+    if (!kind) {
+      if (this.diagram.nodes.some((n) => n.id === id)) kind = "node";
+      else if (this.diagram.edges.some((ed) => ed.id === id)) kind = "edge";
+    }
+    return { el, id, kind };
   }
 
   renameItem(id, label) {
@@ -491,27 +529,25 @@ export class DiagramCanvas {
   }
 
   _onContextMenu(e) {
-    const target = e.target.closest("[data-id]");
-    if (!target) return;
+    const hit = this._hitFromEvent(e);
+    if (!hit) return;
     e.preventDefault();
-    const id = target.dataset.id;
-    if (!this.selectedIds.has(id)) this.selectOnly(id);
+    if (!this.selectedIds.has(hit.id)) this.selectOnly(hit.id);
     this.onContextMenu({
-      id,
-      kind: target.dataset.kind,
+      id: hit.id,
+      kind: hit.kind,
       clientX: e.clientX,
       clientY: e.clientY,
     });
   }
 
   _onDoubleClick(e) {
-    const target = e.target.closest("[data-id]");
-    if (!target) return;
+    const hit = this._hitFromEvent(e);
+    if (!hit) return;
     e.preventDefault();
     e.stopPropagation();
-    const id = target.dataset.id;
-    this.selectOnly(id);
-    this.onRequestRename({ id, kind: target.dataset.kind });
+    this.selectOnly(hit.id);
+    this.onRequestRename({ id: hit.id, kind: hit.kind });
   }
 
   _onWheel(e) {
@@ -526,23 +562,31 @@ export class DiagramCanvas {
       return;
     }
 
-    const target = e.target.closest("[data-id]");
-    if (!target) {
+    const hit = this._hitFromEvent(e);
+    if (!hit) {
       if (this.mode === "select") this.clearSelection();
+      if (this.mode === "connect") {
+        this.connectFrom = null;
+        this.render();
+      }
       return;
     }
 
-    const id = target.dataset.id;
-    const kind = target.dataset.kind;
+    const { id, kind } = hit;
     const world = this._screenToWorld(e.clientX, e.clientY);
 
     if (this.mode === "connect") {
+      e.preventDefault();
+      e.stopPropagation();
       if (kind === "node") {
         if (!this.connectFrom) {
           this.connectFrom = id;
+          this.selectOnly(id);
+          this.render();
         } else if (this.connectFrom !== id) {
-          this.addEdge(this.connectFrom, id, this.pendingEdgeType);
+          const created = this.addEdge(this.connectFrom, id, this.pendingEdgeType || "connector");
           this.connectFrom = null;
+          if (!created) this.render();
         }
       }
       return;
@@ -550,10 +594,7 @@ export class DiagramCanvas {
 
     if (!e.shiftKey) {
       if (!this.selectedIds.has(id)) this.selectOnly(id);
-      else {
-        this.onSelectionChange(this.getSelection());
-        this.render();
-      }
+      else this.onSelectionChange(this.getSelection());
     } else {
       if (this.selectedIds.has(id)) this.selectedIds.delete(id);
       else this.selectedIds.add(id);
@@ -564,14 +605,15 @@ export class DiagramCanvas {
     if (kind === "node") {
       const node = this.diagram.nodes.find((n) => n.id === id);
       if (node) {
+        e.preventDefault();
         this._saveUndoPoint();
+        const selected = this.diagram.nodes.filter((n) => this.selectedIds.has(n.id));
         this.dragState = {
           id,
-          offsetX: world.x - node.x,
-          offsetY: world.y - node.y,
-          startPositions: this.diagram.nodes
-            .filter((n) => this.selectedIds.has(n.id))
-            .map((n) => ({ id: n.id, x: n.x, y: n.y })),
+          startWorldX: world.x,
+          startWorldY: world.y,
+          moved: false,
+          startPositions: selected.map((n) => ({ id: n.id, x: n.x, y: n.y })),
         };
       }
     }
@@ -587,12 +629,13 @@ export class DiagramCanvas {
 
     if (!this.dragState) return;
     const world = this._screenToWorld(e.clientX, e.clientY);
-    const node = this.diagram.nodes.find((n) => n.id === this.dragState.id);
-    if (!node) return;
+    const rawDx = world.x - this.dragState.startWorldX;
+    const rawDy = world.y - this.dragState.startWorldY;
+    const dx = Math.round(rawDx / GRID) * GRID;
+    const dy = Math.round(rawDy / GRID) * GRID;
+    if (dx === 0 && dy === 0 && !this.dragState.moved) return;
 
-    const dx = Math.round((world.x - this.dragState.offsetX - this.dragState.startPositions.find((p) => p.id === this.dragState.id).x) / GRID) * GRID;
-    const dy = Math.round((world.y - this.dragState.offsetY - this.dragState.startPositions.find((p) => p.id === this.dragState.id).y) / GRID) * GRID;
-
+    this.dragState.moved = true;
     for (const pos of this.dragState.startPositions) {
       const n = this.diagram.nodes.find((item) => item.id === pos.id);
       if (n) {
@@ -605,8 +648,10 @@ export class DiagramCanvas {
 
   _onMouseUp() {
     if (this.dragState) {
+      const moved = this.dragState.moved;
       this.dragState = null;
-      this.onChange(this.getDiagram());
+      if (moved) this.onChange(this.getDiagram());
+      else this.render();
     }
     this.panState = null;
   }
@@ -696,8 +741,8 @@ export class DiagramCanvas {
       if (!from || !to) continue;
 
       const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      g.dataset.id = edge.id;
-      g.dataset.kind = "edge";
+      g.setAttribute("data-id", edge.id);
+      g.setAttribute("data-kind", "edge");
       g.setAttribute("class", `diagram-edge${this.selectedIds.has(edge.id) ? " is-selected" : ""}`);
 
       // Draw-time sequence Y: do not depend on meta surviving normalize/export
@@ -901,11 +946,13 @@ export class DiagramCanvas {
 
     for (const node of sorted) {
       const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      g.dataset.id = node.id;
-      g.dataset.kind = "node";
+      g.setAttribute("data-id", node.id);
+      g.setAttribute("data-kind", "node");
       g.setAttribute(
         "class",
-        `diagram-node node-${node.type}${this.selectedIds.has(node.id) ? " is-selected" : ""}`,
+        `diagram-node node-${node.type}${this.selectedIds.has(node.id) ? " is-selected" : ""}${
+          this.connectFrom === node.id ? " is-connect-from" : ""
+        }`,
       );
       g.setAttribute("transform", `translate(${node.x}, ${node.y})`);
 
@@ -940,10 +987,10 @@ export class DiagramCanvas {
         label.textContent = node.label;
         g.appendChild(label);
       } else if (node.type === "actor" && node.label) {
-        // Keep label under the stick-figure head, not mid-lifeline
+        // Below feet (footY≈88), clear of legs; lifeline starts under the name
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("x", node.width / 2);
-        label.setAttribute("y", 102);
+        label.setAttribute("y", 124);
         label.setAttribute("text-anchor", "middle");
         label.setAttribute("class", "node-label");
         label.textContent = node.label;
@@ -1045,8 +1092,18 @@ export class DiagramCanvas {
       const cx = w / 2;
       const hipY = 58;
       const footY = 88;
-      // Leave room for the name under the feet before the dashed lifeline
-      const lifeStartY = 112;
+      // Name sits ~124; dashed lifeline starts under the label
+      const lifeStartY = 140;
+
+      // Invisible hit target so thin stick-figure strokes are easy to click/drag
+      const hit = document.createElementNS(ns, "rect");
+      hit.setAttribute("x", 0);
+      hit.setAttribute("y", 0);
+      hit.setAttribute("width", w);
+      hit.setAttribute("height", Math.min(h, 136));
+      hit.setAttribute("fill", "transparent");
+      hit.setAttribute("pointer-events", "all");
+      g.appendChild(hit);
 
       const head = document.createElementNS(ns, "circle");
       head.setAttribute("cx", cx);
