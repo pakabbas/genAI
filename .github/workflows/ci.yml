@@ -1,9 +1,9 @@
 name: CI
 
+# Pull requests only — avoids a second workflow on every push to main
+# (Deploy to GCP already runs on main and includes the same smoke checks).
 on:
   pull_request:
-    branches: [main]
-  push:
     branches: [main]
 
 jobs:

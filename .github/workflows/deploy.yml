@@ -14,7 +14,32 @@ env:
   SERVICE_NAME: genai-leadpilot.service
 
 jobs:
+  smoke:
+    name: Smoke checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Import app module
+        run: python -c "from app.main import app; assert app.title"
+
+      - name: Validate deploy scripts
+        run: |
+          bash -n deploy/deploy.sh
+          bash -n deploy/setup-server.sh
+
   deploy:
+    name: Deploy
+    needs: smoke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
