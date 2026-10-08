@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.5.0";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.5.1";
 
 const GRID = 20;
 const MIN_ZOOM = 0.25;
@@ -1004,7 +1004,7 @@ export class DiagramCanvas {
         label.textContent = node.label;
         g.appendChild(label);
       } else if (node.type === "use_case" && node.label) {
-        this._appendWrappedLabel(g, node.label, node.width / 2, node.height / 2, node.width - 16, node.height - 12, 11);
+        this._appendWrappedLabel(g, node.label, node.width / 2, node.height / 2, node.width - 16, node.height - 12, 9);
       } else if (node.type === "lane" || node.type === "pool") {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("x", 16);
@@ -1730,7 +1730,7 @@ export class DiagramCanvas {
       tag.setAttribute("y", h / 2 + 4);
       tag.setAttribute("text-anchor", "middle");
       tag.setAttribute("class", "node-label");
-      tag.setAttribute("font-size", "11");
+      tag.setAttribute("font-size", "9");
       tag.setAttribute("font-weight", "700");
       tag.textContent = "LB";
       g.appendChild(tag);
@@ -1748,7 +1748,7 @@ export class DiagramCanvas {
     g.appendChild(rect);
   }
 
-  _appendWrappedLabel(parent, text, cx, cy, maxWidth, maxHeight, fontSize = 12) {
+  _appendWrappedLabel(parent, text, cx, cy, maxWidth, maxHeight, fontSize = 9.5) {
     const lines = this._wrapLabelLines(String(text), maxWidth, fontSize, maxHeight);
     const lineHeight = fontSize + 2;
     const startY = cy - ((lines.length - 1) * lineHeight) / 2;
@@ -1835,16 +1835,17 @@ export class DiagramCanvas {
       tag.setAttribute("y", 14);
       tag.setAttribute("text-anchor", "middle");
       tag.setAttribute("class", "node-label");
-      tag.setAttribute("font-size", "10");
+      tag.setAttribute("font-size", "8");
       tag.textContent = "«interface»";
       g.appendChild(tag);
     }
 
     const name = document.createElementNS(ns, "text");
     name.setAttribute("x", node.width / 2);
-    name.setAttribute("y", node.type === "interface" ? 28 : 18);
+    name.setAttribute("y", node.type === "interface" ? 26 : 16);
     name.setAttribute("text-anchor", "middle");
     name.setAttribute("class", "node-label");
+    name.setAttribute("font-size", "10");
     name.setAttribute("font-weight", "600");
     const fallbackName =
       node.type === "interface"
@@ -1855,15 +1856,15 @@ export class DiagramCanvas {
     name.textContent = title || fallbackName;
     g.appendChild(name);
 
-    const lineHeight = 14;
-    const startY = node.type === "interface" ? 48 : 40;
+    const lineHeight = 12;
+    const startY = node.type === "interface" ? 44 : 36;
     const maxLines = Math.max(0, Math.floor((node.height - startY - 6) / lineHeight));
     if (bodyLines.length && maxLines > 0) {
       const text = document.createElementNS(ns, "text");
       text.setAttribute("x", 8);
       text.setAttribute("y", startY);
       text.setAttribute("class", "node-label");
-      text.setAttribute("font-size", "11");
+      text.setAttribute("font-size", "9");
       bodyLines.slice(0, maxLines).forEach((line, index) => {
         const tspan = document.createElementNS(ns, "tspan");
         tspan.setAttribute("x", 8);

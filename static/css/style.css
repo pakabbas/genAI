@@ -1155,7 +1155,7 @@ input {
 .boundary-label,
 .lane-label {
   font-family: var(--font);
-  font-size: 12px;
+  font-size: 9.5px;
   fill: #1e293b;
   pointer-events: none;
 }
