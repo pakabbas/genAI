@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.6.4" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.6.5" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -225,7 +225,10 @@
           <button type="button" class="btn btn-secondary" id="transferProjectBtn">Send to target project</button>
           <button type="button" class="btn btn-ghost btn-compact-wide" id="copyCanvasExportBtn">Copy export JSON</button>
           <a class="btn btn-secondary btn-compact-wide demo-api-link" id="openApiDemoLink" href="{{ root_path }}/demo" target="_blank" rel="noopener">View API demo (raw JSON)</a>
-          <p class="demo-api-note">Public read APIs — no API key. Share <code>/demo?project=…</code> with clients.</p>
+          <p class="demo-api-note">
+            Saved projects use <code>?project=…</code> in the URL — bookmark or refresh to reopen.
+            Public read APIs: share <code>/demo?project=…</code> with clients.
+          </p>
 
           <div class="settings-divider"></div>
 
@@ -462,6 +465,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.6.4"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.6.5"></script>
 </body>
 </html>

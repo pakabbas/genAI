@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.6.4";
-import { DiagramCanvas } from "./canvas.js?v=2.6.4";
-import { normalizeDiagram } from "./normalize.js?v=2.6.4";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.6.5";
+import { DiagramCanvas } from "./canvas.js?v=2.6.5";
+import { normalizeDiagram } from "./normalize.js?v=2.6.5";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -895,6 +895,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.4";
         setProjectStatus("Database offline — save disabled");
       } else {
         await refreshProjectList();
+        await restoreProjectFromUrl({ quiet: true });
       }
     } catch {
       els.apiStatus.classList.add("is-error");
@@ -912,6 +913,36 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.4";
       ? `${withRoot("/demo")}?project=${encodeURIComponent(projectId)}`
       : withRoot("/demo");
     els.openApiDemoLink.href = demoPath;
+  }
+
+  function getProjectIdFromUrl() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const id = (params.get("project") || "").trim();
+      return id || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function setProjectUrl(projectId, { push = false } = {}) {
+    try {
+      const url = new URL(window.location.href);
+      if (projectId) url.searchParams.set("project", projectId);
+      else url.searchParams.delete("project");
+      const next = `${url.pathname}${url.search}${url.hash}`;
+      if (push) window.history.pushState({ projectId: projectId || null }, "", next);
+      else window.history.replaceState({ projectId: projectId || null }, "", next);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function designerProjectUrl(projectId) {
+    if (!projectId) return window.location.pathname;
+    const url = new URL(window.location.href);
+    url.searchParams.set("project", projectId);
+    return `${url.pathname}?project=${encodeURIComponent(projectId)}`;
   }
 
   function buildDiagramPayload() {
@@ -953,8 +984,8 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.4";
     }
   }
 
-  async function loadProject(projectId) {
-    if (!projectId) return;
+  async function loadProject(projectId, { quiet = false, syncUrl = true } = {}) {
+    if (!projectId) return false;
     try {
       const res = await fetch(withRoot(`/api/projects/${projectId}`));
       const data = await res.json();
@@ -973,10 +1004,28 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.4";
       clearDirty();
       setProjectStatus(`Saved · ${data.id.slice(0, 8)}…`);
       updateApiDemoLink(data.id);
+      if (syncUrl) setProjectUrl(data.id);
       await refreshProjectList();
-      showToast(`Opened project “${data.name}”.`, "success");
+      if (els.projectSelect) els.projectSelect.value = data.id;
+      if (!quiet) showToast(`Opened project “${data.name}”.`, "success");
+      return true;
     } catch (err) {
       showToast(err.message, "error");
+      return false;
+    }
+  }
+
+  async function restoreProjectFromUrl({ quiet = false } = {}) {
+    const projectId = getProjectIdFromUrl();
+    if (!projectId) return;
+    if (!state.dbConnected) {
+      showToast("Cannot open project from URL — database offline.", "error");
+      return;
+    }
+    const ok = await loadProject(projectId, { quiet, syncUrl: true });
+    if (!ok) {
+      // Invalid / missing id — drop it from the address bar
+      setProjectUrl(null);
     }
   }
 
@@ -988,6 +1037,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.4";
     clearCanvas();
     setProjectStatus("Not saved yet");
     updateApiDemoLink(null);
+    setProjectUrl(null);
     showToast("New project — edit and click Save.", "success");
   }
 
@@ -1035,10 +1085,10 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.4";
       clearDirty();
       setProjectStatus(`Saved · ${data.id.slice(0, 8)}…`);
       updateApiDemoLink(data.id);
+      setProjectUrl(data.id);
       await refreshProjectList();
       els.projectSelect.value = data.id;
-      const demoUrl = `${withRoot("/demo")}?project=${encodeURIComponent(data.id)}`;
-      showToast(`Project saved. Share demo: ${demoUrl}`, "success");
+      showToast(`Project saved. Bookmark ${designerProjectUrl(data.id)}`, "success");
     } catch (err) {
       showToast(err.message, "error");
     }
@@ -1433,12 +1483,19 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.4";
 
   els.projectSelect?.addEventListener("change", () => {
     if (els.projectSelect.value) loadProject(els.projectSelect.value);
+    else newProject();
   });
   els.newProjectBtn?.addEventListener("click", newProject);
   els.saveProjectBtn?.addEventListener("click", saveProject);
   els.deleteProjectBtn?.addEventListener("click", deleteCurrentProject);
   els.transferProjectBtn?.addEventListener("click", transferProject);
   els.copyCanvasExportBtn?.addEventListener("click", copyCanvasExport);
+
+  window.addEventListener("popstate", () => {
+    const id = getProjectIdFromUrl();
+    if (id) loadProject(id, { quiet: true, syncUrl: false });
+    else if (state.currentProjectId) newProject();
+  });
 
   resetRequirementsChat({ quiet: true });
   updateCharCount();
