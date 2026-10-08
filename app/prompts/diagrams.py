@@ -45,8 +45,8 @@ TOOLBOX: dict[DiagramType, list[ToolboxItem]] = {
         ToolboxItem(id="identifying", label="Identifying", kind="edge", shape="identifying"),
     ],
     "swim_lane": [
-        ToolboxItem(id="pool", label="Pool", kind="node", shape="pool", default_width=960, default_height=480),
-        ToolboxItem(id="lane", label="Swim Lane", kind="node", shape="lane", default_width=920, default_height=150),
+        ToolboxItem(id="pool", label="Pool", kind="node", shape="pool", default_width=1680, default_height=780),
+        ToolboxItem(id="lane", label="Swim Lane", kind="node", shape="lane", default_width=1580, default_height=180),
         ToolboxItem(id="start", label="Start Event", kind="node", shape="start", default_width=48, default_height=48),
         ToolboxItem(id="end", label="End Event", kind="node", shape="end", default_width=48, default_height=48),
         ToolboxItem(id="process", label="Task / Process", kind="node", shape="process", default_width=140, default_height=64),
@@ -149,14 +149,19 @@ DIAGRAM_TYPE_GUIDANCE: dict[DiagramType, str] = {
         "(Yes/No or Accepted/Rejected). Do not replace a decision with a plain task.\n"
         "- Keep activities in the correct lane for the actor who performs them.\n"
         "- Sequence flow = flow (solid filled arrow); message flow = message_flow (dashed open arrow).\n"
-        "- Layout: lanes stacked vertically; flow left→right within/across lanes; fit x:40–900, y:40–700."
+        "- Layout (generous spacing — avoid cramped diagrams):\n"
+        "  · Pool ≈ 1600–2000 wide; each lane ≥ 170 tall with 24px vertical padding inside.\n"
+        "  · Place tasks left→right with ≥ 80px horizontal gap between shapes.\n"
+        "  · Leave ≥ 120px free margin on the right of the rightmost task (room for future shapes).\n"
+        "  · World coords may span x:40–2100 and y:40–1400; pan/zoom is fine — do NOT pack tightly."
     ),
     "flowchart": (
         "Flowchart completeness rules (strict):\n"
         "- Start/end terminators required.\n"
         "- Every stated step = its own process (do not merge distinct steps).\n"
         "- Every conditional = decision diamond with ≥2 labeled branches.\n"
-        "- Preserve prompt order; do not invent extra business rules."
+        "- Preserve prompt order; do not invent extra business rules.\n"
+        "- Layout: ≥ 70px gaps between shapes; may use x:40–1600, y:40–1200 — do not cram."
     ),
     "sequence": (
         "UML sequence: lifelines top-to-bottom. "
@@ -208,14 +213,17 @@ JSON schema:
 
 Layout rules:
 1. Use unique ids (n1, n2, e1…).
-2. Place ALL nodes within x: 40–900 and y: 40–720 so the full diagram fits one screen.
-3. Include every major entity/activity/decision the user asked for — do not stop after partial output.
-4. Edges must reference existing node ids; connect attributes to entities and relationships to entities.
-5. Put containers (system_boundary, lane, package, fragment, pool) behind content with larger width/height.
-6. Labels concise and professional, but keep the meaning of each required step.
-7. For class/interface/enum labels use name then '\\n--\\n' then attributes then '\\n--\\n' then methods.
-8. For sequence diagrams only use edge types message / async_message / return_message.
-9. For swim_lane / flowchart: decision gateways need ≥2 labeled outgoing edges; failed paths reach an End."""
+2. Prefer a SPACIOUS layout. Typical world bounds: x 40–2000, y 40–1400.
+   The viewer pans/zooms — NEVER compress a complex diagram into a tiny 800×600 box.
+3. Keep ≥ 70–100px clear space between neighboring shapes; leave empty margin for future edits.
+4. Include every major entity/activity/decision the user asked for — do not stop after partial output.
+5. Edges must reference existing node ids; connect attributes to entities and relationships to entities.
+6. Put containers (system_boundary, lane, package, fragment, pool) behind content with larger width/height
+   that fully enclose their children plus padding.
+7. Labels concise and professional, but keep the meaning of each required step.
+8. For class/interface/enum labels use name then '\\n--\\n' then attributes then '\\n--\\n' then methods.
+9. For sequence diagrams only use edge types message / async_message / return_message.
+10. For swim_lane / flowchart: decision gateways need ≥2 labeled outgoing edges; failed paths reach an End."""
 
 
 def toolbox_catalog(diagram_type: DiagramType) -> str:

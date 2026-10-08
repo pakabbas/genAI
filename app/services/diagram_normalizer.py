@@ -8,6 +8,7 @@ from app.prompts.diagrams import TOOLBOX
 from app.schemas.diagram import DiagramDocument, DiagramEdge, DiagramNode, DiagramType
 
 BACKGROUND_SHAPES = frozenset({"system_boundary", "lane", "package", "frame", "pool"})
+CONTAINER_SHAPES = frozenset({"pool", "lane", "system_boundary", "package", "fragment"})
 
 NODE_ALIASES: dict[str, str] = {
     "actor": "actor",
@@ -418,11 +419,17 @@ def normalize_diagram(diagram_type: DiagramType, document: DiagramDocument) -> D
             shape = allowed_nodes.get("gateway_and", "gateway_and")
 
         width, height = sizes.get(shape, (node.width, node.height))
-        if node.width <= 0 or node.height <= 0:
+        if shape in CONTAINER_SHAPES:
+            # Pools/lanes/boundaries must be allowed to grow large for spacious layouts
+            node_width = float(node.width) if node.width > 0 else float(width)
+            node_height = float(node.height) if node.height > 0 else float(height)
+            node_width = max(float(width) * 0.8, min(node_width, 4200.0))
+            node_height = max(float(height) * 0.8, min(node_height, 3200.0))
+        elif node.width <= 0 or node.height <= 0:
             node_width, node_height = width, height
         else:
-            node_width = max(width * 0.75, min(node.width, width * 2))
-            node_height = max(height * 0.75, min(node.height, height * 2))
+            node_width = max(width * 0.75, min(node.width, width * 2.5))
+            node_height = max(height * 0.75, min(node.height, height * 2.5))
 
         # Actor stick figure is ~72 wide; keep that even if model sent a wide lifeline box
         if shape == "actor":
@@ -481,4 +488,145 @@ def normalize_diagram(diagram_type: DiagramType, document: DiagramDocument) -> D
     )
     if diagram_type == "sequence":
         result = _layout_sequence_messages(result)
+    if diagram_type == "swim_lane":
+        result = _layout_swim_lane(result)
+    elif diagram_type == "flowchart":
+        result = _layout_flowchart_space(result)
     return result
+
+
+def _layout_swim_lane(document: DiagramDocument) -> DiagramDocument:
+    """
+    Expand cramped swimlane diagrams: stack lanes with headroom, spread tasks
+    left→right with gaps, grow pool/lanes, and leave right-side margin for edits.
+    """
+    nodes = [n.model_copy(deep=True) for n in document.nodes]
+    if not nodes:
+        return document
+
+    pools = [n for n in nodes if n.type == "pool"]
+    lanes = sorted([n for n in nodes if n.type == "lane"], key=lambda n: n.y)
+    content = [n for n in nodes if n.type not in {"pool", "lane"}]
+    if not lanes:
+        return document
+
+    min_lane_h = 180.0
+    lane_pad_x = 48.0  # left label band + padding
+    lane_pad_y = 28.0
+    gap_x = 90.0
+    gap_y_between_lanes = 16.0
+    right_margin = 160.0  # free space for future shapes
+    pool_pad = 28.0
+    origin_x = 40.0
+    origin_y = 40.0
+
+    # Assign each content node to the nearest lane by vertical center
+    def lane_for(node: DiagramNode) -> DiagramNode:
+        cy = node.y + node.height / 2
+        best = lanes[0]
+        best_dist = abs((best.y + best.height / 2) - cy)
+        for lane in lanes[1:]:
+            dist = abs((lane.y + lane.height / 2) - cy)
+            if dist < best_dist:
+                best = lane
+                best_dist = dist
+        return best
+
+    by_lane: dict[str, list[DiagramNode]] = {lane.id: [] for lane in lanes}
+    for node in content:
+        by_lane[lane_for(node).id].append(node)
+
+    # Horizontal spread + vertical centering within each lane band (computed next)
+    # First pass: determine required width from densest lane
+    required_inner_w = 400.0
+    for lane in lanes:
+        members = sorted(by_lane[lane.id], key=lambda n: (n.x, n.id))
+        if not members:
+            continue
+        span = sum(m.width for m in members) + gap_x * max(0, len(members) - 1)
+        required_inner_w = max(required_inner_w, span)
+
+    lane_w = max(1580.0, lane_pad_x + required_inner_w + right_margin)
+    # Cap insane widths but allow large processes
+    lane_w = min(lane_w, 3600.0)
+
+    cursor_y = origin_y + (pool_pad if pools else 0.0)
+    for lane in lanes:
+        members = sorted(by_lane[lane.id], key=lambda n: (n.x, n.id))
+        content_h = max((m.height for m in members), default=64.0)
+        lane_h = max(min_lane_h, content_h + lane_pad_y * 2 + 24.0)
+
+        lane.x = origin_x + (pool_pad if pools else 0.0)
+        lane.y = cursor_y
+        lane.width = lane_w
+        lane.height = lane_h
+
+        # Place members left→right with gaps, vertically centered in lane
+        x = lane.x + lane_pad_x
+        mid_y = lane.y + lane_h / 2
+        for member in members:
+            member.x = x
+            member.y = mid_y - member.height / 2
+            x += member.width + gap_x
+
+        cursor_y += lane_h + gap_y_between_lanes
+
+    # Grow / reposition pool to enclose all lanes with padding + extra room
+    if pools:
+        pool = pools[0]
+        top = min(l.y for l in lanes) - pool_pad
+        left = min(l.x for l in lanes) - pool_pad
+        bottom = max(l.y + l.height for l in lanes) + pool_pad
+        right = max(l.x + l.width for l in lanes) + pool_pad
+        pool.x = max(20.0, left)
+        pool.y = max(20.0, top)
+        pool.width = max(1680.0, right - pool.x)
+        pool.height = max(780.0, bottom - pool.y)
+
+    # Reassemble preserving background-first sort
+    rebuilt = [n for n in nodes if n.type == "pool"] + lanes + content
+    rebuilt.sort(key=lambda n: (0 if n.type in BACKGROUND_SHAPES else 1, n.y, n.x))
+    return DiagramDocument(
+        diagram_type=document.diagram_type,
+        title=document.title,
+        nodes=rebuilt,
+        edges=document.edges,
+    )
+
+
+def _layout_flowchart_space(document: DiagramDocument) -> DiagramDocument:
+    """Light de-crowd for flowcharts: push overlapping nodes apart on a grid."""
+    nodes = [n.model_copy(deep=True) for n in document.nodes]
+    if len(nodes) < 2:
+        return document
+
+    min_gap = 70.0
+    # Sort and nudge overlaps iteratively
+    for _ in range(4):
+        moved = False
+        ordered = sorted(nodes, key=lambda n: (n.y, n.x))
+        for i, a in enumerate(ordered):
+            for b in ordered[i + 1 :]:
+                if b.y > a.y + a.height + min_gap:
+                    break
+                overlap_x = min(a.x + a.width, b.x + b.width) - max(a.x, b.x)
+                overlap_y = min(a.y + a.height, b.y + b.height) - max(a.y, b.y)
+                if overlap_x > 0 and overlap_y > 0:
+                    # Push b right or down, whichever needs less travel
+                    push_right = overlap_x + min_gap
+                    push_down = overlap_y + min_gap
+                    if push_right <= push_down:
+                        b.x += push_right
+                    else:
+                        b.y += push_down
+                    moved = True
+        if not moved:
+            break
+
+    nodes.sort(key=lambda n: (0 if n.type in BACKGROUND_SHAPES else 1, n.y, n.x))
+    return DiagramDocument(
+        diagram_type=document.diagram_type,
+        title=document.title,
+        nodes=nodes,
+        edges=document.edges,
+    )
