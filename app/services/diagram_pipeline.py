@@ -29,13 +29,14 @@ from app.services.process_coverage import (
     coverage_revision_issues,
     extract_process_model,
     process_model_brief,
+    repair_merged_process_nodes,
     validate_process_coverage,
 )
 from app.services.prompt_guard import reject_if_non_diagram
 
 TraceCallback = Callable[[AgentTraceEntry], None]
 
-MAX_REVISION_ROUNDS = 2
+MAX_REVISION_ROUNDS = 3
 
 
 def _client_and_model():
@@ -107,7 +108,7 @@ def _generate_diagram_document(
     raw = _call_json_model(
         system_instruction=DIAGRAM_SYSTEM_INSTRUCTION,
         user_content=user_content,
-        temperature=0.55,
+        temperature=0.4 if revision_context else 0.55,
     )
     return _parse_diagram_json(raw, diagram_type)
 
@@ -264,6 +265,9 @@ def generate_diagram_with_qc(
         process_inventory=process_inventory,
     )
     diagram = normalize_diagram(diagram_type, diagram)
+    if process_model is not None:
+        diagram = repair_merged_process_nodes(diagram, process_model)
+        diagram = normalize_diagram(diagram_type, diagram)
 
     _append_trace(
         trace,
@@ -369,6 +373,9 @@ def generate_diagram_with_qc(
             process_inventory=process_inventory,
         )
         diagram = normalize_diagram(diagram_type, diagram)
+        if process_model is not None:
+            diagram = repair_merged_process_nodes(diagram, process_model)
+            diagram = normalize_diagram(diagram_type, diagram)
 
         _append_trace(
             trace,

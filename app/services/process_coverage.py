@@ -9,7 +9,7 @@ from difflib import SequenceMatcher
 from google.genai import types
 
 from app.prompts.process_plan import PROCESS_PLAN_SYSTEM, build_process_plan_prompt
-from app.schemas.diagram import DiagramDocument, DiagramType
+from app.schemas.diagram import DiagramDocument, DiagramEdge, DiagramNode, DiagramType
 from app.schemas.process_model import ProcessBranch, ProcessElement, ProcessModel
 from app.services.diagram_generator import _extract_json_object
 
@@ -331,12 +331,28 @@ def validate_process_coverage(
         gaps.append("Missing End event")
 
     activity_labels = _activity_labels(diagram)
-    all_labels = _node_labels(diagram)
+    # Exclusive assignment: one diagram task cannot satisfy two inventory activities.
+    claimed: set[int] = set()
     for el in process_model.activities():
-        pool = activity_labels or all_labels
-        if not any(_label_match(el.label, cand) for cand in pool):
+        best_i = None
+        best_score = 0.0
+        for i, cand in enumerate(activity_labels):
+            if i in claimed:
+                continue
+            if _label_match(el.label, cand):
+                score = SequenceMatcher(None, _norm(el.label), _norm(cand)).ratio()
+                if score > best_score:
+                    best_score = score
+                    best_i = i
+        if best_i is None:
             where = f" (lane: {el.lane})" if el.lane else ""
             gaps.append(f"Missing activity{where}: '{el.label}'")
+        else:
+            claimed.add(best_i)
+
+    # Merged multi-action tasks (e.g. "pick up and deliver") are also gaps when inventory
+    # expects separate activities with distinct verb stems present in one label.
+    gaps.extend(_merged_activity_gaps(process_model, diagram))
 
     decision_labels = _decision_labels(diagram)
     for el in process_model.decisions():
@@ -387,3 +403,140 @@ def coverage_revision_issues(gaps: list[str]) -> list[str]:
         "PROMPT COVERAGE GAP — add the missing element without inventing unrelated flows:",
         *[f"• {g}" for g in gaps],
     ]
+
+
+def _verb_stems(label: str) -> set[str]:
+    toks = _tokens(label)
+    stems: set[str] = set()
+    for t in toks:
+        if len(t) < 4:
+            continue
+        stem = t[:-1] if t.endswith("s") and len(t) > 4 else t
+        stems.add(stem)
+    return stems
+
+
+def _merged_activity_gaps(process_model: ProcessModel, diagram: DiagramDocument) -> list[str]:
+    acts = process_model.activities()
+    gaps: list[str] = []
+    for node in diagram.nodes:
+        if node.type not in {"process", "subprocess"}:
+            continue
+        label = node.label or ""
+        if " and " not in label.lower() and "&" not in label:
+            continue
+        hits = [a for a in acts if _verb_stems(a.label) & _verb_stems(label)]
+        # Two+ inventory activities' verbs crammed into one box
+        if len(hits) >= 2:
+            names = ", ".join(f"'{h.label}'" for h in hits[:3])
+            gaps.append(
+                f"Merged activities in one task '{label}' — split into separate tasks: {names}"
+            )
+    return gaps
+
+
+def repair_merged_process_nodes(
+    diagram: DiagramDocument,
+    process_model: ProcessModel,
+) -> DiagramDocument:
+    """
+    Deterministically split process nodes that clearly merge two inventory activities
+    joined by 'and' / '&'. Rewires a single in→out path into a chain of two tasks.
+    """
+    acts = process_model.activities()
+    nodes = list(diagram.nodes)
+    edges = list(diagram.edges)
+    changed = False
+    next_id = 1
+
+    def fresh_id() -> str:
+        nonlocal next_id
+        while True:
+            cand = f"n_split_{next_id}"
+            next_id += 1
+            if not any(n.id == cand for n in nodes):
+                return cand
+
+    for node in list(nodes):
+        if node.type not in {"process", "subprocess"}:
+            continue
+        label = node.label or ""
+        if " and " not in label.lower() and "&" not in label:
+            continue
+        hits = [a for a in acts if _verb_stems(a.label) & _verb_stems(label)]
+        if len(hits) < 2:
+            continue
+        # Prefer two hits whose stems both appear in the merged label
+        a, b = hits[0], hits[1]
+        id_a, id_b = fresh_id(), fresh_id()
+        node_a = DiagramNode(
+            id=id_a,
+            type=node.type,
+            label=a.label,
+            x=node.x,
+            y=node.y,
+            width=node.width,
+            height=node.height,
+            meta=dict(node.meta or {}),
+        )
+        node_b = DiagramNode(
+            id=id_b,
+            type=node.type,
+            label=b.label,
+            x=node.x + max(40.0, node.width * 0.35),
+            y=node.y + 24,
+            width=node.width,
+            height=node.height,
+            meta=dict(node.meta or {}),
+        )
+        nodes = [n for n in nodes if n.id != node.id] + [node_a, node_b]
+        new_edges: list[DiagramEdge] = []
+        for edge in edges:
+            if edge.from_node == node.id and edge.to_node == node.id:
+                continue
+            if edge.from_node == node.id:
+                new_edges.append(
+                    DiagramEdge(
+                        id=edge.id,
+                        **{
+                            "from": id_b,
+                            "to": edge.to_node,
+                            "label": edge.label,
+                            "type": edge.type,
+                            "meta": edge.meta,
+                        },
+                    )
+                )
+            elif edge.to_node == node.id:
+                new_edges.append(
+                    DiagramEdge(
+                        id=edge.id,
+                        **{
+                            "from": edge.from_node,
+                            "to": id_a,
+                            "label": edge.label,
+                            "type": edge.type,
+                            "meta": edge.meta,
+                        },
+                    )
+                )
+            else:
+                new_edges.append(edge)
+        # Chain a → b
+        new_edges.append(
+            DiagramEdge(
+                id=fresh_id().replace("n_split_", "e_split_"),
+                **{"from": id_a, "to": id_b, "label": "", "type": "flow", "meta": {}},
+            )
+        )
+        edges = new_edges
+        changed = True
+
+    if not changed:
+        return diagram
+    return DiagramDocument(
+        diagram_type=diagram.diagram_type,
+        title=diagram.title,
+        nodes=nodes,
+        edges=edges,
+    )

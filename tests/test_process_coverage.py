@@ -114,6 +114,33 @@ def test_incomplete_diagram_flags_missing_requirements():
     assert any("pick" in g.lower() for g in gaps) or any("deliver order" in g.lower() for g in gaps)
 
 
+def test_repair_splits_merged_pickup_deliver():
+    from app.services.process_coverage import repair_merged_process_nodes
+
+    model = ProcessModel(
+        title="t",
+        lanes=["Delivery Rider"],
+        elements=[
+            ProcessElement(id="a1", kind="activity", label="Pick Up Order", lane="Delivery Rider"),
+            ProcessElement(id="a2", kind="activity", label="Deliver Order", lane="Delivery Rider"),
+        ],
+    )
+    diagram = DiagramDocument(
+        diagram_type="swim_lane",
+        title="t",
+        nodes=[
+            DiagramNode(id="p1", type="process", label="Picks up the order and delivers it", x=10, y=10, width=140, height=64),
+            DiagramNode(id="e1", type="end", label="End", x=200, y=10, width=48, height=48),
+        ],
+        edges=[DiagramEdge(id="x1", **{"from": "p1", "to": "e1", "label": "", "type": "flow"})],
+    )
+    fixed = repair_merged_process_nodes(diagram, model)
+    process_labels = [n.label for n in fixed.nodes if n.type == "process"]
+    assert len(process_labels) == 2
+    assert any("pick" in l.lower() for l in process_labels)
+    assert any("deliver" in l.lower() for l in process_labels)
+
+
 def test_prompt_heuristics_catch_missing_accept_reject():
     from app.services.process_coverage import enrich_process_model_from_prompt, prompt_decision_gaps
 
