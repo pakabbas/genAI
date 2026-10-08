@@ -1168,8 +1168,12 @@ input {
 .lane-label {
   font-family: var(--font);
   font-size: 9.5px;
-  fill: #1e293b;
+  fill: #0f172a;
   pointer-events: none;
+}
+
+.diagram-edge line:not(.edge-hit):not(.edge-glow) {
+  stroke: #1e293b;
 }
 
 .boundary-label,

@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.5.3";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.5.4";
 
 const GRID = 20;
 const MIN_ZOOM = 0.25;
@@ -123,7 +123,7 @@ export class DiagramCanvas {
     arrow.setAttribute("orient", "auto-start-reverse");
     const arrowPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
     arrowPath.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
-    arrowPath.setAttribute("fill", "#4a5568");
+    arrowPath.setAttribute("fill", "#1e293b");
     arrow.appendChild(arrowPath);
     defs.appendChild(arrow);
 
@@ -138,7 +138,7 @@ export class DiagramCanvas {
     const diamondPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
     diamondPath.setAttribute("d", "M 5 0 L 10 5 L 5 10 L 0 5 Z");
     diamondPath.setAttribute("fill", "#fff");
-    diamondPath.setAttribute("stroke", "#4a5568");
+    diamondPath.setAttribute("stroke", "#1e293b");
     diamondPath.setAttribute("stroke-width", "1.5");
     diamond.appendChild(diamondPath);
     defs.appendChild(diamond);
@@ -153,7 +153,7 @@ export class DiagramCanvas {
     diamondFilled.setAttribute("orient", "auto");
     const diamondFilledPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
     diamondFilledPath.setAttribute("d", "M 5 0 L 10 5 L 5 10 L 0 5 Z");
-    diamondFilledPath.setAttribute("fill", "#4a5568");
+    diamondFilledPath.setAttribute("fill", "#1e293b");
     diamondFilled.appendChild(diamondFilledPath);
     defs.appendChild(diamondFilled);
 
@@ -168,7 +168,7 @@ export class DiagramCanvas {
     const trianglePath = document.createElementNS("http://www.w3.org/2000/svg", "path");
     trianglePath.setAttribute("d", "M 0 0 L 10 5 L 0 10 Z");
     trianglePath.setAttribute("fill", "#fff");
-    trianglePath.setAttribute("stroke", "#4a5568");
+    trianglePath.setAttribute("stroke", "#1e293b");
     trianglePath.setAttribute("stroke-width", "1.5");
     triangle.appendChild(trianglePath);
     defs.appendChild(triangle);
@@ -184,7 +184,7 @@ export class DiagramCanvas {
     const openPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
     openPath.setAttribute("d", "M 0 0 L 10 5 L 0 10");
     openPath.setAttribute("fill", "none");
-    openPath.setAttribute("stroke", "#4a5568");
+    openPath.setAttribute("stroke", "#1e293b");
     openPath.setAttribute("stroke-width", "1.5");
     openArrow.appendChild(openPath);
     defs.appendChild(openArrow);
@@ -202,7 +202,7 @@ export class DiagramCanvas {
       const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
       p.setAttribute("d", d);
       p.setAttribute("fill", "none");
-      p.setAttribute("stroke", "#4a5568");
+      p.setAttribute("stroke", "#1e293b");
       p.setAttribute("stroke-width", "1.5");
       p.setAttribute("stroke-linecap", "round");
       m.appendChild(p);
@@ -799,8 +799,8 @@ export class DiagramCanvas {
       line.setAttribute("y1", y1);
       line.setAttribute("x2", x2);
       line.setAttribute("y2", y2);
-      line.setAttribute("stroke", "#4a5568");
-      line.setAttribute("stroke-width", "2");
+      line.setAttribute("stroke", "#1e293b");
+      line.setAttribute("stroke-width", "2.5");
       this._applyEdgeMarkers(line, edge);
 
       if (
