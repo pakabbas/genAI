@@ -331,6 +331,7 @@ def validate_process_coverage(
         gaps.append("Missing End event")
 
     activity_labels = _activity_labels(diagram)
+    all_labels = _node_labels(diagram)
     # Exclusive assignment: one diagram task cannot satisfy two inventory activities.
     claimed: set[int] = set()
     for el in process_model.activities():
