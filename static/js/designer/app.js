@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.4.4";
-import { DiagramCanvas } from "./canvas.js?v=2.4.4";
-import { normalizeDiagram } from "./normalize.js?v=2.4.4";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.5.0";
+import { DiagramCanvas } from "./canvas.js?v=2.5.0";
+import { normalizeDiagram } from "./normalize.js?v=2.5.0";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -145,10 +145,31 @@ import { normalizeDiagram } from "./normalize.js?v=2.4.4";
     ctxDelete: document.getElementById("ctxDelete"),
     canvasInlineEditor: document.getElementById("canvasInlineEditor"),
     canvasInlineInput: document.getElementById("canvasInlineInput"),
+    welcomeModal: document.getElementById("welcomeModal"),
+    welcomeBackdrop: document.getElementById("welcomeBackdrop"),
+    welcomeCloseBtn: document.getElementById("welcomeCloseBtn"),
+    welcomeBackBtn: document.getElementById("welcomeBackBtn"),
+    welcomeNextBtn: document.getElementById("welcomeNextBtn"),
+    welcomeDontShow: document.getElementById("welcomeDontShow"),
+    welcomeSlides: document.getElementById("welcomeSlides"),
+    welcomeDots: document.getElementById("welcomeDots"),
+    welcomeProgressFill: document.getElementById("welcomeProgressFill"),
+    welcomeVisualStage: document.getElementById("welcomeVisualStage"),
+    welcomeVisualCaption: document.getElementById("welcomeVisualCaption"),
   };
 
   let contextMenuTargetId = null;
   const mobileMq = window.matchMedia("(max-width: 768px)");
+  const WELCOME_STORAGE_KEY = "genai-drilldown-welcome-v1";
+  const WELCOME_CAPTIONS = [
+    "Drill Down Project",
+    "AI or manual canvas",
+    "Agent 0 · Analyst",
+    "Generator agent",
+    "QC Auditor",
+  ];
+  let welcomeSlideIndex = 0;
+  let welcomeSlideCount = 5;
 
   function isMobileLayout() {
     return mobileMq.matches;
@@ -416,6 +437,123 @@ import { normalizeDiagram } from "./normalize.js?v=2.4.4";
 
   function closeBriefModal() {
     if (els.briefModal) els.briefModal.hidden = true;
+  }
+
+  function welcomeShouldShow() {
+    try {
+      return localStorage.getItem(WELCOME_STORAGE_KEY) !== "1";
+    } catch {
+      return true;
+    }
+  }
+
+  function persistWelcomeDismiss() {
+    if (!els.welcomeDontShow?.checked) return;
+    try {
+      localStorage.setItem(WELCOME_STORAGE_KEY, "1");
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }
+
+  function buildWelcomeDots() {
+    if (!els.welcomeDots) return;
+    els.welcomeDots.innerHTML = "";
+    for (let i = 0; i < welcomeSlideCount; i += 1) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "welcome-dot";
+      btn.setAttribute("role", "tab");
+      btn.setAttribute("aria-label", `Go to slide ${i + 1}`);
+      btn.addEventListener("click", () => setWelcomeSlide(i));
+      els.welcomeDots.appendChild(btn);
+    }
+  }
+
+  function setWelcomeSlide(index) {
+    const slides = els.welcomeSlides
+      ? Array.from(els.welcomeSlides.querySelectorAll(".welcome-slide"))
+      : [];
+    welcomeSlideCount = slides.length || 5;
+    welcomeSlideIndex = Math.max(0, Math.min(index, welcomeSlideCount - 1));
+    const isLast = welcomeSlideIndex >= welcomeSlideCount - 1;
+
+    slides.forEach((slide, i) => {
+      const active = i === welcomeSlideIndex;
+      slide.hidden = !active;
+      slide.classList.toggle("is-active", active);
+      if (active) {
+        slide.style.animation = "none";
+        void slide.offsetHeight;
+        slide.style.animation = "";
+      }
+    });
+
+    if (els.welcomeDots) {
+      Array.from(els.welcomeDots.children).forEach((dot, i) => {
+        dot.classList.toggle("is-active", i === welcomeSlideIndex);
+        dot.classList.toggle("is-done", i < welcomeSlideIndex);
+        dot.setAttribute("aria-selected", i === welcomeSlideIndex ? "true" : "false");
+      });
+    }
+
+    if (els.welcomeProgressFill) {
+      const pct = ((welcomeSlideIndex + 1) / welcomeSlideCount) * 100;
+      els.welcomeProgressFill.style.width = `${pct}%`;
+    }
+
+    if (els.welcomeVisualStage) {
+      els.welcomeVisualStage.dataset.slide = String(welcomeSlideIndex);
+      Array.from(els.welcomeVisualStage.querySelectorAll(".welcome-art")).forEach((art, i) => {
+        art.classList.toggle("is-active", i === welcomeSlideIndex);
+      });
+    }
+
+    if (els.welcomeVisualCaption) {
+      els.welcomeVisualCaption.textContent = WELCOME_CAPTIONS[welcomeSlideIndex] || "Drill Down Project";
+    }
+
+    const activeTitle = slides[welcomeSlideIndex]?.querySelector(".welcome-title");
+    if (activeTitle) {
+      slides.forEach((s, i) => {
+        const t = s.querySelector(".welcome-title");
+        if (!t) return;
+        if (i === welcomeSlideIndex) t.id = "welcomeSlideTitle";
+        else t.removeAttribute("id");
+      });
+    }
+
+    if (els.welcomeBackBtn) els.welcomeBackBtn.disabled = welcomeSlideIndex === 0;
+    if (els.welcomeNextBtn) {
+      els.welcomeNextBtn.textContent = isLast ? "Get started" : "Next";
+    }
+  }
+
+  function openWelcomeModal() {
+    if (!els.welcomeModal) return;
+    buildWelcomeDots();
+    setWelcomeSlide(0);
+    if (els.welcomeDontShow) els.welcomeDontShow.checked = false;
+    els.welcomeModal.hidden = false;
+    els.welcomeNextBtn?.focus();
+  }
+
+  function closeWelcomeModal() {
+    persistWelcomeDismiss();
+    if (els.welcomeModal) els.welcomeModal.hidden = true;
+  }
+
+  function welcomeNext() {
+    if (welcomeSlideIndex >= welcomeSlideCount - 1) {
+      closeWelcomeModal();
+      return;
+    }
+    setWelcomeSlide(welcomeSlideIndex + 1);
+  }
+
+  function welcomeBack() {
+    if (welcomeSlideIndex <= 0) return;
+    setWelcomeSlide(welcomeSlideIndex - 1);
   }
 
   function saveBriefFromModal() {
@@ -1209,8 +1347,18 @@ import { normalizeDiagram } from "./normalize.js?v=2.4.4";
     if (!els.canvasContextMenu?.contains(e.target)) hideContextMenu();
   });
 
+  els.welcomeCloseBtn?.addEventListener("click", closeWelcomeModal);
+  els.welcomeBackdrop?.addEventListener("click", closeWelcomeModal);
+  els.welcomeNextBtn?.addEventListener("click", welcomeNext);
+  els.welcomeBackBtn?.addEventListener("click", welcomeBack);
+
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+      if (els.welcomeModal && !els.welcomeModal.hidden) {
+        e.preventDefault();
+        closeWelcomeModal();
+        return;
+      }
       if (els.briefModal && !els.briefModal.hidden) {
         e.preventDefault();
         closeBriefModal();
@@ -1219,6 +1367,18 @@ import { normalizeDiagram } from "./normalize.js?v=2.4.4";
       if (els.aiThinkingModal && !els.aiThinkingModal.hidden) {
         e.preventDefault();
         closeThinkingLog();
+        return;
+      }
+    }
+    if (els.welcomeModal && !els.welcomeModal.hidden) {
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        welcomeNext();
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        welcomeBack();
         return;
       }
     }
@@ -1288,4 +1448,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.4.4";
   initMobileLayout();
   updateApiDemoLink(null);
   clearDirty();
+  if (welcomeShouldShow()) {
+    requestAnimationFrame(() => openWelcomeModal());
+  }
 })();
