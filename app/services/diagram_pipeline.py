@@ -308,7 +308,7 @@ def generate_diagram_with_qc(
 
     audit = _run_qc_audit(diagram_type, qc_prompt, diagram)
     audit = _merge_coverage_into_audit(audit, coverage_gaps)
-    all_recommendations.extend(audit.recommendations)
+    all_recommendations = list(audit.recommendations)
 
     _append_trace(
         trace,
@@ -409,9 +409,8 @@ def generate_diagram_with_qc(
 
         audit = _run_qc_audit(diagram_type, qc_prompt, diagram)
         audit = _merge_coverage_into_audit(audit, coverage_gaps)
-        for rec in audit.recommendations:
-            if rec not in all_recommendations:
-                all_recommendations.append(rec)
+        # Prefer the latest QC recommendations (drop stale notes from prior drafts).
+        all_recommendations = list(audit.recommendations)
 
         _append_trace(
             trace,

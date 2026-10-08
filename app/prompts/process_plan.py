@@ -14,10 +14,13 @@ Rules:
    MUST become a decision element with explicit branches.
 4. Include start and end events. Failed/rejected branches that "end" need their own end elements
    (or clearly mark ends_process on the branch) plus any notify/notify-customer activity stated.
-5. Preserve the logical order from the prompt.
-6. Do NOT invent refunds, retries, cancellations, timeouts, or extra business rules.
-7. Do NOT drop a stated handoff or actor action.
-8. Lane names on activities/decisions must match the lane list exactly when the actor is clear.
+5. If the brief says the customer (or another actor) is notified on decline/reject, that notify
+   action is a SEPARATE activity on EACH such terminating branch — do not skip it.
+6. Preserve the logical order from the prompt.
+7. Do NOT invent refunds, retries, cancellations, timeouts, or extra business rules.
+8. Do NOT drop a stated handoff or actor action. Do NOT merge pick-up with deliver (or any two
+   distinct verbs) into one activity.
+9. Lane names on activities/decisions must match the lane list exactly when the actor is clear.
 
 Respond ONLY with JSON:
 {
