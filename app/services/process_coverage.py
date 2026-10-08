@@ -406,6 +406,21 @@ def coverage_revision_issues(gaps: list[str]) -> list[str]:
     ]
 
 
+_GENERIC_STEMS = {
+    "order",
+    "item",
+    "customer",
+    "food",
+    "payment",
+    "process",
+    "request",
+    "system",
+    "user",
+    "data",
+    "service",
+}
+
+
 def _verb_stems(label: str) -> set[str]:
     toks = _tokens(label)
     stems: set[str] = set()
@@ -413,6 +428,8 @@ def _verb_stems(label: str) -> set[str]:
         if len(t) < 4:
             continue
         stem = t[:-1] if t.endswith("s") and len(t) > 4 else t
+        if stem in _GENERIC_STEMS:
+            continue
         stems.add(stem)
     return stems
 
@@ -426,8 +443,9 @@ def _merged_activity_gaps(process_model: ProcessModel, diagram: DiagramDocument)
         label = node.label or ""
         if " and " not in label.lower() and "&" not in label:
             continue
-        hits = [a for a in acts if _verb_stems(a.label) & _verb_stems(label)]
-        # Two+ inventory activities' verbs crammed into one box
+        label_stems = _verb_stems(label)
+        hits = [a for a in acts if _verb_stems(a.label) & label_stems]
+        # Two+ inventory activities' distinctive verbs crammed into one box
         if len(hits) >= 2:
             names = ", ".join(f"'{h.label}'" for h in hits[:3])
             gaps.append(
@@ -464,7 +482,8 @@ def repair_merged_process_nodes(
         label = node.label or ""
         if " and " not in label.lower() and "&" not in label:
             continue
-        hits = [a for a in acts if _verb_stems(a.label) & _verb_stems(label)]
+        label_stems = _verb_stems(label)
+        hits = [a for a in acts if _verb_stems(a.label) & label_stems]
         if len(hits) < 2:
             continue
         # Prefer two hits whose stems both appear in the merged label
