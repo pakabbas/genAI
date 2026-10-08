@@ -1,57 +1,15 @@
-"""QC auditor prompts — pragmatic review, not harsh perfectionism."""
+"""QC auditor prompt builders — type-specific system instructions live under app/prompts/qc/."""
 
-import json
-
-from app.prompts.diagrams import DIAGRAM_TYPE_LABELS, DIAGRAM_TYPE_GUIDANCE, toolbox_catalog
+from app.prompts.diagrams import DIAGRAM_TYPE_GUIDANCE, DIAGRAM_TYPE_LABELS, toolbox_catalog
+from app.prompts.qc import QC_SYSTEM_INSTRUCTION, qc_system_for
 from app.schemas.diagram import DiagramDocument, DiagramType
 
-QC_SYSTEM_INSTRUCTION = """You are a pragmatic diagram QC auditor for an AI diagram studio.
-
-Your job is to REVIEW a generated diagram JSON — you do NOT edit or rewrite it.
-
-APPROVE the diagram unless there is a clear blocking problem. Be lenient:
-- Minor layout overlap, spacing, or missing optional labels → recommendations only, still APPROVE.
-- Slightly simplified scope vs. a huge enterprise spec → APPROVE with recommendations.
-- Naming typos or informal labels → recommendations only.
-
-ONLY require revision (revision_required=true) when one or more BLOCKING issues exist:
-1. Diagram is empty or essentially unusable (no meaningful nodes).
-2. A major module, actor, entity, or process explicitly named in the user request is completely missing.
-3. Structural errors: edges reference missing node ids, or nodes use types clearly outside the toolbox.
-4. Diagram type is fundamentally wrong for the request (e.g. flowchart when user asked for ERD).
-
-Toolbox naming:
-- For network and architecture diagrams, node type data_store IS the Database shape.
-- Do NOT require revision solely because the JSON uses data_store instead of the word database.
-- Load balancers must be type load_balancer (not router). Prefer recommendation over blocking if a router is used as LB.
-- Architecture valid node types: actor, service, api, package, cloud, data_store, note, text_box
-  (service and api must remain distinct shapes — not both process).
-- Sequence message edges must be message / async_message / return_message.
-
-When revision_required=true, list concise blocking_issues the generator must fix.
-Always include helpful recommendations (optional polish) — even when approved.
-
-Vocabulary: match the diagram type in summary/recommendations.
-- sequence → actors, lifelines, messages (never say "entity boxes")
-- erd → entities / relationships
-- class_diagram → classes / associations
-- swim_lane / flowchart → steps / gateways
-- network / architecture → nodes / services / links
-
-Respond ONLY with JSON:
-{
-  "approved": boolean,
-  "revision_required": boolean,
-  "blocking_issues": ["..."],
-  "recommendations": ["..."],
-  "summary": "One or two professional sentences for the user."
-}
-
-Rules:
-- approved=true and revision_required=false when there are no blocking issues.
-- If revision_required=true, approved must be false.
-- Keep recommendations to at most 5 short bullets.
-- Do not be harsh or pedantic."""
+__all__ = [
+    "QC_SYSTEM_INSTRUCTION",
+    "qc_system_for",
+    "build_qc_audit_prompt",
+    "build_revision_prompt",
+]
 
 
 def build_qc_audit_prompt(
@@ -78,6 +36,26 @@ def build_qc_audit_prompt(
     if dangling:
         stats += f"\nDangling edge ids (pre-check): {', '.join(dangling)}"
 
+    type_checklist = {
+        "swim_lane": (
+            "Checklist: every named lane present? every stated activity its own task? "
+            "every if/or/accept-reject as gateway_xor with ≥2 labeled branches? start/end present?"
+        ),
+        "flowchart": (
+            "Checklist: every stated step present? every conditional a decision with ≥2 "
+            "labeled branches? start/end terminators present?"
+        ),
+        "sequence": (
+            "Checklist: major participants present? messages use message/async_message/"
+            "return_message? humans as actor where appropriate?"
+        ),
+        "erd": "Checklist: major entities present? relationships connect valid entity ids?",
+        "class_diagram": "Checklist: major classes/interfaces present? associations valid?",
+        "use_case": "Checklist: primary actors and major use cases present?",
+        "network": "Checklist: major devices/sites present? data_store OK for databases?",
+        "architecture": "Checklist: major services/APIs/stores present? service≠api shapes?",
+    }.get(diagram_type, "Checklist: all major requested elements present?")
+
     return "\n".join(
         [
             f"Diagram type: {label}",
@@ -90,10 +68,12 @@ def build_qc_audit_prompt(
             "",
             stats,
             "",
+            type_checklist,
+            "",
             "Generated diagram JSON to review:",
             diagram_json,
             "",
-            "Audit this diagram. Require revision only for blocking issues listed in your instructions.",
+            "Audit this diagram using your type-specific blocking rules.",
         ]
     )
 
@@ -103,17 +83,26 @@ def build_revision_prompt(
     user_prompt: str,
     previous_diagram: DiagramDocument,
     blocking_issues: list[str],
+    process_inventory: str | None = None,
 ) -> str:
     from app.prompts.diagrams import build_diagram_user_prompt
 
-    base = build_diagram_user_prompt(diagram_type, user_prompt, None)
+    base = build_diagram_user_prompt(
+        diagram_type,
+        user_prompt,
+        None,
+        process_inventory=process_inventory,
+    )
     issues = "\n".join(f"- {issue}" for issue in blocking_issues)
     return "\n".join(
         [
             base,
             "",
-            "QC REVISION REQUIRED — fix ONLY these blocking issues and return a complete diagram JSON:",
+            "QC / COVERAGE REVISION REQUIRED — fix these blocking issues and return a COMPLETE diagram JSON:",
             issues,
+            "",
+            "Do not omit activities, lanes, decisions, or branches that appear in the brief/inventory.",
+            "Do not invent unrelated flows (refunds, retries, etc.) unless they were requested.",
             "",
             "Previous attempt (improve, do not discard valid parts unless necessary):",
             previous_diagram.model_dump_json(by_alias=True, indent=2),

@@ -89,10 +89,13 @@ _TYPE_CLARIFY_HINTS: dict[DiagramType, str] = {
     ),
     "swim_lane": (
         "For swim lane, ask about: roles/lanes involved, the end-to-end process, "
-        "and key decision points / handoffs."
+        "and key decision points / handoffs. When ready, enhanced_prompt MUST list every lane, "
+        "every activity per lane, every decision with Yes/No (or equivalent) outcomes, "
+        "and start/end — never merge distinct actions."
     ),
     "flowchart": (
-        "For flowchart, ask about: the process start/end, main steps, and decision points."
+        "For flowchart, ask about: the process start/end, main steps, and decision points. "
+        "When ready, enhanced_prompt MUST enumerate each step and each decision with branches."
     ),
     "class_diagram": (
         "For class diagram, ask about: domain objects, important attributes/methods, "

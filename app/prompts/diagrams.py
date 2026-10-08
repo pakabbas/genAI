@@ -141,10 +141,23 @@ DIAGRAM_TYPE_GUIDANCE: dict[DiagramType, str] = {
         "one_to_many, many_to_many, identifying. Do NOT use data_store."
     ),
     "swim_lane": (
-        "BPMN: pool + lanes, start/end event circles, tasks, XOR (gateway_xor) and AND (gateway_and) gateways. "
-        "sequence flow = flow (solid filled arrow); message flow = message_flow (dashed open arrow)."
+        "BPMN completeness rules (strict):\n"
+        "- Create one pool and one lane node per named role/actor. Lane labels must match the brief.\n"
+        "- Place start + end event circles. Failed/rejected paths that end the process need End events too.\n"
+        "- Every stated action = its own process task (never merge 'pick up' + 'deliver' into one box).\n"
+        "- Every if/or/accept-reject/success-failure = gateway_xor with ≥2 labeled outgoing flows "
+        "(Yes/No or Accepted/Rejected). Do not replace a decision with a plain task.\n"
+        "- Keep activities in the correct lane for the actor who performs them.\n"
+        "- Sequence flow = flow (solid filled arrow); message flow = message_flow (dashed open arrow).\n"
+        "- Layout: lanes stacked vertically; flow left→right within/across lanes; fit x:40–900, y:40–700."
     ),
-    "flowchart": "Standard flowchart symbols: terminators, processes, decisions, I/O, database.",
+    "flowchart": (
+        "Flowchart completeness rules (strict):\n"
+        "- Start/end terminators required.\n"
+        "- Every stated step = its own process (do not merge distinct steps).\n"
+        "- Every conditional = decision diamond with ≥2 labeled branches.\n"
+        "- Preserve prompt order; do not invent extra business rules."
+    ),
     "sequence": (
         "UML sequence: lifelines top-to-bottom. "
         "Human participants (User, Customer, Actor, Person, Admin, etc.) MUST use node type "
@@ -182,6 +195,8 @@ CRITICAL:
 - ONLY use node "type" and edge "type" values from the TOOLBOX CATALOG provided in the user message.
 - Each node is an independent editable part with id, type, label, x, y, width, height.
 - Do NOT create a single node representing the whole diagram.
+- Completeness over brevity: if the brief (or PROCESS INVENTORY) lists N activities/decisions/lanes,
+  the JSON must contain all of them. Never silently drop branches or merge distinct actions.
 
 JSON schema:
 {
@@ -193,13 +208,14 @@ JSON schema:
 
 Layout rules:
 1. Use unique ids (n1, n2, e1…).
-2. Place ALL nodes within x: 40–860 and y: 40–640 so the full diagram fits one screen.
-3. Include every major entity the user asked for — do not stop after partial output.
+2. Place ALL nodes within x: 40–900 and y: 40–720 so the full diagram fits one screen.
+3. Include every major entity/activity/decision the user asked for — do not stop after partial output.
 4. Edges must reference existing node ids; connect attributes to entities and relationships to entities.
-5. Put containers (system_boundary, lane, package, fragment) behind content with larger width/height.
-6. Labels concise and professional.
+5. Put containers (system_boundary, lane, package, fragment, pool) behind content with larger width/height.
+6. Labels concise and professional, but keep the meaning of each required step.
 7. For class/interface/enum labels use name then '\\n--\\n' then attributes then '\\n--\\n' then methods.
-8. For sequence diagrams only use edge types message / async_message / return_message."""
+8. For sequence diagrams only use edge types message / async_message / return_message.
+9. For swim_lane / flowchart: decision gateways need ≥2 labeled outgoing edges; failed paths reach an End."""
 
 
 def toolbox_catalog(diagram_type: DiagramType) -> str:
@@ -224,6 +240,7 @@ def build_diagram_user_prompt(
     diagram_type: DiagramType,
     user_prompt: str,
     existing_json: str | None = None,
+    process_inventory: str | None = None,
 ) -> str:
     label = DIAGRAM_TYPE_LABELS[diagram_type]
     guidance = DIAGRAM_TYPE_GUIDANCE[diagram_type]
@@ -238,6 +255,16 @@ def build_diagram_user_prompt(
         "",
         f"User request:\n{user_prompt.strip()}",
     ]
+
+    if process_inventory:
+        parts.extend(
+            [
+                "",
+                process_inventory,
+                "",
+                "Generate the diagram so EVERY inventory item is present as a toolbox node/edge.",
+            ]
+        )
 
     if existing_json:
         parts.extend(
