@@ -501,10 +501,25 @@ input {
   color: var(--text-muted);
 }
 
+.canvas-tools-footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: #f8fafc;
+  padding: 0.4rem 0.65rem;
+  box-shadow: 0 -4px 12px rgba(15, 23, 42, 0.04);
+}
+
 .tool-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0.4rem;
+}
+
+.tool-row-icons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
 }
 
 .tool-btn {
@@ -521,6 +536,15 @@ input {
   cursor: pointer;
 }
 
+.tool-btn-icon {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  flex-direction: row;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
 .tool-btn.is-active {
   color: var(--accent);
   border-color: #93c5fd;
@@ -534,14 +558,20 @@ input {
 }
 
 .connect-hint {
-  margin: 0.65rem 0 0;
-  font-size: 0.75rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.72rem;
   color: var(--accent);
+  text-align: center;
 }
 
 .tool-btn svg {
   width: 16px;
   height: 16px;
+}
+
+.tool-btn-icon svg {
+  width: 17px;
+  height: 17px;
 }
 
 .field-label {
@@ -1460,7 +1490,11 @@ input {
 
   .sidebar-tab-panels {
     padding: 0.85rem 1rem 1.25rem;
-    max-height: calc(min(72vh, 560px) - 52px);
+    max-height: calc(min(72vh, 560px) - 52px - 52px);
+  }
+
+  .canvas-tools-footer {
+    padding-bottom: calc(0.4rem + env(safe-area-inset-bottom, 0));
   }
 
   .toolbox-grid {
