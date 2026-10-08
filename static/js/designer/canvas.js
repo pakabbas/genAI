@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.6.5";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.6.6";
 
 const GRID = 20;
 const MIN_ZOOM = 0.25;
@@ -28,6 +28,7 @@ export class DiagramCanvas {
     this.pendingEdgeType = "association";
     this.dragState = null;
     this.panState = null;
+    this._spacePanActive = false;
     this._history = [];
     this._historyIndex = -1;
     this._buildDom();
@@ -228,6 +229,8 @@ export class DiagramCanvas {
     window.addEventListener("mousemove", (e) => this._onMouseMove(e));
     window.addEventListener("mouseup", (e) => this._onMouseUp(e));
     window.addEventListener("keydown", (e) => this._onKeyDown(e));
+    window.addEventListener("keyup", (e) => this._onKeyUp(e));
+    window.addEventListener("blur", () => this._endSpacePan());
 
     if (typeof ResizeObserver !== "undefined") {
       this._resizeObserver = new ResizeObserver(() => {
@@ -235,6 +238,25 @@ export class DiagramCanvas {
       });
       this._resizeObserver.observe(this.viewport);
     }
+  }
+
+  _isPanGesture(e) {
+    return (
+      e.button === 1 ||
+      (e.button === 0 && (e.altKey || this.mode === "pan" || this._spacePanActive))
+    );
+  }
+
+  _syncPanChrome() {
+    const panCursor = this.mode === "pan" || this._spacePanActive;
+    this.viewport.classList.toggle("mode-pan", panCursor);
+    this.viewport.classList.toggle("is-panning", Boolean(this.panState));
+  }
+
+  _endSpacePan() {
+    if (!this._spacePanActive) return;
+    this._spacePanActive = false;
+    this._syncPanChrome();
   }
 
   setDiagram(diagram) {
@@ -268,7 +290,7 @@ export class DiagramCanvas {
     if (edgeType) this.pendingEdgeType = edgeType;
     this.connectFrom = null;
     this.viewport.classList.toggle("mode-connect", mode === "connect");
-    this.viewport.classList.toggle("mode-pan", mode === "pan");
+    this._syncPanChrome();
   }
 
   setDiagramType(type) {
@@ -552,12 +574,34 @@ export class DiagramCanvas {
 
   _onWheel(e) {
     e.preventDefault();
-    this.zoomBy(e.deltaY < 0 ? 1 : -1, e.clientX, e.clientY);
+    // Industry standard: scroll pans; Ctrl/Cmd+scroll zooms (Figma / Miro / Lucid).
+    if (e.ctrlKey || e.metaKey) {
+      this.zoomBy(e.deltaY < 0 ? 1 : -1, e.clientX, e.clientY);
+      return;
+    }
+    let dx = e.deltaX;
+    let dy = e.deltaY;
+    // Shift+wheel → horizontal pan (common mouse shortcut when deltaX is 0)
+    if (e.shiftKey && Math.abs(dx) < 0.01) {
+      dx = dy;
+      dy = 0;
+    }
+    if (e.deltaMode === 1) {
+      dx *= 16;
+      dy *= 16;
+    } else if (e.deltaMode === 2) {
+      dx *= this.viewport.clientWidth;
+      dy *= this.viewport.clientHeight;
+    }
+    this.view.x -= dx;
+    this.view.y -= dy;
+    this._applyViewTransform();
   }
 
   _onMouseDown(e) {
-    if (e.button === 1 || (e.button === 0 && (e.altKey || this.mode === "pan"))) {
+    if (this._isPanGesture(e)) {
       this.panState = { startX: e.clientX, startY: e.clientY, viewX: this.view.x, viewY: this.view.y };
+      this._syncPanChrome();
       e.preventDefault();
       return;
     }
@@ -661,11 +705,20 @@ export class DiagramCanvas {
         this.connectFrom = null;
       }
     }
-    this.panState = null;
+    if (this.panState) {
+      this.panState = null;
+      this._syncPanChrome();
+    }
   }
 
   _onKeyDown(e) {
-    if (e.target.matches("input, textarea, select")) return;
+    if (e.target.matches("input, textarea, select, [contenteditable=true]")) return;
+    if (e.code === "Space" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      this._spacePanActive = true;
+      this._syncPanChrome();
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
       e.preventDefault();
       if (this.undo()) return;
@@ -676,8 +729,13 @@ export class DiagramCanvas {
     }
     if (e.key === "Escape") {
       this.connectFrom = null;
+      this._endSpacePan();
       this.setMode("select");
     }
+  }
+
+  _onKeyUp(e) {
+    if (e.code === "Space") this._endSpacePan();
   }
 
   render() {

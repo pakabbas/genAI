@@ -1060,6 +1060,17 @@ input {
   cursor: grab;
 }
 
+.designer-viewport.mode-pan .diagram-node,
+.designer-viewport.mode-pan .diagram-edge {
+  cursor: grab;
+}
+
+.designer-viewport.is-panning,
+.designer-viewport.is-panning .diagram-node,
+.designer-viewport.is-panning .diagram-edge {
+  cursor: grabbing;
+}
+
 .designer-svg {
   display: block;
   width: 100%;

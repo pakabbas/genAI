@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.6.5" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.6.6" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -85,9 +85,14 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l7 16 2-7 7-2z"/></svg>
             Select
           </button>
-          <button type="button" class="tool-btn" id="panTool" title="Pan">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>
-            Pan
+          <button type="button" class="tool-btn" id="panTool" title="Hand / Pan — drag to move canvas (Space, Alt, or middle-click · scroll pans · Ctrl+scroll zooms)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 11V6a2 2 0 0 0-4 0"/>
+              <path d="M14 10V4a2 2 0 0 0-4 0v6"/>
+              <path d="M10 10.5V6a2 2 0 0 0-4 0v8"/>
+              <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>
+            </svg>
+            Hand
           </button>
           <button type="button" class="tool-btn" id="duplicateBtn" title="Duplicate">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>
@@ -110,7 +115,7 @@
       <div class="canvas-toolbar">
         <div class="canvas-meta">
           <span class="canvas-badge" id="canvasBadge">Ready</span>
-          <span class="canvas-hint">Each shape is selectable and editable</span>
+          <span class="canvas-hint">Scroll to pan · Ctrl+scroll to zoom · Hand tool or Space+drag</span>
         </div>
         <div class="canvas-actions">
           <button type="button" class="btn btn-ghost btn-sm" id="zoomOutBtn" title="Zoom out">−</button>
@@ -465,6 +470,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.6.5"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.6.6"></script>
 </body>
 </html>
