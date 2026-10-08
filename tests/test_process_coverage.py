@@ -114,6 +114,38 @@ def test_incomplete_diagram_flags_missing_requirements():
     assert any("pick" in g.lower() for g in gaps) or any("deliver order" in g.lower() for g in gaps)
 
 
+def test_prompt_heuristics_catch_missing_accept_reject():
+    from app.services.process_coverage import enrich_process_model_from_prompt, prompt_decision_gaps
+
+    prompt = (
+        "Show decisions for payment success/failure and restaurant accept/reject. "
+        "If declined, Customer is notified."
+    )
+    model = ProcessModel(
+        title="t",
+        lanes=["Customer", "Restaurant", "Payment Gateway"],
+        elements=[
+            ProcessElement(
+                id="d1",
+                kind="decision",
+                label="Payment Successful?",
+                lane="Payment Gateway",
+                branches=[
+                    ProcessBranch(label="Yes", outcome="ok"),
+                    ProcessBranch(label="No", outcome="end", ends_process=True),
+                ],
+            )
+        ],
+    )
+    enriched = enrich_process_model_from_prompt(model, prompt)
+    assert len(enriched.decisions()) >= 2
+    assert any("accept" in d.label.lower() for d in enriched.decisions())
+
+    incomplete = _incomplete_like_screenshot()
+    gaps = prompt_decision_gaps(prompt, incomplete)
+    assert any("accept" in g.lower() for g in gaps)
+
+
 def test_complete_diagram_has_no_gaps():
     model = _food_inventory()
     nodes = [

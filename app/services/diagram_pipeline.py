@@ -279,7 +279,10 @@ def generate_diagram_with_qc(
     coverage_gaps: list[str] = []
     if process_model is not None:
         coverage_gaps = validate_process_coverage(
-            process_model, diagram, diagram_type=diagram_type
+            process_model,
+            diagram,
+            diagram_type=diagram_type,
+            user_prompt=qc_prompt,
         )
         _append_trace(
             trace,
@@ -380,7 +383,10 @@ def generate_diagram_with_qc(
         coverage_gaps = []
         if process_model is not None:
             coverage_gaps = validate_process_coverage(
-                process_model, diagram, diagram_type=diagram_type
+                process_model,
+                diagram,
+                diagram_type=diagram_type,
+                user_prompt=qc_prompt,
             )
             _append_trace(
                 trace,

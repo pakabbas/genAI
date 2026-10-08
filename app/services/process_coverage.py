@@ -10,10 +10,34 @@ from google.genai import types
 
 from app.prompts.process_plan import PROCESS_PLAN_SYSTEM, build_process_plan_prompt
 from app.schemas.diagram import DiagramDocument, DiagramType
-from app.schemas.process_model import ProcessModel
+from app.schemas.process_model import ProcessBranch, ProcessElement, ProcessModel
 from app.services.diagram_generator import _extract_json_object
 
 PROCESS_ORIENTED_TYPES: set[str] = {"swim_lane", "flowchart"}
+
+# Heuristic decision cues in the user brief (generic — not domain-specific).
+_DECISION_CUES: list[tuple[str, str, str, list[tuple[str, str]]]] = [
+    # regex, decision label, preferred lane hint (may be ""), branches
+    (
+        r"accept\s*/\s*reject|accept(?:s|ed)?\s+or\s+reject|restaurant\s+accept",
+        "Accept Order?",
+        "Restaurant",
+        [("Yes", "accepted"), ("No", "rejected — notify and end")],
+    ),
+    (
+        r"success\s*/\s*failure|confirm(?:s|ed)?\s+or\s+decline|payment\s+(?:success|fail|declin)|"
+        r"if\s+declined|if\s+confirmed",
+        "Payment Successful?",
+        "Payment Gateway",
+        [("Yes", "confirmed"), ("No", "declined — notify and end")],
+    ),
+    (
+        r"approve\s*/\s*deny|approved\s+or\s+denied|if\s+approved|if\s+denied",
+        "Approved?",
+        "",
+        [("Yes", "approved"), ("No", "denied")],
+    ),
+]
 
 _STOP = {
     "the",
@@ -70,7 +94,89 @@ def extract_process_model(diagram_type: DiagramType, user_prompt: str) -> Proces
     model_obj = ProcessModel.model_validate(data)
     if not model_obj.elements:
         raise RuntimeError("Process planner returned no elements.")
-    return model_obj
+    return enrich_process_model_from_prompt(model_obj, user_prompt)
+
+
+def enrich_process_model_from_prompt(model: ProcessModel, user_prompt: str) -> ProcessModel:
+    """
+    Patch LLM inventory with decision/notify cues detected directly in the brief.
+    Prevents under-extraction (e.g. only one of two required XOR gateways).
+    """
+    prompt = user_prompt or ""
+    existing_decision_labels = [e.label for e in model.decisions()]
+    next_idx = len(model.elements) + 1
+
+    for pattern, label, lane_hint, branches in _DECISION_CUES:
+        if not re.search(pattern, prompt, flags=re.I):
+            continue
+        if any(_label_match(label, existing, min_ratio=0.45) for existing in existing_decision_labels):
+            continue
+        # Also skip if any existing decision already covers key tokens
+        key = _tokens(label)
+        if any(key and key <= _tokens(existing) for existing in existing_decision_labels):
+            continue
+
+        lane = lane_hint
+        if lane and model.lanes and not any(_label_match(lane, ln, min_ratio=0.5) for ln in model.lanes):
+            # Prefer a lane from the model that shares tokens with the hint
+            for ln in model.lanes:
+                if _tokens(lane_hint) & _tokens(ln):
+                    lane = ln
+                    break
+
+        did = f"d_auto_{next_idx}"
+        next_idx += 1
+        model.elements.append(
+            ProcessElement(
+                id=did,
+                kind="decision",
+                label=label,
+                lane=lane or None,
+                branches=[
+                    ProcessBranch(label=bl, outcome=out, ends_process=("end" in out.lower()))
+                    for bl, out in branches
+                ],
+            )
+        )
+        existing_decision_labels.append(label)
+
+    # Notify-on-failure cues: ensure at least one notify activity when prompt says so
+    if re.search(r"notif(?:y|ied|ication)", prompt, flags=re.I):
+        activity_labels = [e.label for e in model.activities()]
+        if not any("notif" in _norm(lbl) for lbl in activity_labels):
+            lane = None
+            for ln in model.lanes:
+                if _label_match("Customer", ln, min_ratio=0.5):
+                    lane = ln
+                    break
+            model.elements.append(
+                ProcessElement(
+                    id=f"a_auto_notify_{next_idx}",
+                    kind="activity",
+                    label="Notify Customer",
+                    lane=lane,
+                )
+            )
+
+    return model
+
+
+def prompt_decision_gaps(user_prompt: str, diagram: DiagramDocument) -> list[str]:
+    """Extra coverage against the raw prompt when the inventory under-counted decisions."""
+    gaps: list[str] = []
+    decision_labels = _decision_labels(diagram) + [
+        (n.label or "") for n in diagram.nodes if n.type in {"decision", "gateway_xor", "gateway"}
+    ]
+    for pattern, label, _lane, _branches in _DECISION_CUES:
+        if not re.search(pattern, user_prompt or "", flags=re.I):
+            continue
+        if not any(_label_match(label, cand, min_ratio=0.4) for cand in decision_labels if cand):
+            # Broader fallback: any gateway whose label shares significant tokens
+            key = {t for t in _tokens(label) if len(t) > 3}
+            if key and any(key <= _tokens(cand) for cand in decision_labels if cand):
+                continue
+            gaps.append(f"Missing decision gateway required by prompt: '{label}'")
+    return gaps
 
 
 def process_model_brief(model: ProcessModel) -> str:
@@ -203,12 +309,15 @@ def validate_process_coverage(
     diagram: DiagramDocument,
     *,
     diagram_type: DiagramType,
+    user_prompt: str | None = None,
 ) -> list[str]:
     """
     Return blocking gap messages when the diagram omits inventory items.
     Generic — works for any process brief, not a single example domain.
     """
     gaps: list[str] = []
+    if user_prompt:
+        gaps.extend(prompt_decision_gaps(user_prompt, diagram))
 
     if diagram_type == "swim_lane" and process_model.lanes:
         lane_labels = _lane_labels(diagram)
