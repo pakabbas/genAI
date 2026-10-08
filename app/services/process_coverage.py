@@ -213,7 +213,8 @@ def _norm(text: str) -> str:
     text = re.sub(r"[^a-z0-9\s]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     # light synonym collapse (generic, not domain-specific)
-    text = text.replace("pick up", "pickup").replace("check out", "checkout")
+    text = re.sub(r"\bpicks?\s+up\b", "pickup", text)
+    text = text.replace("check out", "checkout").replace("checks out", "checkout")
     return text
 
 
@@ -431,6 +432,11 @@ def _verb_stems(label: str) -> set[str]:
         if stem in _GENERIC_STEMS:
             continue
         stems.add(stem)
+        # Align pickup/pick, checkout/check variants
+        if stem.startswith("pick"):
+            stems.update({"pick", "pickup"})
+        if stem.startswith("deliver"):
+            stems.add("deliver")
     return stems
 
 
