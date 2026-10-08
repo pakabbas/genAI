@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.6.8" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.6.9" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -237,27 +237,6 @@
           </div>
         </div>
       </div>
-
-      <footer class="canvas-tools-footer" aria-label="Canvas tools">
-        <div class="tool-row tool-row-icons">
-          <button type="button" class="tool-btn tool-btn-icon is-active" id="selectTool" title="Select" aria-label="Select">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 4l7 16 2-7 7-2z"/></svg>
-          </button>
-          <button type="button" class="tool-btn tool-btn-icon" id="panTool" title="Pan — drag canvas (Space, Alt, middle-click)" aria-label="Pan">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M2 12h20"/><path d="M12 2l-2 3M12 2l2 3M12 22l-2-3M12 22l2-3M2 12l3-2M2 12l3 2M22 12l-3-2M22 12l-3 2"/></svg>
-          </button>
-          <button type="button" class="tool-btn tool-btn-icon" id="duplicateBtn" title="Duplicate" aria-label="Duplicate">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>
-          </button>
-          <button type="button" class="tool-btn tool-btn-icon" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></svg>
-          </button>
-          <button type="button" class="tool-btn tool-btn-icon tool-btn-danger" id="deleteBtn" title="Delete" aria-label="Delete">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
-          </button>
-        </div>
-        <p class="connect-hint" id="connectHint" hidden>Connect: click source, then target</p>
-      </footer>
     </aside>
   </main>
 
@@ -482,6 +461,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.6.8"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.6.9"></script>
 </body>
 </html>

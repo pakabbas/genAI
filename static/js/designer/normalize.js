@@ -1,4 +1,4 @@
-import { defaultNodeSize } from "./diagram-types.js?v=2.6.8";
+import { defaultNodeSize } from "./diagram-types.js?v=2.6.9";
 
 const BACKGROUND = new Set(["system_boundary", "pool", "lane", "package", "fragment"]);
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
