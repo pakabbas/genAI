@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.5.1";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.5.2";
 
 const GRID = 20;
 const MIN_ZOOM = 0.25;
@@ -964,66 +964,9 @@ export class DiagramCanvas {
       );
       g.setAttribute("transform", `translate(${node.x}, ${node.y})`);
 
+      this._maybeGrowNodeForLabel(node);
       this._drawNodeShape(g, node);
-
-      if (
-        node.type !== "start" &&
-        node.type !== "end" &&
-        node.type !== "lane" &&
-        node.type !== "pool" &&
-        node.type !== "system_boundary" &&
-        node.type !== "relationship" &&
-        node.type !== "package" &&
-        node.type !== "fragment" &&
-        node.type !== "class" &&
-        node.type !== "interface" &&
-        node.type !== "entity" &&
-        node.type !== "weak_entity" &&
-        node.type !== "use_case" &&
-        node.type !== "actor" &&
-        node.type !== "lifeline" &&
-        node.type !== "object" &&
-        node.type !== "gateway_xor" &&
-        node.type !== "gateway_and"
-      ) {
-        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        label.setAttribute("x", node.width / 2);
-        label.setAttribute("y", node.height / 2);
-        label.setAttribute("text-anchor", "middle");
-        label.setAttribute("dominant-baseline", "middle");
-        label.setAttribute("class", "node-label");
-        label.textContent = node.label;
-        g.appendChild(label);
-      } else if (node.type === "actor" && node.label) {
-        // Below feet (footY≈88), clear of legs; lifeline starts under the name
-        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        label.setAttribute("x", node.width / 2);
-        label.setAttribute("y", 124);
-        label.setAttribute("text-anchor", "middle");
-        label.setAttribute("class", "node-label");
-        label.textContent = node.label;
-        g.appendChild(label);
-      } else if (node.type === "use_case" && node.label) {
-        this._appendWrappedLabel(g, node.label, node.width / 2, node.height / 2, node.width - 16, node.height - 12, 9);
-      } else if (node.type === "lane" || node.type === "pool") {
-        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        label.setAttribute("x", 16);
-        label.setAttribute("y", 28);
-        label.setAttribute("class", "lane-label");
-        label.textContent = node.label;
-        g.appendChild(label);
-      } else if (["class", "interface", "enum", "entity", "weak_entity"].includes(node.type) && node.label) {
-        this._appendClassCompartments(g, node);
-      } else if (["package", "fragment", "lifeline", "object", "cloud", "service", "api"].includes(node.type) && node.label) {
-        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        label.setAttribute("x", node.width / 2);
-        // Fixed head box — never mid-lifeline (height/2) when layout stretches h
-        label.setAttribute("y", node.type === "lifeline" || node.type === "object" ? 24 : 20);
-        label.setAttribute("text-anchor", "middle");
-        label.setAttribute("class", "node-label");
-        label.textContent = node.label;
-        g.appendChild(label);
-      }
+      this._appendNodeLabel(g, node);
 
       this.nodesLayer.appendChild(g);
     }
@@ -1255,14 +1198,6 @@ export class DiagramCanvas {
       el.setAttribute("stroke", "#c2410c");
       el.setAttribute("stroke-width", "2");
       g.appendChild(el);
-      const label = document.createElementNS(ns, "text");
-      label.setAttribute("x", w / 2);
-      label.setAttribute("y", h / 2);
-      label.setAttribute("text-anchor", "middle");
-      label.setAttribute("dominant-baseline", "middle");
-      label.setAttribute("class", "node-label");
-      label.textContent = node.label;
-      g.appendChild(label);
       return;
     }
 
@@ -1369,16 +1304,6 @@ export class DiagramCanvas {
       el.setAttribute("stroke", "#16a34a");
       el.setAttribute("stroke-width", "2");
       g.appendChild(el);
-      if (node.label) {
-        const label = document.createElementNS(ns, "text");
-        label.setAttribute("x", w / 2);
-        label.setAttribute("y", h / 2);
-        label.setAttribute("text-anchor", "middle");
-        label.setAttribute("dominant-baseline", "middle");
-        label.setAttribute("class", "node-label");
-        label.textContent = node.label;
-        g.appendChild(label);
-      }
       return;
     }
 
@@ -1748,10 +1673,153 @@ export class DiagramCanvas {
     g.appendChild(rect);
   }
 
-  _appendWrappedLabel(parent, text, cx, cy, maxWidth, maxHeight, fontSize = 9.5) {
+  _labelLayout(node) {
+    const type = node.type;
+    const w = node.width;
+    const h = node.height;
+    const fontSize = 9.5;
+
+    if (["decision", "relationship", "gateway_xor", "gateway_and"].includes(type)) {
+      return {
+        cx: w / 2,
+        cy: h / 2,
+        maxW: Math.max(28, w * 0.46),
+        maxH: Math.max(24, h * 0.46),
+        fontSize: 8.5,
+        align: "middle",
+      };
+    }
+    if (["input", "parallelogram", "manual_input", "preparation"].includes(type)) {
+      return { cx: w / 2, cy: h / 2, maxW: Math.max(36, w - 40), maxH: Math.max(20, h - 14), fontSize, align: "middle" };
+    }
+    if (type === "terminator") {
+      return { cx: w / 2, cy: h / 2, maxW: Math.max(36, w - 28), maxH: Math.max(18, h - 12), fontSize, align: "middle" };
+    }
+    if (type === "use_case" || type === "attribute") {
+      return { cx: w / 2, cy: h / 2, maxW: Math.max(36, w - 20), maxH: Math.max(20, h - 14), fontSize: 9, align: "middle" };
+    }
+    if (type === "api") {
+      return { cx: w / 2, cy: h / 2, maxW: Math.max(36, w - 40), maxH: Math.max(20, h - 16), fontSize, align: "middle" };
+    }
+    if (["package", "fragment", "cloud", "service"].includes(type)) {
+      return { cx: w / 2, cy: 14, maxW: Math.max(36, w - 16), maxH: 34, fontSize, align: "top" };
+    }
+    if (type === "lifeline" || type === "object") {
+      return { cx: w / 2, cy: 16, maxW: Math.max(36, w - 12), maxH: 28, fontSize, align: "top" };
+    }
+    return {
+      cx: w / 2,
+      cy: h / 2,
+      maxW: Math.max(40, w - 16),
+      maxH: Math.max(20, h - 12),
+      fontSize,
+      align: "middle",
+    };
+  }
+
+  _canGrowLabelNode(type) {
+    return [
+      "process",
+      "subprocess",
+      "input",
+      "parallelogram",
+      "document",
+      "text_box",
+      "terminator",
+      "manual_input",
+      "preparation",
+      "data_store",
+      "decision",
+      "relationship",
+      "use_case",
+    ].includes(type);
+  }
+
+  _maybeGrowNodeForLabel(node) {
+    if (!node?.label || !this._canGrowLabelNode(node.type)) return;
+    const layout = this._labelLayout(node);
+    // Use a tall budget so wrap measures true line count, then grow the node to fit.
+    const lines = this._wrapLabelLines(String(node.label), layout.maxW, layout.fontSize, 400);
+    const lineHeight = layout.fontSize + 2;
+    const neededH = lines.length * lineHeight + (layout.align === "top" ? 20 : 16);
+    if (neededH > node.height) {
+      node.height = Math.min(220, Math.ceil(neededH));
+    }
+    const longest = Math.max(...lines.map((l) => l.length), 1);
+    const neededW = Math.ceil(longest * layout.fontSize * 0.56 + (node.width - layout.maxW));
+    if (neededW > node.width) {
+      const nextW = Math.min(280, Math.max(node.width, neededW));
+      if (["decision", "relationship"].includes(node.type)) {
+        const side = Math.min(168, Math.max(nextW, neededH, node.height));
+        node.width = side;
+        node.height = side;
+      } else {
+        node.width = nextW;
+      }
+    }
+  }
+
+  _appendNodeLabel(g, node) {
+    if (!node?.label) return;
+    const type = node.type;
+
+    if (type === "actor") {
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("x", node.width / 2);
+      label.setAttribute("y", 124);
+      label.setAttribute("text-anchor", "middle");
+      label.setAttribute("class", "node-label");
+      label.textContent = node.label;
+      g.appendChild(label);
+      return;
+    }
+
+    if (type === "lane" || type === "pool") {
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("x", 16);
+      label.setAttribute("y", 28);
+      label.setAttribute("class", "lane-label");
+      label.textContent = node.label;
+      g.appendChild(label);
+      return;
+    }
+
+    if (type === "system_boundary") {
+      return; // title drawn with shape
+    }
+
+    if (["class", "interface", "enum", "entity", "weak_entity"].includes(type)) {
+      this._appendClassCompartments(g, node);
+      return;
+    }
+
+    if (type === "start" || type === "end") {
+      return; // BPMN events are unlabeled icons
+    }
+
+    if (type === "gateway_xor" || type === "gateway_and") {
+      return; // glyph only
+    }
+
+    const layout = this._labelLayout(node);
+    this._appendWrappedLabel(
+      g,
+      node.label,
+      layout.cx,
+      layout.cy,
+      layout.maxW,
+      layout.maxH,
+      layout.fontSize,
+      { align: layout.align },
+    );
+  }
+
+  _appendWrappedLabel(parent, text, cx, cy, maxWidth, maxHeight, fontSize = 9.5, opts = {}) {
+    const align = opts.align || "middle";
     const lines = this._wrapLabelLines(String(text), maxWidth, fontSize, maxHeight);
     const lineHeight = fontSize + 2;
-    const startY = cy - ((lines.length - 1) * lineHeight) / 2;
+    const startY =
+      align === "top" ? cy + fontSize : cy - ((lines.length - 1) * lineHeight) / 2;
     const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
     label.setAttribute("x", cx);
     label.setAttribute("y", startY);
@@ -1769,28 +1837,46 @@ export class DiagramCanvas {
   }
 
   _wrapLabelLines(text, maxWidth, fontSize, maxHeight) {
-    const approxChar = Math.max(4, Math.floor(maxWidth / (fontSize * 0.55)));
+    const decoded = this._decodeLabel(text).trim();
+    const approxChar = Math.max(4, Math.floor(maxWidth / (fontSize * 0.56)));
     const maxLines = Math.max(1, Math.floor(maxHeight / (fontSize + 2)));
-    const words = text.split(/\s+/).filter(Boolean);
+    const softParts = decoded.split(/\n+/).flatMap((para) => para.split(/\s+/)).filter(Boolean);
+    const tokens = [];
+    for (const part of softParts) {
+      if (part.length <= approxChar) tokens.push(part);
+      else {
+        for (let i = 0; i < part.length; i += approxChar) tokens.push(part.slice(i, i + approxChar));
+      }
+    }
+
     const lines = [];
     let current = "";
-    for (const word of words) {
-      const next = current ? `${current} ${word}` : word;
+    for (const token of tokens) {
+      const next = current ? `${current} ${token}` : token;
       if (next.length > approxChar && current) {
         lines.push(current);
-        current = word;
+        current = token;
+        if (lines.length >= maxLines) {
+          current = "";
+          break;
+        }
       } else {
         current = next;
       }
-      if (lines.length >= maxLines) break;
     }
     if (current && lines.length < maxLines) lines.push(current);
-    if (lines.length > maxLines) return lines.slice(0, maxLines);
-    if (lines.length === maxLines && words.join(" ").length > lines.join(" ").length) {
+
+    if (!lines.length) lines.push(decoded.slice(0, approxChar) || " ");
+    if (lines.length > maxLines) lines.length = maxLines;
+
+    const full = decoded.replace(/\s+/g, " ");
+    const shown = lines.join(" ");
+    if (lines.length === maxLines && full.length > shown.length) {
       const last = lines[maxLines - 1];
-      lines[maxLines - 1] = last.length > 3 ? `${last.slice(0, Math.max(0, last.length - 1))}…` : `${last}…`;
+      lines[maxLines - 1] =
+        last.length > 2 ? `${last.slice(0, Math.max(1, last.length - 1))}…` : `${last}…`;
     }
-    return lines.length ? lines : [text.slice(0, approxChar)];
+    return lines;
   }
 
   _decodeLabel(label) {
