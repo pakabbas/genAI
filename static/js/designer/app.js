@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.3";
-import { DiagramCanvas } from "./canvas.js?v=2.7.3";
-import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.3";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.4";
+import { DiagramCanvas } from "./canvas.js?v=2.7.4";
+import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.4";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -76,9 +76,9 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.3";
     state.isDirty = false;
   }
 
-  /** Client-side edit phrasing — must refer to the existing diagram (not bare "make a …"). */
+  /** Explicit canvas-edit phrasing only (never match domain verbs like rename/move in a brief). */
   function looksLikeEditRequest(text) {
-    return /(?:\bmake\s+(these|the|those|this)\b|\b(wider|narrower|taller|shorter|resize|relabel|rename)\b|\bmove\s+\S|\bchange\s+(the\s+)?(label|color|size|width|height|boxes?|nodes?|shapes?)\b|\badd\s+(a\s+|an\s+|the\s+)?(branch|edge|arrow|box|node|lane|message)\b|\bonly\s+(change|update|fix|edit)\b|\bdon'?t\s+recreate\b|\b(modify|patch|tweak)\s+(the\s+|this\s+|these\s+)?(diagram|canvas|current)\b|\bedit\s+(the\s+|this\s+|current\s+)?diagram\b)/i.test(
+    return /(?:\bon\s+this\s+diagram\b|\bthe\s+current\s+diagram\b|\bthis\s+canvas\b|\bedit\s+(the\s+|this\s+|current\s+)?diagram\b|\badd\s+.+\s+to\s+the\s+existing\b|\bmake\s+these\s+(boxes|shapes|nodes)\b)/i.test(
       String(text || ""),
     );
   }
@@ -1202,6 +1202,9 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.3";
     els.projectNameInput.value = "Untitled Project";
     els.projectSelect.value = "";
     clearCanvas();
+    resetRequirementsChat({ quiet: true });
+    state.editedSinceAiLoad = false;
+    if (els.editCurrentToggle) els.editCurrentToggle.checked = false;
     setProjectStatus("Not saved yet");
     updateApiDemoLink(null);
     setProjectUrl(null);
@@ -1344,11 +1347,6 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.3";
 
     const prompt = state.enhancedPrompt.trim();
     state.lastPrompt = prompt;
-    setGenerating(
-      true,
-      "Generator drafting diagram…",
-      "Enhanced brief → Generator → QC Auditor",
-    );
     if (els.aiThinkingLogBtn) els.aiThinkingLogBtn.disabled = true;
     showRecommendations([]);
 
@@ -1358,23 +1356,29 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.3";
       prompt_enhanced: true,
       original_prompt: state.originalPrompt || prompt,
     };
-    // Only send the canvas in real edit mode (toggle OR user edited since last AI load + edit phrasing).
-    const forceEdit = Boolean(els.editCurrentToggle?.checked);
-    const editRequest =
-      canvas.diagram.nodes.length > 0 &&
-      (forceEdit ||
-        (state.editedSinceAiLoad &&
-          looksLikeEditRequest(`${state.originalPrompt || ""} ${prompt}`)));
+    // Edit mode ONLY when the toggle is checked (no auto-detect from brief verbs).
+    const editRequest = Boolean(els.editCurrentToggle?.checked) && canvas.diagram.nodes.length > 0;
+    const previousDiagram = editRequest ? canvas.getDiagram() : null;
     if (editRequest) {
-      payload.existing = canvas.getDiagram();
+      payload.existing = previousDiagram;
       payload.edit_mode = true;
     }
+    setGenerating(
+      true,
+      editRequest ? "Editing current diagram…" : "Generator drafting diagram…",
+      editRequest ? "Edit · keep ids/positions" : "New · Generator → QC",
+    );
+
+    const controller = new AbortController();
+    const timeoutMs = 540000; // under nginx 600s
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const res = await fetch(withRoot("/api/generate-diagram"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
       const data = await res.json();
       if (!res.ok) {
@@ -1385,7 +1389,20 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.3";
       state.lastRecommendations = data.recommendations || [];
       if (els.aiThinkingLogBtn) els.aiThinkingLogBtn.disabled = !state.lastGenerationTrace.length;
 
-      applyDiagramToCanvas(data.diagram, data.revision_applied ? "AI · QC revised" : "AI · QC approved");
+      let diagramOut = data.diagram;
+      if (editRequest && previousDiagram) {
+        diagramOut = mergeEditPreserveLayout(previousDiagram, data.diagram);
+      }
+      applyDiagramToCanvas(
+        diagramOut,
+        editRequest
+          ? data.revision_applied
+            ? "AI · Edit · QC revised"
+            : "AI · Edit"
+          : data.revision_applied
+            ? "AI · QC revised"
+            : "AI · QC approved",
+      );
       showRecommendations(state.lastRecommendations);
 
       const nodeCount = (data.diagram?.nodes || []).length;
@@ -1397,11 +1414,35 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.3";
       showToast(toastMsg, "success");
       canvas.scheduleFitToContent();
     } catch (err) {
-      showToast(err.message || "Something went wrong.", "error");
+      const msg =
+        err?.name === "AbortError"
+          ? "Generation timed out. Try a shorter brief, or turn QC revisions down in Configurations."
+          : err.message || "Something went wrong.";
+      showToast(msg, "error");
     } finally {
+      clearTimeout(timeoutId);
       setGenerating(false);
       canvas.scheduleFitToContent();
     }
+  }
+
+  /** Keep prior x/y/w/h for unchanged node ids; only new ids keep generator placement. */
+  function mergeEditPreserveLayout(previous, next) {
+    if (!previous?.nodes?.length || !next?.nodes) return next;
+    const prevById = new Map(previous.nodes.map((n) => [n.id, n]));
+    const nodes = next.nodes.map((n) => {
+      const old = prevById.get(n.id);
+      if (!old) return n;
+      return {
+        ...n,
+        x: old.x,
+        y: old.y,
+        width: old.width,
+        height: old.height,
+        label: n.label || old.label,
+      };
+    });
+    return { ...next, nodes };
   }
 
   function loadSample() {

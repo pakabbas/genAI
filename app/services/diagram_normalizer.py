@@ -238,11 +238,44 @@ def _layout_sequence_messages(document: DiagramDocument) -> DiagramDocument:
 
     edges = _renumber_sequence_labels(edges)
 
+    msg_ys = [
+        float((e.meta or {}).get("message_y"))
+        for e in edges
+        if e.type in SEQUENCE_MESSAGE_TYPES and (e.meta or {}).get("message_y") is not None
+    ]
+
     updated_nodes: list[DiagramNode] = []
     min_height = max_y + lifeline_padding
     for node in nodes:
         if node.type in SEQUENCE_LIFELINE_TYPES and node.height < min_height:
             updated_nodes.append(node.model_copy(update={"height": float(min_height)}))
+        elif node.type == "fragment" and msg_ys:
+            # Size/place alt/loop fragments from the y-range of messages they should cover.
+            top = min(msg_ys) - 20
+            bot = max(msg_ys) + 48
+            updated_nodes.append(
+                node.model_copy(
+                    update={
+                        "y": float(top),
+                        "height": float(max(96, bot - top)),
+                        "x": float(min(n.x for n in nodes if n.type in SEQUENCE_LIFELINE_TYPES) - 12)
+                        if any(n.type in SEQUENCE_LIFELINE_TYPES for n in nodes)
+                        else node.x,
+                        "width": float(
+                            max(
+                                node.width,
+                                (
+                                    max(n.x + n.width for n in nodes if n.type in SEQUENCE_LIFELINE_TYPES)
+                                    - min(n.x for n in nodes if n.type in SEQUENCE_LIFELINE_TYPES)
+                                    + 24
+                                )
+                                if any(n.type in SEQUENCE_LIFELINE_TYPES for n in nodes)
+                                else node.width,
+                            )
+                        ),
+                    }
+                )
+            )
         elif node.type == "activation":
             updated_nodes.append(node)
         else:

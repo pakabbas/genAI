@@ -7,18 +7,15 @@ from dataclasses import dataclass
 
 from app.schemas.diagram import DiagramDocument, DiagramType
 
-# Require phrasing that refers to an existing diagram — bare "make a … diagram" is NOT an edit.
+# Only phrases that clearly point at the canvas (domain verbs like rename/move alone are NOT edits).
 _EDIT_HINT = re.compile(
     r"(?:"
-    r"\bmake\s+(these|the|those|this)\b|"
-    r"\b(wider|narrower|taller|shorter|resize|relabel|rename)\b|"
-    r"\bmove\s+\S|"
-    r"\bchange\s+(the\s+)?(label|color|size|width|height|boxes?|nodes?|shapes?)\b|"
-    r"\badd\s+(a\s+|an\s+|the\s+)?(branch|edge|arrow|box|node|lane|message)\b|"
-    r"\bonly\s+(change|update|fix|edit)\b|"
-    r"\bdon'?t\s+recreate\b|"
-    r"\b(modify|patch|tweak)\s+(the\s+|this\s+|these\s+)?(diagram|canvas|current)\b|"
-    r"\bedit\s+(the\s+|this\s+|current\s+)?diagram\b"
+    r"\bon\s+this\s+diagram\b|"
+    r"\bthe\s+current\s+diagram\b|"
+    r"\bthis\s+canvas\b|"
+    r"\bedit\s+(the\s+|this\s+|current\s+)?diagram\b|"
+    r"\badd\s+.+\s+to\s+the\s+existing\b|"
+    r"\bmake\s+these\s+(boxes|shapes|nodes)\b"
     r")",
     re.I,
 )
@@ -96,9 +93,20 @@ def _sequence_gaps(text: str, diagram: DiagramDocument, labels: str) -> BriefGap
             blocking.append("Brief requests activation boxes but none are present.")
 
     types = {e.type for e in diagram.edges}
-    if re.search(r"\basync(?:hronous)?\s+messages?\b", text, re.I) and "async_message" not in types:
+    if (
+        re.search(r"\basync(?:hronous)?\s+messages?\b", text, re.I)
+        and not re.search(r"(?i)\b(no|not|without|don't|do not)\b[^\n.]{0,24}\basync", text)
+        and "async_message" not in types
+    ):
         blocking.append("Brief mentions async messages but no async_message edges.")
-    if re.search(r"\b(?:dashed\s+)?return\s+messages?\b", text, re.I) and "return_message" not in types:
+    if (
+        re.search(r"\b(?:dashed\s+)?return\s+messages?\b", text, re.I)
+        and not re.search(
+            r"(?i)\b(no|not|without|don't|do not)\b[^\n.]{0,28}\breturn\s+messages?\b",
+            text,
+        )
+        and "return_message" not in types
+    ):
         blocking.append("Brief mentions return messages but no return_message edges.")
 
     return BriefGaps(advisory=advisory[:8], blocking=blocking[:8])

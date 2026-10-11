@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.3";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.4";
 
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
 
@@ -220,17 +220,18 @@ export class DiagramCanvas {
     openArrow.appendChild(openPath);
     defs.appendChild(openArrow);
 
-    // Crow's-foot ERD markers (strokeWidth units scale with the edge; overflow visible).
-    const addCf = (id, builders) => {
+    // Crow's-foot: tip at entity border (refX); prongs fan TOWARD the entity (+x).
+    // *-start variants use auto-start-reverse so marker-start is not drawn backwards.
+    const addCf = (id, builders, orient = "auto") => {
       const m = document.createElementNS("http://www.w3.org/2000/svg", "marker");
       m.setAttribute("id", id);
       m.setAttribute("viewBox", "0 0 24 24");
       m.setAttribute("refX", "20");
       m.setAttribute("refY", "12");
       m.setAttribute("markerUnits", "strokeWidth");
-      m.setAttribute("markerWidth", "10");
-      m.setAttribute("markerHeight", "10");
-      m.setAttribute("orient", "auto");
+      m.setAttribute("markerWidth", "8");
+      m.setAttribute("markerHeight", "8");
+      m.setAttribute("orient", orient);
       m.setAttribute("overflow", "visible");
       builders(m);
       defs.appendChild(m);
@@ -250,26 +251,35 @@ export class DiagramCanvas {
       c.setAttribute("cx", String(cx));
       c.setAttribute("cy", String(cy));
       c.setAttribute("r", String(r));
-      c.setAttribute("fill", "none");
+      c.setAttribute("fill", "#fff");
       c.setAttribute("stroke", "#0f172a");
       c.setAttribute("stroke-width", "2.25");
       m.appendChild(c);
     };
-    // Tip of marker is at the entity end (right side of viewBox); crow points left along the edge.
-    addCf("cf-one", (m) => strokePath(m, "M 18 4 L 18 20"));
-    addCf("cf-many", (m) => strokePath(m, "M 20 12 L 6 4 M 20 12 L 6 12 M 20 12 L 6 20"));
-    addCf("cf-one-many", (m) => {
-      strokePath(m, "M 20 4 L 20 20");
-      strokePath(m, "M 17 12 L 4 4 M 17 12 L 4 12 M 17 12 L 4 20");
-    });
-    addCf("cf-zero-one", (m) => {
+    const crowEnd = (m) => strokePath(m, "M 8 12 L 20 4 M 8 12 L 20 12 M 8 12 L 20 20");
+    const oneEnd = (m) => strokePath(m, "M 18 4 L 18 20");
+    const oneManyEnd = (m) => {
+      strokePath(m, "M 16 4 L 16 20");
+      strokePath(m, "M 6 12 L 20 4 M 6 12 L 20 12 M 6 12 L 20 20");
+    };
+    const zeroOneEnd = (m) => {
       fillCircle(m, 8, 12, 4);
       strokePath(m, "M 18 4 L 18 20");
-    });
-    addCf("cf-zero-many", (m) => {
+    };
+    const zeroManyEnd = (m) => {
       fillCircle(m, 7, 12, 4);
-      strokePath(m, "M 20 12 L 10 4 M 20 12 L 10 12 M 20 12 L 10 20");
-    });
+      strokePath(m, "M 10 12 L 20 4 M 10 12 L 20 12 M 10 12 L 20 20");
+    };
+    for (const [id, builder] of [
+      ["cf-one", oneEnd],
+      ["cf-many", crowEnd],
+      ["cf-one-many", oneManyEnd],
+      ["cf-zero-one", zeroOneEnd],
+      ["cf-zero-many", zeroManyEnd],
+    ]) {
+      addCf(id, builder, "auto");
+      addCf(`${id}-start`, builder, "auto-start-reverse");
+    }
   }
 
   _bindEvents() {
@@ -394,7 +404,6 @@ export class DiagramCanvas {
       const stepY = Math.max(0, Number.isFinite(this.SPAWN_STEP_Y) ? this.SPAWN_STEP_Y : 80);
       const rowStep = stepY > 0 ? stepY : Math.round(h + 24);
       const originX = nx;
-      const originY = ny;
       const maxX = view.right - w - 16;
       let guard = 0;
       while (guard < 80 && this._spawnOverlaps(nx, ny, w, h)) {
@@ -403,15 +412,10 @@ export class DiagramCanvas {
           nx = originX;
           ny += rowStep;
         }
-        // Keep wraps inside the visible band so the 4th drop isn't off-screen.
-        if (ny + h > view.bottom - 16) {
-          ny = originY;
-          nx = originX;
-          break;
-        }
         guard += 1;
       }
-      const clamped = this._clampSpawnToViewport(nx, ny, w, h);
+      // Clamp X into view; allow Y below the band when the visible area is full.
+      const clamped = this._clampSpawnToViewport(nx, ny, w, h, { allowBelow: true });
       nx = clamped.x;
       ny = clamped.y;
     }
@@ -473,15 +477,20 @@ export class DiagramCanvas {
     });
   }
 
-  _clampSpawnToViewport(x, y, w, h) {
+  _clampSpawnToViewport(x, y, w, h, opts = {}) {
     const view = this._viewportWorldRect();
     // For oversized shapes, pin top-left to the visible origin (never negative drift).
     const maxX = w >= view.width - 32 ? view.left : Math.max(view.left, view.right - w);
     const maxY = h >= view.height - 32 ? view.top : Math.max(view.top, view.bottom - Math.min(h, view.height * 0.9));
-    return {
-      x: Math.round(Math.min(Math.max(x, view.left), maxX) / this.GRID) * this.GRID,
-      y: Math.round(Math.min(Math.max(y, view.top), maxY) / this.GRID) * this.GRID,
-    };
+    const cx = Math.round(Math.min(Math.max(x, view.left), maxX) / this.GRID) * this.GRID;
+    let cy;
+    if (opts.allowBelow && y > view.bottom - h - 16) {
+      // Next free row below the visible band — do not pull back into occupied cells.
+      cy = Math.round(Math.max(y, view.top) / this.GRID) * this.GRID;
+    } else {
+      cy = Math.round(Math.min(Math.max(y, view.top), maxY) / this.GRID) * this.GRID;
+    }
+    return { x: cx, y: cy };
   }
 
   addEdge(fromId, toId, type = "connector", label = "") {
@@ -952,6 +961,8 @@ export class DiagramCanvas {
   _drawEdges() {
     this.edgesLayer.innerHTML = "";
     let sequenceIndex = 0;
+    const startY = this.SEQUENCE_START_Y || 88;
+    const stepY = this.SEQUENCE_STEP || 52;
     for (const edge of this.diagram.edges) {
       const from = this.diagram.nodes.find((n) => n.id === edge.from);
       const to = this.diagram.nodes.find((n) => n.id === edge.to);
@@ -962,63 +973,56 @@ export class DiagramCanvas {
       g.setAttribute("data-kind", "edge");
       g.setAttribute("class", `diagram-edge${this.selectedIds.has(edge.id) ? " is-selected" : ""}`);
 
-      // Draw-time sequence Y: do not depend on meta surviving normalize/export
       let points;
       if (this.diagram.diagram_type === "sequence") {
         const isMsg =
           SEQUENCE_MESSAGE_TYPES.has(edge.type) ||
           (this._isSequenceParticipant(from) && this._isSequenceParticipant(to));
         if (isMsg) {
-          const y = 88 + sequenceIndex * 52;
+          const y = startY + sequenceIndex * stepY;
           sequenceIndex += 1;
           edge.meta = { ...(edge.meta || {}), message_y: y };
-          const cx1 = from.x + from.width / 2;
-          const cx2 = to.x + to.width / 2;
-          points = { x1: cx1, y1: y, x2: cx2, y2: y };
+          const left = from.x + from.width / 2 <= to.x + to.width / 2 ? from : to;
+          const right = left === from ? to : from;
+          const xL = left.x + left.width - 8;
+          const xR = right.x + 8;
+          points =
+            from === left
+              ? { x1: xL, y1: y, x2: xR, y2: y }
+              : { x1: xR, y1: y, x2: xL, y2: y };
         }
       }
-      const { x1, y1, x2, y2 } = points || this._edgePoints(from, to, edge);
+      const ends = points || this._edgePoints(from, to, edge);
+      const route = this._routedEdgePath(from, to, edge, ends.x1, ends.y1, ends.x2, ends.y2);
       const isSelected = this.selectedIds.has(edge.id);
+      const ptsAttr = route.map((p) => `${p.x},${p.y}`).join(" ");
 
-      const hitLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      hitLine.setAttribute("x1", x1);
-      hitLine.setAttribute("y1", y1);
-      hitLine.setAttribute("x2", x2);
-      hitLine.setAttribute("y2", y2);
+      const hitLine = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+      hitLine.setAttribute("points", ptsAttr);
+      hitLine.setAttribute("fill", "none");
       hitLine.setAttribute("stroke", "transparent");
       hitLine.setAttribute("stroke-width", "18");
       hitLine.setAttribute("class", "edge-hit");
       g.appendChild(hitLine);
 
       if (isSelected) {
-        const glow = document.createElementNS("http://www.w3.org/2000/svg", "line");
-        glow.setAttribute("x1", x1);
-        glow.setAttribute("y1", y1);
-        glow.setAttribute("x2", x2);
-        glow.setAttribute("y2", y2);
+        const glow = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        glow.setAttribute("points", ptsAttr);
+        glow.setAttribute("fill", "none");
         glow.setAttribute("class", "edge-glow");
         glow.setAttribute("stroke", "rgba(37, 99, 235, 0.35)");
         glow.setAttribute("stroke-width", "10");
         glow.setAttribute("stroke-linecap", "round");
+        glow.setAttribute("stroke-linejoin", "round");
         g.appendChild(glow);
       }
 
-      const ortho = this._orthogonalEdgePoints(from, to, x1, y1, x2, y2);
-      const line = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        ortho ? "polyline" : "line",
-      );
-      if (ortho) {
-        line.setAttribute("points", ortho.map((p) => `${p.x},${p.y}`).join(" "));
-        line.setAttribute("fill", "none");
-      } else {
-        line.setAttribute("x1", x1);
-        line.setAttribute("y1", y1);
-        line.setAttribute("x2", x2);
-        line.setAttribute("y2", y2);
-      }
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+      line.setAttribute("points", ptsAttr);
+      line.setAttribute("fill", "none");
       line.setAttribute("stroke", "#1e293b");
       line.setAttribute("stroke-width", "2.5");
+      line.setAttribute("stroke-linejoin", "round");
       this._applyEdgeMarkers(line, edge);
 
       if (
@@ -1036,13 +1040,15 @@ export class DiagramCanvas {
 
       g.appendChild(line);
 
-      if (edge.label) {
+      const labelText = this._dedupeEdgeLabel(edge.label);
+      if (labelText) {
+        const anchor = route.length >= 2 ? route[1] : route[0];
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        text.setAttribute("x", (x1 + x2) / 2);
-        text.setAttribute("y", (y1 + y2) / 2 - 6);
+        text.setAttribute("x", anchor.x);
+        text.setAttribute("y", anchor.y - 8);
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("class", "edge-label");
-        text.textContent = edge.label;
+        text.textContent = labelText;
         g.appendChild(text);
       }
 
@@ -1050,22 +1056,169 @@ export class DiagramCanvas {
     }
   }
 
-  _orthogonalEdgePoints(from, to, x1, y1, x2, y2) {
+  _dedupeEdgeLabel(label) {
+    if (!label) return "";
+    const parts = String(label)
+      .split(/\s*\/\s*/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const uniq = [];
+    for (const p of parts) {
+      if (!uniq.some((u) => u.toLowerCase() === p.toLowerCase())) uniq.push(p);
+    }
+    return uniq.join(" / ");
+  }
+
+  /** Intersection of centre→toward with the node border (rect / diamond / ellipse). */
+  _borderPoint(node, towardX, towardY) {
+    const w = Number(node.width) || 80;
+    const h = Number(node.height) || 40;
+    const cx = node.x + w / 2;
+    const cy = node.y + h / 2;
+    let dx = towardX - cx;
+    let dy = towardY - cy;
+    if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return { x: cx, y: cy };
+    const type = node.type;
+    if (["decision", "relationship", "gateway_xor", "gateway_and"].includes(type)) {
+      const sx = w / 2;
+      const sy = h / 2;
+      const t = 1 / (Math.abs(dx) / sx + Math.abs(dy) / sy);
+      return { x: cx + dx * t, y: cy + dy * t };
+    }
+    if (["use_case", "attribute", "terminator", "start", "end", "delay"].includes(type)) {
+      const rx = w / 2;
+      const ry = h / 2;
+      const t = 1 / Math.sqrt((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry));
+      return { x: cx + dx * t, y: cy + dy * t };
+    }
+    const hw = w / 2;
+    const hh = h / 2;
+    const t = Math.min(hw / Math.abs(dx || 1e-9), hh / Math.abs(dy || 1e-9));
+    return { x: cx + dx * t, y: cy + dy * t };
+  }
+
+  _edgePoints(from, to, edge = null) {
+    if (this.diagram.diagram_type === "sequence" && edge) {
+      const yRaw = Number(edge.message_y ?? edge.meta?.message_y);
+      const cx1 = from.x + from.width / 2;
+      const cx2 = to.x + to.width / 2;
+      if (Number.isFinite(yRaw)) {
+        const p1 = this._borderPoint(from, cx2, yRaw);
+        const p2 = this._borderPoint(to, cx1, yRaw);
+        return { x1: p1.x, y1: yRaw, x2: p2.x, y2: yRaw };
+      }
+      if (
+        SEQUENCE_MESSAGE_TYPES.has(edge.type) ||
+        (this._isSequenceParticipant(from) && this._isSequenceParticipant(to))
+      ) {
+        const msgEdges = this.diagram.edges.filter((e) => {
+          const a = this.diagram.nodes.find((n) => n.id === e.from);
+          const b = this.diagram.nodes.find((n) => n.id === e.to);
+          return (
+            SEQUENCE_MESSAGE_TYPES.has(e.type) ||
+            (this._isSequenceParticipant(a) && this._isSequenceParticipant(b))
+          );
+        });
+        const idx = Math.max(0, msgEdges.findIndex((e) => e.id === edge.id));
+        const y = (this.SEQUENCE_START_Y || 88) + idx * (this.SEQUENCE_STEP || 52);
+        const p1 = this._borderPoint(from, cx2, y);
+        const p2 = this._borderPoint(to, cx1, y);
+        return { x1: p1.x, y1: y, x2: p2.x, y2: y };
+      }
+    }
+    const cx1 = from.x + from.width / 2;
+    const cy1 = from.y + from.height / 2;
+    const cx2 = to.x + to.width / 2;
+    const cy2 = to.y + to.height / 2;
+    const p1 = this._borderPoint(from, cx2, cy2);
+    const p2 = this._borderPoint(to, cx1, cy1);
+    return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+  }
+
+  _routedEdgePath(from, to, edge, x1, y1, x2, y2) {
     const dtype = this.diagram.diagram_type;
-    if (dtype !== "flowchart" && dtype !== "swim_lane") return null;
-    // Back-edge / loop: target is above or substantially left of source → route around.
-    const isBack = y2 + 8 < y1 || (x2 + 40 < x1 && Math.abs(y2 - y1) > 20);
-    if (!isBack) return null;
-    const gutter = Math.max(36, Math.min(from.x, to.x) - 48);
-    const midY = Math.max(y1, y2) + Math.max(from.height || 40, to.height || 40) * 0.35 + 28;
-    // Side out → along gutter → back in (keeps markers on the last segment).
-    return [
-      { x: x1, y: y1 },
-      { x: x1, y: midY },
-      { x: gutter, y: midY },
-      { x: gutter, y: y2 },
-      { x: x2, y: y2 },
-    ];
+    if (dtype !== "flowchart" && dtype !== "swim_lane") {
+      return [
+        { x: x1, y: y1 },
+        { x: x2, y: y2 },
+      ];
+    }
+    const label = String(edge.label || "").toLowerCase();
+    const isLoop = y2 + 8 < y1 || (x2 + 40 < x1 && Math.abs(y2 - y1) > 20);
+    const isNo = /\bno\b|\bfail|\breject|\bfalse\b/.test(label);
+    const isYes = /\byes\b|\bok\b|\bsuccess|\btrue\b|\baccept/.test(label);
+
+    if (!isLoop && !isNo && !(isYes && from.type === "decision")) {
+      // Light obstacle jog around intermediate nodes the straight segment crosses.
+      const midX = (x1 + x2) / 2;
+      const midY = (y1 + y2) / 2;
+      const blockers = this.diagram.nodes.filter(
+        (n) =>
+          n.id !== from.id &&
+          n.id !== to.id &&
+          !["pool", "lane", "system_boundary", "package", "fragment"].includes(n.type) &&
+          midX > n.x &&
+          midX < n.x + n.width &&
+          midY > n.y &&
+          midY < n.y + n.height,
+      );
+      if (blockers.length) {
+        const b = blockers[0];
+        const clearY = b.y + b.height + 28;
+        return [
+          { x: x1, y: y1 },
+          { x: x1, y: clearY },
+          { x: x2, y: clearY },
+          { x: x2, y: y2 },
+        ];
+      }
+      return [
+        { x: x1, y: y1 },
+        { x: x2, y: y2 },
+      ];
+    }
+
+    const fromCx = from.x + from.width / 2;
+    let exitX = x1;
+    let exitY = y1;
+    let mid = [];
+    if (from.type === "decision" || from.type === "gateway_xor") {
+      if (isNo || isLoop) {
+        // Leave bottom / left
+        exitX = fromCx;
+        exitY = from.y + from.height;
+        const gutter = Math.min(from.x, to.x) - 56;
+        const midY = Math.max(exitY, y2) + 36;
+        if (isLoop) {
+          mid = [
+            { x: exitX, y: midY },
+            { x: gutter, y: midY },
+            { x: gutter, y: y2 },
+          ];
+        } else {
+          mid = [
+            { x: exitX, y: exitY + 28 },
+            { x: x2, y: exitY + 28 },
+          ];
+        }
+      } else if (isYes) {
+        exitX = from.x + from.width;
+        exitY = from.y + from.height / 2;
+        mid = [{ x: exitX + 24, y: exitY }, { x: exitX + 24, y: y2 }];
+      }
+    } else if (isLoop) {
+      const gutter = Math.min(from.x, to.x) - 56;
+      const midY = Math.max(y1, y2) + 40;
+      mid = [
+        { x: x1, y: midY },
+        { x: gutter, y: midY },
+        { x: gutter, y: y2 },
+      ];
+    }
+
+    const start = this._borderPoint(from, mid[0]?.x ?? x2, mid[0]?.y ?? y2);
+    const end = this._borderPoint(to, mid[mid.length - 1]?.x ?? x1, mid[mid.length - 1]?.y ?? y1);
+    return [{ x: start.x, y: start.y }, ...mid, { x: end.x, y: end.y }];
   }
 
   _applyEdgeMarkers(line, edge) {
@@ -1073,15 +1226,10 @@ export class DiagramCanvas {
     line.removeAttribute("marker-start");
     line.removeAttribute("marker-end");
 
-    // Undirected / no arrowhead (intentional for association & ethernet links)
     if (t === "association" || t === "network_link" || t === "identifying") {
-      if (t === "identifying") {
-        line.setAttribute("stroke-width", "2.5");
-      }
+      if (t === "identifying") line.setAttribute("stroke-width", "2.5");
       return;
     }
-
-    // UML diamonds / triangles
     if (t === "composition") {
       line.setAttribute("marker-end", "url(#diamond-filled)");
       return;
@@ -1094,25 +1242,14 @@ export class DiagramCanvas {
       line.setAttribute("marker-end", "url(#triangle-hollow)");
       return;
     }
-
-    // Open arrow (dependency / include / extend / message flow)
-    if (
-      t === "dependency" ||
-      t === "include" ||
-      t === "extend" ||
-      t === "message_flow"
-    ) {
+    if (t === "dependency" || t === "include" || t === "extend" || t === "message_flow") {
       line.setAttribute("marker-end", "url(#arrow-open)");
       return;
     }
-
-    // Sequence async / return
     if (t === "async_message" || t === "return_message") {
       line.setAttribute("marker-end", "url(#triangle-hollow)");
       return;
     }
-
-    // Crow's-foot ERD (marker on the "near entity" end = marker-end)
     if (t === "one") {
       line.setAttribute("marker-end", "url(#cf-one)");
       return;
@@ -1134,49 +1271,16 @@ export class DiagramCanvas {
       return;
     }
     if (t === "one_to_many") {
-      line.setAttribute("marker-start", "url(#cf-one)");
+      line.setAttribute("marker-start", "url(#cf-one-start)");
       line.setAttribute("marker-end", "url(#cf-many)");
       return;
     }
     if (t === "many_to_many") {
-      line.setAttribute("marker-start", "url(#cf-many)");
+      line.setAttribute("marker-start", "url(#cf-many-start)");
       line.setAttribute("marker-end", "url(#cf-many)");
       return;
     }
-
-    // Default directed: filled arrow (flow, data_flow, connector, message, …)
     line.setAttribute("marker-end", "url(#arrow)");
-  }
-
-  _edgePoints(from, to, edge = null) {
-    const cx1 = from.x + from.width / 2;
-    const cx2 = to.x + to.width / 2;
-    if (this.diagram.diagram_type === "sequence" && edge) {
-      const yRaw = Number(edge.message_y ?? edge.meta?.message_y);
-      if (Number.isFinite(yRaw)) {
-        return { x1: cx1, y1: yRaw, x2: cx2, y2: yRaw };
-      }
-      if (
-        SEQUENCE_MESSAGE_TYPES.has(edge.type) ||
-        (this._isSequenceParticipant(from) && this._isSequenceParticipant(to))
-      ) {
-        // Last resort: derive from edge list order (never use lifeline center)
-        const msgEdges = this.diagram.edges.filter((e) => {
-          const a = this.diagram.nodes.find((n) => n.id === e.from);
-          const b = this.diagram.nodes.find((n) => n.id === e.to);
-          return (
-            SEQUENCE_MESSAGE_TYPES.has(e.type) ||
-            (this._isSequenceParticipant(a) && this._isSequenceParticipant(b))
-          );
-        });
-        const idx = Math.max(0, msgEdges.findIndex((e) => e.id === edge.id));
-        const y = 88 + idx * 52;
-        return { x1: cx1, y1: y, x2: cx2, y2: y };
-      }
-    }
-    const cy1 = from.y + from.height / 2;
-    const cy2 = to.y + to.height / 2;
-    return { x1: cx1, y1: cy1, x2: cx2, y2: cy2 };
   }
 
   _drawNodes() {
@@ -1714,9 +1818,21 @@ export class DiagramCanvas {
       return;
     }
 
-    if (type === "off_page" || type === "connector_node") {
+    if (type === "connector_node") {
+      // Hidden helper junction — keep hit target tiny/invisible (no stray blue diamond).
+      const el = document.createElementNS(ns, "circle");
+      el.setAttribute("cx", w / 2);
+      el.setAttribute("cy", h / 2);
+      el.setAttribute("r", 3);
+      el.setAttribute("fill", "transparent");
+      el.setAttribute("stroke", "transparent");
+      g.appendChild(el);
+      return;
+    }
+
+    if (type === "off_page") {
       const el = document.createElementNS(ns, "polygon");
-      el.setAttribute("points", type === "off_page" ? `2,2 ${w - 2},2 ${w - 2},${h - 2} ${w / 2},${h - 2} 2,${h - 2}` : `${w / 2},2 ${w - 2},${h / 2} ${w / 2},${h - 2} 2,${h / 2}`);
+      el.setAttribute("points", `2,2 ${w - 2},2 ${w - 2},${h - 2} ${w / 2},${h - 2} 2,${h - 2}`);
       el.setAttribute("fill", "#eef2ff");
       el.setAttribute("stroke", "#4338ca");
       el.setAttribute("stroke-width", "2");
@@ -2113,8 +2229,15 @@ export class DiagramCanvas {
     const decoded = this._decodeLabel(text).trim();
     const approxChar = Math.max(4, Math.floor(maxWidth / (fontSize * 0.56)));
     const maxLines = Math.max(1, Math.floor(maxHeight / (fontSize + 2)));
-    // Word-boundary wrap only — never split "credentials" into "credential" + "s".
-    const tokens = decoded.split(/\n+/).flatMap((para) => para.split(/\s+/)).filter(Boolean);
+    // Word-boundary wrap; hard-break only when a single token is wider than the box.
+    const rawTokens = decoded.split(/\n+/).flatMap((para) => para.split(/\s+/)).filter(Boolean);
+    const tokens = [];
+    for (const part of rawTokens) {
+      if (part.length <= approxChar) tokens.push(part);
+      else {
+        for (let i = 0; i < part.length; i += approxChar) tokens.push(part.slice(i, i + approxChar));
+      }
+    }
 
     const lines = [];
     let current = "";

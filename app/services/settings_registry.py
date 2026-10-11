@@ -150,8 +150,8 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
         label="Analyst top_p", help="Nucleus sampling for Agent 0.", min=0, max=1,
     ),
     "ai.analyst.max_output_tokens": _s(
-        "ai.analyst.max_output_tokens", type="integer", default=4096, group="generation",
-        label="Analyst max tokens", help="Max output tokens for Agent 0.", min=256, max=65536,
+        "ai.analyst.max_output_tokens", type="integer", default=16384, group="generation",
+        label="Analyst max tokens", help="Max output tokens for Agent 0 (includes Gemini 3 thinking).", min=256, max=65536,
     ),
     "ai.planner.temperature": _s(
         "ai.planner.temperature", type="number", default=0.2, group="generation",

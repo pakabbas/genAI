@@ -30,7 +30,7 @@ from app.services.process_coverage import (
     repair_merged_process_nodes,
     validate_process_coverage,
 )
-from app.services.brief_coverage import BriefGaps, looks_like_edit_request, validate_brief_coverage
+from app.services.brief_coverage import BriefGaps, validate_brief_coverage
 from app.services.prompt_guard import reject_if_non_diagram
 from app.services import settings_service as cfg
 
@@ -99,11 +99,30 @@ def _run_qc_audit(
     diagram_type: DiagramType,
     user_prompt: str,
     diagram: DiagramDocument,
+    *,
+    edit_mode: bool = False,
+    previous: DiagramDocument | None = None,
 ) -> QCAuditResult:
+    qc_user = build_qc_audit_prompt(diagram_type, user_prompt, diagram)
+    if edit_mode and previous is not None:
+        prev_ids = {n.id for n in previous.nodes}
+        new_ids = {n.id for n in diagram.nodes}
+        deleted = sorted(prev_ids - new_ids)
+        renamed = []
+        prev_labels = {n.id: n.label for n in previous.nodes}
+        for n in diagram.nodes:
+            if n.id in prev_labels and (n.label or "") != (prev_labels[n.id] or ""):
+                renamed.append(f"{n.id}: {prev_labels[n.id]!r} → {n.label!r}")
+        qc_user += (
+            "\n\nEDIT MODE CHECK:\n"
+            "- Flag as blocking if shapes were deleted or renamed without being requested.\n"
+            f"- Deleted ids vs prior canvas: {deleted or 'none'}\n"
+            f"- Relabeled ids: {renamed[:12] or 'none'}\n"
+        )
     raw = generate_json(
         role="qc",
         system_instruction=qc_system_for(diagram_type),
-        user_content=build_qc_audit_prompt(diagram_type, user_prompt, diagram),
+        user_content=qc_user,
         temperature=float(cfg.get_value("ai.qc.temperature")),
         top_p=float(cfg.get_value("ai.qc.top_p")),
         max_output_tokens=int(cfg.get_value("ai.qc.max_output_tokens")),
@@ -191,22 +210,23 @@ def generate_diagram_with_qc(
         )
         step += 1
 
-    # Client may set edit_mode; also accept a clear edit phrase when an existing diagram is sent.
+    # Edit mode is explicit from the client toggle only (never inferred from brief verbs).
     edit_mode = bool(edit_mode) and existing is not None
-    if not edit_mode and existing is not None:
-        edit_mode = looks_like_edit_request(generation_prompt, True)
     if not edit_mode:
         existing = None
-    if edit_mode:
-        _append_trace(
-            trace,
-            step=step,
-            agent="generator",
-            phase="edit_mode",
-            message="Edit request detected — Generator will modify the existing diagram (not recreate).",
-            on_entry=on_trace,
-        )
-        step += 1
+    _append_trace(
+        trace,
+        step=step,
+        agent="generator",
+        phase="edit_mode" if edit_mode else "new_diagram",
+        message=(
+            "Edit mode — Generator will modify the existing diagram (keep ids/labels/positions)."
+            if edit_mode
+            else "New diagram — generating from the brief (canvas not used as a base)."
+        ),
+        on_entry=on_trace,
+    )
+    step += 1
 
     # Process-oriented types: derive structured inventory before drawing
     # Skip full re-inventory on small edits so we don't thrash a good canvas.
@@ -410,7 +430,10 @@ def generate_diagram_with_qc(
     )
     step += 1
 
-    audit = _run_qc_audit(diagram_type, qc_prompt, diagram)
+    prior_for_qc = existing if edit_mode else None
+    audit = _run_qc_audit(
+        diagram_type, qc_prompt, diagram, edit_mode=edit_mode, previous=prior_for_qc
+    )
     audit = _merge_coverage_into_audit(audit, coverage_gaps)
     all_recommendations = list(audit.recommendations)
 
@@ -517,7 +540,9 @@ def generate_diagram_with_qc(
         )
         step += 1
 
-        audit = _run_qc_audit(diagram_type, qc_prompt, diagram)
+        audit = _run_qc_audit(
+            diagram_type, qc_prompt, diagram, edit_mode=edit_mode, previous=prior_for_qc
+        )
         audit = _merge_coverage_into_audit(audit, coverage_gaps)
         # Prefer the latest QC recommendations (drop stale notes from prior drafts).
         all_recommendations = list(audit.recommendations)

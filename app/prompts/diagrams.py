@@ -348,9 +348,12 @@ def build_diagram_user_prompt(
         parts.extend(
             [
                 "",
-                "EXISTING DIAGRAM (base — MODIFY, do not recreate):",
-                "Keep ids, activation boxes, message order, and polished labels unless the request",
-                "explicitly changes them. Apply only the requested edits (resize, relabel, add branch, etc.).",
+                "EXISTING DIAGRAM (EDIT MODE — surgical change only):",
+                "- Keep EVERY existing node/edge id, label, x, y, width, and height unless the user",
+                "  explicitly names that element to change.",
+                "- Do NOT merge, rename, relocate, or delete unrelated shapes.",
+                "- Only ADD or ALTER what the request asks for (e.g. add a retry loop).",
+                "- Preserve activation boxes, message order, and decision labels.",
                 existing_json,
             ]
         )
