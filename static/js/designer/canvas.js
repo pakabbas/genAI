@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.0";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.1";
 
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
 
@@ -34,6 +34,7 @@ export class DiagramCanvas {
   }
 
   applyPublicConfig(cfg = {}) {
+    const prevGrid = this.GRID;
     this.GRID = Number(cfg["canvas.grid"]) || 20;
     this.MIN_ZOOM = Number(cfg["canvas.zoom_min"]) || 0.25;
     this.MAX_ZOOM = Number(cfg["canvas.zoom_max"]) || 2.5;
@@ -42,8 +43,15 @@ export class DiagramCanvas {
     this.SPAWN_STEP_Y = Number(cfg["canvas.spawn_step_y"]) || 20;
     this.SEQUENCE_START_Y = Number(cfg["sequence.start_y"]) || 88;
     this.SEQUENCE_STEP = Number(cfg["sequence.step"]) || 52;
-    this.LIFELINE_PADDING = Number(cfg["sequence.lifeline_padding"]) || 100;
+    this.LIFELINE_PADDING = Number(cfg["sequence.lifeline_padding"]) || 80;
     this.BASE_FONT = Number(cfg["canvas.base_font"]) || 9.5;
+    if (this.defs && prevGrid != null && prevGrid !== this.GRID) this.rebuildGrid();
+  }
+
+  rebuildGrid() {
+    if (!this.defs) return;
+    this._buildMarkers();
+    this.render();
   }
 
   _buildDom() {
@@ -494,7 +502,7 @@ export class DiagramCanvas {
     const pad = 56;
     const scaleX = (rect.width - pad * 2) / Math.max(bounds.width, 1);
     const scaleY = (rect.height - pad * 2) / Math.max(bounds.height, 1);
-    this.view.scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(scaleX, scaleY)));
+    this.view.scale = Math.min(this.MAX_ZOOM, Math.max(this.MIN_ZOOM, Math.min(scaleX, scaleY)));
     this.view.x = (rect.width - bounds.width * this.view.scale) / 2 - bounds.x * this.view.scale;
     this.view.y = (rect.height - bounds.height * this.view.scale) / 2 - bounds.y * this.view.scale;
     this._applyViewTransform();

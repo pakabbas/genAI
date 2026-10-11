@@ -21,6 +21,9 @@ _CACHE_TTL = 30.0
 _cache: dict[str, Any] | None = None
 _cache_at = 0.0
 _schema_ready = False
+_schema_failed = False
+_prompt_body_cache: dict[str, tuple[float, str]] = {}
+_prompt_meta_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
 SCHEMA_SQL = """
@@ -45,8 +48,8 @@ CREATE TABLE IF NOT EXISTS genai_prompts (
 
 
 def ensure_schema() -> None:
-    global _schema_ready
-    if _schema_ready:
+    global _schema_ready, _schema_failed
+    if _schema_ready or _schema_failed:
         return
     if not check_connection():
         return
@@ -59,13 +62,16 @@ def ensure_schema() -> None:
                         cur.execute(sql)
         _schema_ready = True
     except Exception as exc:
+        _schema_failed = True
         logger.warning("genai settings schema ensure failed: %s", exc)
 
 
 def invalidate_cache() -> None:
-    global _cache, _cache_at
+    global _cache, _cache_at, _prompt_body_cache, _prompt_meta_cache
     _cache = None
     _cache_at = 0.0
+    _prompt_body_cache = {}
+    _prompt_meta_cache = {}
 
 
 def _load_db_map() -> dict[str, Any]:
@@ -108,21 +114,37 @@ def _db_map_cached() -> dict[str, Any]:
 
 def _coerce(meta: dict[str, Any], value: Any) -> Any:
     t = meta["type"]
-    if t == "boolean":
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return value.strip().lower() in {"1", "true", "yes", "on"}
-        return bool(value)
-    if t == "integer":
-        return int(value)
-    if t == "number":
-        return float(value)
-    if t == "json":
-        if isinstance(value, str):
-            return json.loads(value)
-        return value
-    return str(value) if value is not None else ""
+    key = meta["key"]
+    if value is None:
+        raise ValueError(f"{key} cannot be null.")
+    try:
+        if t == "boolean":
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.strip().lower() in {"1", "true", "yes", "on"}
+            if isinstance(value, (int, float)):
+                return bool(value)
+            raise ValueError(f"{key} must be a boolean.")
+        if t == "integer":
+            if isinstance(value, bool):
+                raise ValueError(f"{key} must be an integer.")
+            return int(value)
+        if t == "number":
+            if isinstance(value, bool):
+                raise ValueError(f"{key} must be a number.")
+            return float(value)
+        if t == "json":
+            if isinstance(value, str):
+                return json.loads(value)
+            if isinstance(value, (dict, list)):
+                return value
+            raise ValueError(f"{key} must be a JSON object or array.")
+        return str(value)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        if isinstance(exc, ValueError) and str(exc).startswith(key):
+            raise
+        raise ValueError(f"{key} has an invalid {t} value.") from exc
 
 
 def _validate(meta: dict[str, Any], value: Any) -> Any:
@@ -130,13 +152,24 @@ def _validate(meta: dict[str, Any], value: Any) -> Any:
         raise ValueError(f"{meta['key']} is read-only.")
     coerced = _coerce(meta, value)
     t = meta["type"]
+    key = meta["key"]
     if t in {"integer", "number"}:
         if meta.get("min") is not None and coerced < meta["min"]:
-            raise ValueError(f"{meta['key']} must be ≥ {meta['min']}.")
+            raise ValueError(f"{key} must be ≥ {meta['min']}.")
         if meta.get("max") is not None and coerced > meta["max"]:
-            raise ValueError(f"{meta['key']} must be ≤ {meta['max']}.")
+            raise ValueError(f"{key} must be ≤ {meta['max']}.")
     if meta.get("allowed") is not None and coerced not in meta["allowed"]:
-        raise ValueError(f"{meta['key']} must be one of {meta['allowed']}.")
+        raise ValueError(f"{key} must be one of {meta['allowed']}.")
+
+    # Domain-specific validation
+    if key == "guard.patterns":
+        from app.services.prompt_guard import validate_guard_patterns
+
+        coerced = validate_guard_patterns(coerced)
+    elif key in {"guard.allowlist", "guard.short_creative_pattern"}:
+        from app.services.prompt_guard import validate_guard_regex
+
+        coerced = validate_guard_regex(key, coerced)
     return coerced
 
 
@@ -189,20 +222,25 @@ def set_values(updates: dict[str, Any]) -> dict[str, Any]:
             raise KeyError(f"Unknown setting: {key}")
         validated[key] = _validate(meta, value)
 
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            for key, value in validated.items():
-                meta = SETTINGS_REGISTRY[key]
-                cur.execute(
-                    """
-                    INSERT INTO genai_settings (`key`, `value`, `type`)
-                    VALUES (%s, CAST(%s AS JSON), %s)
-                    ON DUPLICATE KEY UPDATE
-                      `value` = VALUES(`value`),
-                      `type` = VALUES(`type`)
-                    """,
-                    (key, json.dumps(value), meta["type"]),
-                )
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                for key, value in validated.items():
+                    meta = SETTINGS_REGISTRY[key]
+                    # Store JSON text — works on MySQL and MariaDB (avoid CAST(... AS JSON)).
+                    cur.execute(
+                        """
+                        INSERT INTO genai_settings (`key`, `value`, `type`)
+                        VALUES (%s, %s, %s)
+                        ON DUPLICATE KEY UPDATE
+                          `value` = VALUES(`value`),
+                          `type` = VALUES(`type`)
+                        """,
+                        (key, json.dumps(value), meta["type"]),
+                    )
+    except Exception as exc:
+        logger.exception("settings write failed")
+        raise RuntimeError(f"Database write failed: {exc}") from exc
     invalidate_cache()
     return get_grouped()
 
@@ -323,12 +361,11 @@ def _code_prompt_default(prompt_key: str) -> str:
     if prompt_key == "qc.base.response_format":
         return qc_base.QC_RESPONSE_FORMAT
     if prompt_key == "qc.revision":
-        # Template body used when building revisions — store the fixed header block
         return (
-            "QC / COVERAGE REVISION REQUIRED — fix these blocking issues, then return a complete "
-            "corrected diagram JSON.\n\n"
-            "DO NOT omit previously correct parts.\n"
-            "DO NOT invent new scope beyond the user brief and these fixes.\n"
+            "QC / COVERAGE REVISION REQUIRED — fix these blocking issues and return a COMPLETE diagram JSON:\n"
+            "\n"
+            "Do not omit activities, lanes, decisions, or branches that appear in the brief/inventory.\n"
+            "Do not invent unrelated flows (refunds, retries, etc.) unless they were requested.\n"
         )
     if prompt_key.startswith("generator.guidance."):
         dtype = prompt_key.split(".", 2)[2]
@@ -342,12 +379,17 @@ def _code_prompt_default(prompt_key: str) -> str:
 def get_prompt(prompt_key: str) -> dict[str, Any]:
     if prompt_key not in PROMPT_KEYS:
         raise KeyError(f"Unknown prompt key: {prompt_key}")
+    now = time.monotonic()
+    cached = _prompt_meta_cache.get(prompt_key)
+    if cached and (now - cached[0]) < _CACHE_TTL:
+        return cached[1]
+
     default_body = _code_prompt_default(prompt_key)
     ensure_schema()
     versions: list[dict[str, Any]] = []
     active_body = default_body
     active_version = 0
-    if check_connection():
+    if check_connection() and not _schema_failed:
         try:
             with get_connection() as conn:
                 with conn.cursor() as cur:
@@ -386,7 +428,7 @@ def get_prompt(prompt_key: str) -> dict[str, Any]:
         except Exception as exc:
             logger.warning("get_prompt failed: %s", exc)
 
-    return {
+    result = {
         "prompt_key": prompt_key,
         "body": active_body,
         "version": active_version,
@@ -394,6 +436,30 @@ def get_prompt(prompt_key: str) -> dict[str, Any]:
         "default_body": default_body,
         "versions": versions,
     }
+    _prompt_meta_cache[prompt_key] = (now, result)
+    _prompt_body_cache[prompt_key] = (now, active_body)
+    return result
+
+
+def get_prompt_version_body(prompt_key: str, version: int) -> str:
+    """Return body for a specific stored version, or code default when version=0."""
+    if prompt_key not in PROMPT_KEYS:
+        raise KeyError(f"Unknown prompt key: {prompt_key}")
+    if version <= 0:
+        return _code_prompt_default(prompt_key)
+    ensure_schema()
+    if not check_connection():
+        raise RuntimeError("Database unavailable.")
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT body FROM genai_prompts WHERE prompt_key = %s AND version = %s",
+                (prompt_key, version),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise KeyError("Version not found.")
+            return row["body"]
 
 
 def list_prompts() -> list[dict[str, Any]]:
@@ -421,24 +487,28 @@ def save_prompt(prompt_key: str, body: str) -> dict[str, Any]:
     if not check_connection():
         raise RuntimeError("Database unavailable — cannot save prompts.")
 
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT COALESCE(MAX(version), 0) AS v FROM genai_prompts WHERE prompt_key = %s",
-                (prompt_key,),
-            )
-            next_v = int((cur.fetchone() or {}).get("v") or 0) + 1
-            cur.execute(
-                "UPDATE genai_prompts SET is_active = 0 WHERE prompt_key = %s",
-                (prompt_key,),
-            )
-            cur.execute(
-                """
-                INSERT INTO genai_prompts (prompt_key, body, version, is_active)
-                VALUES (%s, %s, %s, 1)
-                """,
-                (prompt_key, body, next_v),
-            )
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COALESCE(MAX(version), 0) AS v FROM genai_prompts WHERE prompt_key = %s",
+                    (prompt_key,),
+                )
+                next_v = int((cur.fetchone() or {}).get("v") or 0) + 1
+                cur.execute(
+                    "UPDATE genai_prompts SET is_active = 0 WHERE prompt_key = %s",
+                    (prompt_key,),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO genai_prompts (prompt_key, body, version, is_active)
+                    VALUES (%s, %s, %s, 1)
+                    """,
+                    (prompt_key, body, next_v),
+                )
+    except Exception as exc:
+        raise RuntimeError(f"Database write failed: {exc}") from exc
+    invalidate_cache()
     return get_prompt(prompt_key)
 
 
@@ -464,6 +534,7 @@ def activate_prompt_version(prompt_key: str, version: int) -> dict[str, Any]:
                 "UPDATE genai_prompts SET is_active = 1 WHERE prompt_key = %s AND version = %s",
                 (prompt_key, version),
             )
+    invalidate_cache()
     return get_prompt(prompt_key)
 
 
@@ -478,11 +549,18 @@ def reset_prompt(prompt_key: str) -> dict[str, Any]:
                     "UPDATE genai_prompts SET is_active = 0 WHERE prompt_key = %s",
                     (prompt_key,),
                 )
+    invalidate_cache()
     return get_prompt(prompt_key)
 
 
 def active_prompt_body(prompt_key: str) -> str:
-    return get_prompt(prompt_key)["body"]
+    now = time.monotonic()
+    cached = _prompt_body_cache.get(prompt_key)
+    if cached and (now - cached[0]) < _CACHE_TTL:
+        return cached[1]
+    body = get_prompt(prompt_key)["body"]
+    _prompt_body_cache[prompt_key] = (now, body)
+    return body
 
 
 # --- Helpers used by pipeline / toolbox --------------------------------------

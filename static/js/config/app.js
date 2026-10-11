@@ -321,16 +321,19 @@ els.promptReset?.addEventListener("click", async () => {
 });
 els.promptVersion?.addEventListener("change", async () => {
   const key = els.promptKey.value;
-  const version = parseInt(els.promptVersion.value, 10);
-  if (!version) {
-    const res = await fetch(withRoot(`/api/config/prompts/${encodeURIComponent(key)}`));
-    const data = await res.json();
-    els.promptBody.value = data.default_body || "";
-    els.promptChars.textContent = `${els.promptBody.value.length} chars`;
+  const version = parseInt(els.promptVersion.value, 10) || 0;
+  const res = await fetch(
+    withRoot(`/api/config/prompts/${encodeURIComponent(key)}?version=${version}`),
+  );
+  const data = await res.json();
+  if (!res.ok) {
+    showToast(data.detail || "Preview failed", "error");
     return;
   }
-  // Reload active; version preview uses activate for apply — show active body
-  await loadPrompt(key);
+  els.promptBody.value = data.body || "";
+  els.promptChars.textContent = `${els.promptBody.value.length} chars`;
+  els.promptVersionLabel.textContent =
+    version === 0 ? "preview: code default" : `preview: v${version}`;
 });
 
 window.addEventListener("beforeunload", (e) => {

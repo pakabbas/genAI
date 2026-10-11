@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.0";
-import { DiagramCanvas } from "./canvas.js?v=2.7.0";
-import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.0";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.1";
+import { DiagramCanvas } from "./canvas.js?v=2.7.1";
+import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.1";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -487,7 +487,23 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.0";
     if (labels && typeof labels === "object") {
       Object.assign(DIAGRAM_TYPE_LABELS, labels);
     }
+    filterDiagramTypeSelects(cfg["diagrams.enabled_types"]);
+    if (typeof canvas.rebuildGrid === "function") canvas.rebuildGrid();
     updateCharCount();
+  }
+
+  function filterDiagramTypeSelects(enabled) {
+    const allowed = Array.isArray(enabled) && enabled.length ? new Set(enabled) : null;
+    for (const sel of [els.diagramTypeSelect, els.diagramTypeSelectLeft]) {
+      if (!sel) continue;
+      Array.from(sel.options).forEach((opt) => {
+        opt.hidden = Boolean(allowed && !allowed.has(opt.value));
+      });
+      if (allowed && !allowed.has(sel.value)) {
+        const first = Array.from(sel.options).find((o) => !o.hidden);
+        if (first) sel.value = first.value;
+      }
+    }
   }
 
   async function loadPublicConfig() {
@@ -1055,7 +1071,8 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.0";
         diagram_type: data.diagram_type,
         title: data.title || data.diagram?.title || "Untitled Diagram",
       };
-      selectDiagramType(data.diagram_type);
+      // Wait for toolbox sizes before normalize so actor/use_case etc. keep server dims.
+      await loadToolboxAndSelect(data.diagram_type);
       applyDiagramToCanvas(diagramPayload, "Loaded");
       clearDirty();
       setProjectStatus(`Saved · ${data.id.slice(0, 8)}…`);
@@ -1069,6 +1086,17 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.0";
       showToast(err.message, "error");
       return false;
     }
+  }
+
+  async function loadToolboxAndSelect(type) {
+    state.diagramType = type;
+    if (els.diagramTypeSelect) els.diagramTypeSelect.value = type;
+    if (els.diagramTypeSelectLeft) els.diagramTypeSelectLeft.value = type;
+    if (els.activeTypeLabel) {
+      els.activeTypeLabel.textContent = DIAGRAM_TYPE_LABELS[type] || type;
+    }
+    canvas.setDiagramType(type);
+    await loadToolbox(type);
   }
 
   async function restoreProjectFromUrl({ quiet = false } = {}) {

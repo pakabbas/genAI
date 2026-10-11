@@ -17,8 +17,18 @@ def build_qc_audit_prompt(
     user_prompt: str,
     diagram: DiagramDocument,
 ) -> str:
-    label = DIAGRAM_TYPE_LABELS[diagram_type]
-    guidance = DIAGRAM_TYPE_GUIDANCE[diagram_type]
+    try:
+        from app.prompts.diagrams import type_label
+        from app.services import settings_service as cfg
+
+        label = type_label(diagram_type)
+        guidance = (
+            cfg.active_prompt_body(f"generator.guidance.{diagram_type}")
+            or DIAGRAM_TYPE_GUIDANCE[diagram_type]
+        )
+    except Exception:
+        label = DIAGRAM_TYPE_LABELS[diagram_type]
+        guidance = DIAGRAM_TYPE_GUIDANCE[diagram_type]
     catalog = toolbox_catalog(diagram_type)
     diagram_json = diagram.model_dump_json(by_alias=True, indent=2)
 
@@ -94,15 +104,23 @@ def build_revision_prompt(
         process_inventory=process_inventory,
     )
     issues = "\n".join(f"- {issue}" for issue in blocking_issues)
+    try:
+        from app.services import settings_service as cfg
+
+        revision_header = cfg.active_prompt_body("qc.revision").strip()
+    except Exception:
+        revision_header = (
+            "QC / COVERAGE REVISION REQUIRED — fix these blocking issues and return a COMPLETE diagram JSON:\n"
+            "\n"
+            "Do not omit activities, lanes, decisions, or branches that appear in the brief/inventory.\n"
+            "Do not invent unrelated flows (refunds, retries, etc.) unless they were requested."
+        )
     return "\n".join(
         [
             base,
             "",
-            "QC / COVERAGE REVISION REQUIRED — fix these blocking issues and return a COMPLETE diagram JSON:",
+            revision_header,
             issues,
-            "",
-            "Do not omit activities, lanes, decisions, or branches that appear in the brief/inventory.",
-            "Do not invent unrelated flows (refunds, retries, etc.) unless they were requested.",
             "",
             "Previous attempt (improve, do not discard valid parts unless necessary):",
             previous_diagram.model_dump_json(by_alias=True, indent=2),

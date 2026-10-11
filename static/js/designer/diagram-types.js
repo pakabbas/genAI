@@ -218,10 +218,59 @@ export function setToolboxSizes(items = []) {
   _toolboxSizes = next;
 }
 
+const FALLBACK_SIZES = {
+  actor: [72, 96],
+  use_case: [140, 56],
+  system_boundary: [360, 280],
+  package: [200, 120],
+  note: [120, 80],
+  text_box: [120, 48],
+  entity: [180, 110],
+  attribute: [120, 48],
+  relationship: [72, 72],
+  weak_entity: [180, 110],
+  data_store: [100, 64],
+  pool: [1680, 780],
+  lane: [1580, 180],
+  process: [140, 64],
+  service: [160, 72],
+  api: [160, 72],
+  subprocess: [160, 72],
+  start: [48, 48],
+  end: [48, 48],
+  decision: [88, 88],
+  gateway_xor: [72, 72],
+  gateway_and: [72, 72],
+  document: [120, 72],
+  manual_input: [120, 56],
+  delay: [56, 56],
+  input: [140, 56],
+  parallelogram: [140, 56],
+  terminator: [120, 48],
+  preparation: [140, 56],
+  display: [120, 56],
+  off_page: [48, 48],
+  connector_node: [40, 40],
+  lifeline: [80, 320],
+  object: [100, 48],
+  activation: [16, 80],
+  fragment: [280, 160],
+  class: [180, 120],
+  interface: [180, 100],
+  enum: [160, 90],
+  cloud: [140, 88],
+  router: [80, 56],
+  switch: [88, 48],
+  firewall: [72, 72],
+  server: [72, 96],
+  client: [72, 72],
+  workstation: [80, 64],
+  load_balancer: [100, 64],
+};
+
 export function defaultNodeSize(type) {
   if (_toolboxSizes[type]) return _toolboxSizes[type];
-  // Minimal fallback before toolbox loads
-  return [120, 60];
+  return FALLBACK_SIZES[type] || [120, 60];
 }
 
 export function nextId(prefix, items) {

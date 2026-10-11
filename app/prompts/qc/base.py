@@ -12,7 +12,7 @@ QC_RESPONSE_FORMAT = """Respond ONLY with JSON:
 Rules:
 - approved=true and revision_required=false when there are no blocking issues.
 - If revision_required=true, approved must be false.
-- Keep recommendations to at most 5 short bullets.
+- Keep recommendations to at most 8 short bullets.
 - Do not be harsh or pedantic.
 - You REVIEW only — never rewrite the diagram JSON yourself."""
 

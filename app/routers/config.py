@@ -44,6 +44,8 @@ async def put_config(body: dict) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid settings update: {exc}") from exc
 
 
 @router.post("/reset")
@@ -54,6 +56,8 @@ async def reset_config(body: ConfigResetBody) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Reset failed: {exc}") from exc
 
 
 @router.get("/public")
@@ -69,11 +73,22 @@ async def list_prompts() -> dict:
 
 
 @router.get("/prompts/{prompt_key:path}")
-async def get_prompt(prompt_key: str) -> dict:
+async def get_prompt(prompt_key: str, version: int | None = None) -> dict:
     try:
+        if version is not None:
+            body = cfg.get_prompt_version_body(prompt_key, version)
+            base = cfg.get_prompt(prompt_key)
+            return {
+                **base,
+                "body": body,
+                "preview_version": version,
+                "is_preview": True,
+            }
         return cfg.get_prompt(prompt_key)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.put("/prompts/{prompt_key:path}")

@@ -1,11 +1,11 @@
-import { defaultNodeSize } from "./diagram-types.js?v=2.7.0";
+import { defaultNodeSize } from "./diagram-types.js?v=2.7.1";
 
 const BACKGROUND = new Set(["system_boundary", "pool", "lane", "package", "fragment"]);
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
 const SEQUENCE_LIFELINE_TYPES = new Set(["lifeline", "object", "actor"]);
 let SEQUENCE_MESSAGE_START_Y = 88;
 let SEQUENCE_MESSAGE_STEP = 52;
-let SEQUENCE_LIFELINE_PADDING = 100;
+let SEQUENCE_LIFELINE_PADDING = 80;
 
 /** Apply public runtime config (from /api/config/public). */
 export function applyNormalizeConfig(cfg = {}) {

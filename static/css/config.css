@@ -4,6 +4,14 @@
   z-index: 20;
 }
 
+.config-page .status-pill {
+  white-space: nowrap;
+  max-width: min(420px, 48vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.75rem;
+}
+
 .brand-link {
   display: flex;
   align-items: center;

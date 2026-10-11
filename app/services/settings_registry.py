@@ -198,8 +198,8 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
         label="AI timeout (seconds)", help="Per-call timeout (keep below nginx 300s).", min=10, max=290,
     ),
     "ai.max_retries": _s(
-        "ai.max_retries", type="integer", default=1, group="generation",
-        label="AI max retries", help="Retries on transient errors before fallback model.", min=0, max=5,
+        "ai.max_retries", type="integer", default=0, group="generation",
+        label="AI max retries", help="Retries on transient errors before fallback model (0 = no retries, matches v2.6.9).", min=0, max=5,
     ),
     # C. Pipeline
     "pipeline.qc_enabled": _s(
@@ -225,7 +225,7 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
         label="Process coverage types", help="Diagram types that run process inventory + coverage.",
     ),
     "pipeline.max_recommendations": _s(
-        "pipeline.max_recommendations", type="integer", default=5, group="pipeline",
+        "pipeline.max_recommendations", type="integer", default=8, group="pipeline",
         label="Max recommendations", help="Cap for QC recommendations (prompt + API response).", min=1, max=20,
     ),
     # E. Input & Safety
@@ -326,7 +326,7 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
         label="Sequence step", help="Vertical spacing between sequence messages.", min=24, max=120, scope="public",
     ),
     "sequence.lifeline_padding": _s(
-        "sequence.lifeline_padding", type="number", default=100, group="canvas",
+        "sequence.lifeline_padding", type="number", default=80, group="canvas",
         label="Lifeline padding", help="Extra height below last message (server+client).", min=40, max=240, scope="public",
     ),
     "canvas.base_font": _s(

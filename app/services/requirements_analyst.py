@@ -89,10 +89,23 @@ def run_requirements_turn(
 
     if result.status == "ready":
         if not (result.enhanced_prompt or "").strip():
+            # Fallback: stitch conversation into a usable brief
             user_bits = [m.content.strip() for m in messages if m.role == "user"]
             result.enhanced_prompt = (
                 "Diagram brief derived from user conversation:\n\n"
                 + "\n\n".join(user_bits)
+            )
+        result.enhanced_prompt = result.enhanced_prompt.strip()
+        if not result.assistant_message.strip():
+            result.assistant_message = (
+                "Brief is ready. I enhanced your requirements for consistent generation. "
+                "Click Generate when you want the diagram."
+            )
+    else:
+        result.enhanced_prompt = None
+        if not result.assistant_message.strip():
+            result.assistant_message = (
+                "Could you share a bit more detail so I can shape a clear diagram brief?"
             )
 
     return result

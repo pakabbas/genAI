@@ -30,12 +30,13 @@ class QCAuditResult(BaseModel):
 
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
-    content: str = Field(..., min_length=1, max_length=8000)
+    # Ceiling matches settings_registry max; runtime enforces limits.* via /api handlers.
+    content: str = Field(..., min_length=1, max_length=32000)
 
 
 class RequirementsChatRequest(BaseModel):
     diagram_type: DiagramType = "use_case"
-    messages: list[ChatMessage] = Field(..., min_length=1, max_length=40)
+    messages: list[ChatMessage] = Field(..., min_length=1, max_length=200)
     force_ready: bool = False
 
 

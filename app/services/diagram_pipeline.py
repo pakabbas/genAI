@@ -232,7 +232,12 @@ def generate_diagram_with_qc(
         agent="generator",
         phase="draft",
         message="Generator is composing the diagram from toolbox shapes…",
-        detail=f"Diagram type: {type_label(diagram_type)} · model: {cfg.resolve_model('generator')}",
+        detail=(
+            f"Diagram type: {type_label(diagram_type)} · "
+            f"models analyst/planner/generator/qc: "
+            f"{cfg.resolve_model('analyst')} / {cfg.resolve_model('planner')} / "
+            f"{cfg.resolve_model('generator')} / {cfg.resolve_model('qc')}"
+        ),
         on_entry=on_trace,
     )
     step += 1

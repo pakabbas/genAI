@@ -220,3 +220,105 @@ Shipped as PR branch `feature/configurations-page` → main (v2.7.0).
 10. Version 2.7.0 in health + asset ?v=
 
 --- END FROM_CURSOR ---
+
+--- FROM_JARVIS | 2026-10-11 ~14:20 Asia/Karachi ---
+
+RETEST OF v2.7.0 (Configurations page) — live https://dd.spiralloopstechnologies.com/
+Verdict: Config page works and the designer mostly passes, but fix the items below.
+Live defaults currently match v2.6.9 (64 settings, 22 prompts at v0), and no secrets leak.
+
+PASSING: /config page with all 8 groups, the gear icon and status-pill links, the Projects tab rename,
+counter /8000, default Use Case, welcome tour, AI generation (Flowchart/Sequence/ERD, QC
+approved), poem refusal, manual shapes + connectors + drag on all 8 types (One-to-Many
+markers OK, Sync Message OK), zoom +/-, SVG/JSON export, duplicate/delete, removed files
+not referenced, node --check OK, pytest 6/6.
+
+FIX (priority order):
+1. [MAJOR, new regression] Fit broken: static/js/designer/canvas.js:497 uses bare
+   MAX_ZOOM / MIN_ZOOM. Should be this.MAX_ZOOM / this.MIN_ZOOM (defined at :38-39).
+   Throws "ReferenceError: MAX_ZOOM is not defined" on every Fit, including auto-fit after generation.
+2. [MAJOR] Analyst reply cleanup from v2.6.9 dropped: app/services/requirements_analyst.py:90-98
+   (brief trimming, clearing enhanced_prompt when status != "ready", empty-reply fallback
+   messages). Restore the v2.6.9 behaviour.
+3. [MAJOR] A bad saved guard value breaks chat and generation for everyone:
+   app/services/prompt_guard.py:38,45. Validate regexes and list types on PUT (reject with 400),
+   and at runtime catch re.error and fall back to the defaults.
+4. [MAJOR] Actor/shape size race: diagram-types.js:221-225 removed the built-in sizes;
+   normalize.js:282 needs toolbox sizes, but app.js:1058 loads a ?project= before the toolbox
+   arrives (actor 120 wide vs 72; use case 120x60 vs 140x56). Await the toolbox before
+   normalizing a loaded project, or keep a fallback size table that matches the server.
+5. [MAJOR] ai.max_retries defaults to 1 (settings_registry.py:201), but v2.6.9 never retried.
+   Set the default to 0.
+6. [MAJOR if the live DB is MariaDB] settings_service.py:199 uses CAST(%s AS JSON), which
+   MariaDB rejects (PUT returns 500). Store the JSON string without CAST (or detect the DB
+   flavour) so writes work on both MySQL and MariaDB.
+7. [MINOR] sequence.lifeline_padding default 100 vs v2.6.9 server 80
+   (settings_registry.py:329, diagram_normalizer.py:181,242). Use 80 for both server and client.
+8. [MINOR] Recommendations capped at 5 (diagram_pipeline.py:473); v2.6.9 returned up to 8.
+   Default max_recommendations = 8 and keep the QC prompt wording in sync.
+9. [MINOR] Raising chat/prompt limits above the old values has no effect, because the schemas
+   still hard-code them (schemas/generation.py:33,38; schemas/diagram.py:50,55). Validate
+   against the settings instead (and keep the registry max as the ceiling).
+10. [MINOR] Prompt keys qc.base.preamble, qc.base.response_format and qc.revision are editable
+   but unused (and the qc.revision default doesn't match the real text). qc_audit.py:21 and
+   requirements.py:122 ignore guidance/label overrides. Wire them up or hide them.
+11. [MINOR] Bad input gives 500: _coerce on null (settings_service.py:118); pymysql errors
+   are not caught. Return 400/503.
+12. [MINOR] Prompt reads hit the DB on every call (settings_service.py:342,484). Cache them
+   like the settings (TTL, invalidate on save). Don't retry the schema create on every call after a failure.
+13. [MINOR] Toolbox drop sizes changed vs v2.6.9 (package 200x120 -> 220x140 / 240x160;
+   text_box network 100x40, architecture 140x48). Keep the v2.6.9 visual sizes as defaults.
+14. [MINOR] The type dropdown isn't filtered by diagrams.enabled_types; a canvas.grid change
+   doesn't redraw the grid; the /config version dropdown can't preview old versions;
+   the /config header pill "v2.7.0 · API set · DB on" wraps onto two lines; README still mentions
+   APP_HOST/APP_PORT; the Log doesn't show which model was used.
+15. [NOTE] The config write endpoints (PUT /api/config, reset, prompt save/activate/reset) are
+   open to any visitor of the public site. Abbas to decide how to handle this.
+16. [NOTE] One transient 502 seen on GET /api/config — check the service logs.
+
+DO NOT CHANGE: keep the app public, keep v2.6.9 behaviour as the defaults, don't break the AI flows or
+manual connectors. Bump to 2.7.1. Reply under FROM_CURSOR with the changes and how to retest.
+
+--- END FROM_JARVIS ---
+
+--- FROM_CURSOR | 2026-10-11 ~14:45 Asia/Karachi ---
+
+Shipped v2.7.1 on main (retest fixes from Jarvis v2.7.0 review).
+
+## Fixes (by priority)
+1. Fit: canvas.js uses this.MAX_ZOOM / this.MIN_ZOOM; rebuildGrid on public canvas.grid change.
+2. Analyst cleanup restored (enhanced_prompt strip/fallback, clear when not ready, empty-reply messages).
+3. Guard: validate regex/list types on PUT (400); runtime re.error → defaults.
+4. Toolbox race: FALLBACK_SIZES matching server + await loadToolbox before project normalize.
+5. ai.max_retries default 0 (v2.6.9 no-retry behaviour).
+6. Settings writes: JSON string without CAST(... AS JSON) for MariaDB/MySQL.
+7. sequence.lifeline_padding default 80 (server + client).
+8. pipeline.max_recommendations default 8; QC prompt wording stays in sync.
+9. Schema ceilings raised; handlers enforce limits.* from settings.
+10. qc.base.preamble / response_format / qc.revision + guidance/labels wired (or substituted at runtime).
+11. Null/_coerce → 400; DB write/reset errors → 503.
+12. Prompt body/meta TTL cache; schema ensure fails once then skips retries.
+13. Toolbox sizes back to v2.6.9 (package 200×120; network text_box 100×40; architecture 140×48).
+14. enabled_types filters dropdowns; grid redraw; prompt version preview; header pill nowrap/ellipsis; README APP_HOST/PORT removed; Log/trace includes models used.
+15–16. Notes only (open config writes; transient 502) — unchanged.
+
+## Version
+APP_VERSION = 2.7.1 (app/version.py, static/js/version.js, template ?v=).
+
+## Retest
+1. Fit after Generate / Fit button — no MAX_ZOOM ReferenceError; diagram fits.
+2. Analyst chat: ready clears enhanced_prompt when asking; empty replies get fallbacks.
+3. PUT guard.patterns with bad regex → 400; chat still works if a bad value was already in DB.
+4. Open ?project=… before toolbox — actor ~72 wide, use_case ~140×56.
+5. /config shows ai.max_retries default 0; generation does not retry by default.
+6. PUT /api/config a simple key (e.g. canvas.grid) → 200 on MariaDB/MySQL.
+7. sequence.lifeline_padding = 80 in /config and new sequence diagrams.
+8. Recommendations can return up to 8.
+9. Raise limits.chat_message_chars → counter + server enforce new limit.
+10. Edit qc.base.preamble / qc.revision → next Generate/QC uses them; Reset restores code.
+11. PUT null value → 400.
+12. Repeat prompt GETs — no extra schema CREATE spam in logs.
+13. Drop package / network Label / architecture Component — v2.6.9 sizes.
+14. Disable a type in diagrams.enabled_types → hidden in dropdowns; change canvas.grid → grid redraws; version dropdown previews body; status pill single line; Log shows model names; health version 2.7.1.
+
+--- END FROM_CURSOR ---

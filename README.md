@@ -38,8 +38,6 @@ See [deploy/README.md](deploy/README.md) for GitHub secrets and workflow details
 |----------|-------------|---------|
 | `GEMINI_API_KEY` | Google AI Studio API key | *(required for AI)* |
 | `GEMINI_MODEL` | Gemini model id | `gemini-flash-lite-latest` |
-| `APP_HOST` | Bind host | `0.0.0.0` |
-| `APP_PORT` | Bind port | `8000` (local) / `8010` (production) |
 | `APP_ROOT_PATH` | URL prefix when behind nginx | empty locally, `/genAI` in production |
 | `DB_HOST` | MySQL host | `127.0.0.1` on GCP |
 | `DB_PORT` | MySQL port | `3306` |

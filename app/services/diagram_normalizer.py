@@ -178,7 +178,7 @@ def _sequence_layout_constants() -> tuple[float, float, float]:
             float(cfg.get_value("sequence.lifeline_padding")),
         )
     except Exception:
-        return SEQUENCE_MESSAGE_START_Y, SEQUENCE_MESSAGE_STEP, 100.0
+        return SEQUENCE_MESSAGE_START_Y, SEQUENCE_MESSAGE_STEP, 80.0
 
 
 _MSG_NUM_PREFIX = re.compile(r"^(\d+)\s*[.):\-]\s*(.*)$")

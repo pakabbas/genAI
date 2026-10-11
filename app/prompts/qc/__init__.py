@@ -8,6 +8,7 @@ from app.prompts.qc import network as network_qc
 from app.prompts.qc import sequence as sequence_qc
 from app.prompts.qc import swim_lane as swim_lane_qc
 from app.prompts.qc import use_case as use_case_qc
+from app.prompts.qc.base import QC_COMMON_PREAMBLE, QC_RESPONSE_FORMAT
 from app.schemas.diagram import DiagramType
 
 _QC_BY_TYPE: dict[str, str] = {
@@ -29,10 +30,18 @@ def qc_system_for(diagram_type: DiagramType | str) -> str:
         from app.services import settings_service as cfg
 
         body = cfg.active_prompt_body(key)
+        # When base prompts are customized, swap them into the type body.
+        preamble = cfg.active_prompt_body("qc.base.preamble").strip()
+        response_fmt = cfg.active_prompt_body("qc.base.response_format").strip()
+        if preamble and preamble != QC_COMMON_PREAMBLE.strip():
+            body = body.replace(QC_COMMON_PREAMBLE.strip(), preamble)
+        if response_fmt and response_fmt != QC_RESPONSE_FORMAT.strip():
+            body = body.replace(QC_RESPONSE_FORMAT.strip(), response_fmt)
+
         max_recs = int(cfg.get_value("pipeline.max_recommendations"))
-        # Keep prompt + API caps aligned
         body = body.replace("at most 5 short bullets", f"at most {max_recs} short bullets")
         body = body.replace("at most 5", f"at most {max_recs}")
+        body = body.replace("at most 8 short bullets", f"at most {max_recs} short bullets")
         return body
     except Exception:
         return _QC_BY_TYPE.get(str(diagram_type), use_case_qc.QC_SYSTEM)
