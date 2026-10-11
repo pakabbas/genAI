@@ -205,6 +205,15 @@ input {
   height: calc(100vh - var(--header-h));
 }
 
+.status-pill-link {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.status-pill-link:hover {
+  filter: brightness(0.97);
+}
+
 .designer-panel {
   overflow-y: auto;
   border-right: 1px solid var(--border);

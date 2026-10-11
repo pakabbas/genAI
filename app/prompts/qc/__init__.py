@@ -24,7 +24,18 @@ _QC_BY_TYPE: dict[str, str] = {
 
 def qc_system_for(diagram_type: DiagramType | str) -> str:
     """Return the QC system instruction specialized for this diagram type."""
-    return _QC_BY_TYPE.get(str(diagram_type), use_case_qc.QC_SYSTEM)
+    key = f"qc.type.{diagram_type}"
+    try:
+        from app.services import settings_service as cfg
+
+        body = cfg.active_prompt_body(key)
+        max_recs = int(cfg.get_value("pipeline.max_recommendations"))
+        # Keep prompt + API caps aligned
+        body = body.replace("at most 5 short bullets", f"at most {max_recs} short bullets")
+        body = body.replace("at most 5", f"at most {max_recs}")
+        return body
+    except Exception:
+        return _QC_BY_TYPE.get(str(diagram_type), use_case_qc.QC_SYSTEM)
 
 
 # Backward-compatible default for imports that expect a constant.

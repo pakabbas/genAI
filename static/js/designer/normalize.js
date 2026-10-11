@@ -1,10 +1,20 @@
-import { defaultNodeSize } from "./diagram-types.js?v=2.6.9";
+import { defaultNodeSize } from "./diagram-types.js?v=2.7.0";
 
 const BACKGROUND = new Set(["system_boundary", "pool", "lane", "package", "fragment"]);
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
 const SEQUENCE_LIFELINE_TYPES = new Set(["lifeline", "object", "actor"]);
-const SEQUENCE_MESSAGE_START_Y = 88;
-const SEQUENCE_MESSAGE_STEP = 52;
+let SEQUENCE_MESSAGE_START_Y = 88;
+let SEQUENCE_MESSAGE_STEP = 52;
+let SEQUENCE_LIFELINE_PADDING = 100;
+
+/** Apply public runtime config (from /api/config/public). */
+export function applyNormalizeConfig(cfg = {}) {
+  if (cfg["sequence.start_y"] != null) SEQUENCE_MESSAGE_START_Y = Number(cfg["sequence.start_y"]);
+  if (cfg["sequence.step"] != null) SEQUENCE_MESSAGE_STEP = Number(cfg["sequence.step"]);
+  if (cfg["sequence.lifeline_padding"] != null) {
+    SEQUENCE_LIFELINE_PADDING = Number(cfg["sequence.lifeline_padding"]);
+  }
+}
 
 const SEQUENCE_EDGE_ALIASES = {
   message: "message",
@@ -162,7 +172,7 @@ function layoutSequenceMessages(diagram) {
   });
   edges = renumberSequenceLabels(edges);
 
-  const minHeight = maxY + 100;
+  const minHeight = maxY + SEQUENCE_LIFELINE_PADDING;
   const nodes = (diagram.nodes || []).map((node) => {
     if (SEQUENCE_LIFELINE_TYPES.has(node.type) && Number(node.height) < minHeight) {
       return { ...node, height: minHeight };

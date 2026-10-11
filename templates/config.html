@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configurations — GenAI Diagram Studio</title>
+  <meta name="app-root" content="{{ root_path }}" />
+  <link rel="icon" href="{{ root_path }}/static/favicon.svg" type="image/svg+xml" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/config.css?v={{ app_version }}" />
+</head>
+<body class="config-page">
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <header class="site-header">
+    <div class="brand">
+      <a class="brand-link" href="{{ root_path }}/">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none"><rect x="2" y="2" width="28" height="28" rx="8" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="16" r="2" fill="currentColor"/><circle cx="22" cy="10" r="2" fill="currentColor"/><circle cx="22" cy="22" r="2" fill="currentColor"/></svg>
+        </div>
+        <div>
+          <p class="brand-eyebrow">AI Diagram Designer</p>
+          <h1 class="brand-title">Configurations</h1>
+        </div>
+      </a>
+    </div>
+    <div class="header-actions">
+      <span class="status-pill" id="configStatus">Loading…</span>
+      <a class="btn btn-secondary btn-sm" href="{{ root_path }}/">← Designer</a>
+    </div>
+  </header>
+
+  <main class="config-layout">
+    <nav class="config-nav" id="configNav" aria-label="Settings groups"></nav>
+    <section class="config-main">
+      <div id="configPanels"></div>
+      <div class="config-prompts" id="promptsPanel" hidden>
+        <div class="config-card">
+          <h2>Agent Prompts</h2>
+          <p class="config-help">Edit versioned prompt overrides. Reset restores the code default.</p>
+          <label class="field-label" for="promptKeySelect">Prompt</label>
+          <select id="promptKeySelect" class="select-input"></select>
+          <label class="field-label" for="promptVersionSelect">Version</label>
+          <select id="promptVersionSelect" class="select-input"></select>
+          <textarea id="promptBody" class="prompt-editor" rows="18" spellcheck="false"></textarea>
+          <div class="config-prompt-meta">
+            <span id="promptCharCount">0</span>
+            <span id="promptVersionLabel"></span>
+          </div>
+          <div class="config-actions">
+            <button type="button" class="btn btn-primary" id="promptSaveBtn">Save as new version</button>
+            <button type="button" class="btn btn-secondary" id="promptActivateBtn">Activate selected version</button>
+            <button type="button" class="btn btn-ghost" id="promptResetBtn">Reset to default</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+  <script type="module" src="{{ root_path }}/static/js/config/app.js?v={{ app_version }}"></script>
+</body>
+</html>

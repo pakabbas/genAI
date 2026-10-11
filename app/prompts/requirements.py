@@ -116,9 +116,16 @@ def build_requirements_user_prompt(
     *,
     force_ready: bool = False,
     prior_question_rounds: int = 0,
+    max_clarify_rounds: int = 3,
+    clarify_mode: str = "strict",
 ) -> str:
     label = DIAGRAM_TYPE_LABELS[diagram_type]
-    guidance = DIAGRAM_TYPE_GUIDANCE[diagram_type]
+    try:
+        from app.services import settings_service as cfg
+
+        guidance = cfg.active_prompt_body(f"generator.guidance.{diagram_type}") or DIAGRAM_TYPE_GUIDANCE[diagram_type]
+    except Exception:
+        guidance = DIAGRAM_TYPE_GUIDANCE[diagram_type]
     catalog = toolbox_catalog(diagram_type)
     clarify_hint = _TYPE_CLARIFY_HINTS.get(diagram_type, "")
 
@@ -152,9 +159,15 @@ def build_requirements_user_prompt(
             "consistent focused diagram."
         )
 
+    if clarify_mode == "lenient" and not force_ready:
+        force_note = (
+            "LENIENT MODE: Prefer status=\"ready\" with reasonable assumptions unless a "
+            "critical gap would produce a wrong diagram. Ask at most 1–2 questions."
+        )
+
     round_note = (
         f"Clarification rounds so far: {prior_question_rounds}. "
-        "If prior_question_rounds >= 3, you MUST return status=\"ready\" "
+        f"If prior_question_rounds >= {max_clarify_rounds}, you MUST return status=\"ready\" "
         "(make assumptions instead of asking again)."
     )
 

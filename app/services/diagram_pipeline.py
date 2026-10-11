@@ -5,14 +5,11 @@ from __future__ import annotations
 import json
 from typing import Callable
 
-from google import genai
-from google.genai import types
-
-from app.config import get_settings
 from app.prompts.diagrams import (
     DIAGRAM_SYSTEM_INSTRUCTION,
     DIAGRAM_TYPE_LABELS,
     build_diagram_user_prompt,
+    type_label,
 )
 from app.prompts.qc_audit import (
     build_qc_audit_prompt,
@@ -24,27 +21,21 @@ from app.schemas.generation import AgentTraceEntry, GenerateDiagramResponse, QCA
 from app.schemas.process_model import ProcessModel
 from app.services.diagram_generator import _extract_json_object, _parse_diagram_json
 from app.services.diagram_normalizer import normalize_diagram
+from app.services.gemini_client import generate_json
 from app.services.process_coverage import (
-    PROCESS_ORIENTED_TYPES,
     coverage_revision_issues,
     extract_process_model,
     process_model_brief,
+    process_oriented_types,
     repair_merged_process_nodes,
     validate_process_coverage,
 )
 from app.services.prompt_guard import reject_if_non_diagram
+from app.services import settings_service as cfg
 
 TraceCallback = Callable[[AgentTraceEntry], None]
 
-MAX_REVISION_ROUNDS = 3
-
-
-def _client_and_model():
-    settings = get_settings()
-    api_key = settings["gemini_api_key"]
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY is not configured. Set it in your .env file.")
-    return genai.Client(api_key=api_key), settings["gemini_model"]
+MAX_REVISION_ROUNDS = 3  # default; runtime uses pipeline.max_qc_revisions
 
 
 def _append_trace(
@@ -61,30 +52,6 @@ def _append_trace(
     trace.append(entry)
     if on_entry:
         on_entry(entry)
-
-
-def _call_json_model(
-    *,
-    system_instruction: str,
-    user_content: str,
-    temperature: float = 0.5,
-) -> str:
-    client, model = _client_and_model()
-    response = client.models.generate_content(
-        model=model,
-        contents=user_content,
-        config=types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=temperature,
-            top_p=0.9,
-            max_output_tokens=16384,
-            response_mime_type="application/json",
-        ),
-    )
-    text = (response.text or "").strip()
-    if not text:
-        raise RuntimeError("Gemini returned an empty response. Please try again.")
-    return text
 
 
 def _generate_diagram_document(
@@ -105,10 +72,19 @@ def _generate_diagram_document(
             process_inventory=process_inventory,
         )
 
-    raw = _call_json_model(
-        system_instruction=DIAGRAM_SYSTEM_INSTRUCTION,
+    system = cfg.active_prompt_body("generator.system") or DIAGRAM_SYSTEM_INSTRUCTION
+    temp = float(
+        cfg.get_value("ai.generator.revision_temperature")
+        if revision_context
+        else cfg.get_value("ai.generator.temperature")
+    )
+    raw = generate_json(
+        role="generator",
+        system_instruction=system,
         user_content=user_content,
-        temperature=0.4 if revision_context else 0.55,
+        temperature=temp,
+        top_p=float(cfg.get_value("ai.generator.top_p")),
+        max_output_tokens=int(cfg.get_value("ai.generator.max_output_tokens")),
     )
     return _parse_diagram_json(raw, diagram_type)
 
@@ -118,10 +94,13 @@ def _run_qc_audit(
     user_prompt: str,
     diagram: DiagramDocument,
 ) -> QCAuditResult:
-    raw = _call_json_model(
+    raw = generate_json(
+        role="qc",
         system_instruction=qc_system_for(diagram_type),
         user_content=build_qc_audit_prompt(diagram_type, user_prompt, diagram),
-        temperature=0.2,
+        temperature=float(cfg.get_value("ai.qc.temperature")),
+        top_p=float(cfg.get_value("ai.qc.top_p")),
+        max_output_tokens=int(cfg.get_value("ai.qc.max_output_tokens")),
     )
     data = json.loads(_extract_json_object(raw))
     audit = QCAuditResult.model_validate(data)
@@ -206,7 +185,7 @@ def generate_diagram_with_qc(
         step += 1
 
     # Process-oriented types: derive structured inventory before drawing
-    if diagram_type in PROCESS_ORIENTED_TYPES:
+    if diagram_type in process_oriented_types():
         _append_trace(
             trace,
             step=step,
@@ -253,7 +232,7 @@ def generate_diagram_with_qc(
         agent="generator",
         phase="draft",
         message="Generator is composing the diagram from toolbox shapes…",
-        detail=f"Diagram type: {DIAGRAM_TYPE_LABELS[diagram_type]}",
+        detail=f"Diagram type: {type_label(diagram_type)} · model: {cfg.resolve_model('generator')}",
         on_entry=on_trace,
     )
     step += 1
@@ -303,12 +282,46 @@ def generate_diagram_with_qc(
         )
         step += 1
 
+    max_revisions = int(cfg.get_value("pipeline.max_qc_revisions"))
+    qc_enabled = bool(cfg.get_value("pipeline.qc_enabled"))
+    max_recs = int(cfg.get_value("pipeline.max_recommendations"))
+
+    if not qc_enabled:
+        _append_trace(
+            trace,
+            step=step,
+            agent="qc_auditor",
+            phase="skipped",
+            message="QC Auditor skipped (pipeline.qc_enabled=false).",
+            on_entry=on_trace,
+        )
+        step += 1
+        _append_trace(
+            trace,
+            step=step,
+            agent="system",
+            phase="complete",
+            message="Pipeline complete — diagram delivered to canvas.",
+            detail="QC: skipped",
+            on_entry=on_trace,
+        )
+        return GenerateDiagramResponse(
+            diagram=diagram,
+            diagram_type=diagram_type,
+            diagram_type_label=type_label(diagram_type),
+            qc_approved=True,
+            revision_applied=False,
+            recommendations=[],
+            enhanced_prompt=generation_prompt if prompt_enhanced else None,
+            trace=trace,
+        )
+
     _append_trace(
         trace,
         step=step,
         agent="qc_auditor",
         phase="review",
-        message="QC Auditor is reviewing for missing modules and structural errors…",
+        message=f"QC Auditor is reviewing… (model: {cfg.resolve_model('qc')})",
         on_entry=on_trace,
     )
     step += 1
@@ -329,7 +342,7 @@ def generate_diagram_with_qc(
     step += 1
 
     rounds = 0
-    while audit.revision_required and audit.blocking_issues and rounds < MAX_REVISION_ROUNDS:
+    while audit.revision_required and audit.blocking_issues and rounds < max_revisions:
         rounds += 1
         revision_applied = True
         _append_trace(
@@ -337,7 +350,7 @@ def generate_diagram_with_qc(
             step=step,
             agent="system",
             phase="revision_handoff",
-            message=f"Sending blocking issues back to the Generator (revision {rounds}/{MAX_REVISION_ROUNDS}).",
+            message=f"Sending blocking issues back to the Generator (revision {rounds}/{max_revisions}).",
             detail="\n".join(f"• {issue}" for issue in audit.blocking_issues),
             on_entry=on_trace,
         )
@@ -429,7 +442,7 @@ def generate_diagram_with_qc(
             trace,
             step=step,
             agent="qc_auditor",
-            phase="final_verdict" if rounds >= MAX_REVISION_ROUNDS or not audit.revision_required else "verdict",
+            phase="final_verdict" if rounds >= max_revisions or not audit.revision_required else "verdict",
             message=audit.summary or "Review complete.",
             detail=_format_audit_detail(audit),
             on_entry=on_trace,
@@ -454,10 +467,10 @@ def generate_diagram_with_qc(
     return GenerateDiagramResponse(
         diagram=diagram,
         diagram_type=diagram_type,
-        diagram_type_label=DIAGRAM_TYPE_LABELS[diagram_type],
+        diagram_type_label=type_label(diagram_type),
         qc_approved=qc_approved,
         revision_applied=revision_applied,
-        recommendations=all_recommendations[:8],
+        recommendations=all_recommendations[:max_recs],
         enhanced_prompt=generation_prompt if prompt_enhanced else None,
         trace=trace,
     )

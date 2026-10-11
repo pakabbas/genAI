@@ -167,6 +167,20 @@ SEQUENCE_MESSAGE_START_Y = 88.0
 SEQUENCE_MESSAGE_STEP = 52.0
 
 
+def _sequence_layout_constants() -> tuple[float, float, float]:
+    """start_y, step, lifeline_padding — from settings when available."""
+    try:
+        from app.services import settings_service as cfg
+
+        return (
+            float(cfg.get_value("sequence.start_y")),
+            float(cfg.get_value("sequence.step")),
+            float(cfg.get_value("sequence.lifeline_padding")),
+        )
+    except Exception:
+        return SEQUENCE_MESSAGE_START_Y, SEQUENCE_MESSAGE_STEP, 100.0
+
+
 _MSG_NUM_PREFIX = re.compile(r"^(\d+)\s*[.):\-]\s*(.*)$")
 
 
@@ -205,16 +219,17 @@ def _layout_sequence_messages(document: DiagramDocument) -> DiagramDocument:
     if not any(e.type in SEQUENCE_MESSAGE_TYPES for e in document.edges):
         return document
 
+    start_y, step, lifeline_padding = _sequence_layout_constants()
     nodes = list(document.nodes)
     edges: list[DiagramEdge] = []
-    max_y = SEQUENCE_MESSAGE_START_Y
+    max_y = start_y
     message_index = 0
 
     for edge in document.edges:
         if edge.type not in SEQUENCE_MESSAGE_TYPES:
             edges.append(edge)
             continue
-        y = SEQUENCE_MESSAGE_START_Y + message_index * SEQUENCE_MESSAGE_STEP
+        y = start_y + message_index * step
         message_index += 1
         max_y = max(max_y, y + 24)
         meta = dict(edge.meta or {})
@@ -224,7 +239,7 @@ def _layout_sequence_messages(document: DiagramDocument) -> DiagramDocument:
     edges = _renumber_sequence_labels(edges)
 
     updated_nodes: list[DiagramNode] = []
-    min_height = max_y + 80
+    min_height = max_y + lifeline_padding
     for node in nodes:
         if node.type in SEQUENCE_LIFELINE_TYPES and node.height < min_height:
             updated_nodes.append(node.model_copy(update={"height": float(min_height)}))
