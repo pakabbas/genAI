@@ -90,7 +90,7 @@ TOOLBOX: dict[DiagramType, list[ToolboxItem]] = {
         ToolboxItem(id="class", label="Class", kind="node", shape="class", default_width=180, default_height=120),
         ToolboxItem(id="interface", label="Interface", kind="node", shape="interface", default_width=180, default_height=100),
         ToolboxItem(id="enum", label="Enumeration", kind="node", shape="enum", default_width=160, default_height=90),
-        ToolboxItem(id="package", label="Package", kind="node", shape="package", default_width=200, default_height=120),
+        ToolboxItem(id="package", label="Package", kind="node", shape="package", default_width=220, default_height=140),
         ToolboxItem(id="note", label="Note", kind="node", shape="note", default_width=120, default_height=80),
         ToolboxItem(id="inheritance", label="Inheritance", kind="edge", shape="inheritance"),
         ToolboxItem(id="realization", label="Realization", kind="edge", shape="realization"),
@@ -118,7 +118,7 @@ TOOLBOX: dict[DiagramType, list[ToolboxItem]] = {
         ToolboxItem(id="actor", label="User / Actor", kind="node", shape="actor", default_width=72, default_height=96),
         ToolboxItem(id="service", label="Service", kind="node", shape="service", default_width=160, default_height=72),
         ToolboxItem(id="api", label="API Gateway", kind="node", shape="api", default_width=160, default_height=72),
-        ToolboxItem(id="package", label="Subsystem", kind="node", shape="package", default_width=200, default_height=120),
+        ToolboxItem(id="package", label="Subsystem", kind="node", shape="package", default_width=240, default_height=160),
         ToolboxItem(id="cloud", label="External System", kind="node", shape="cloud", default_width=140, default_height=88),
         ToolboxItem(id="data_store", label="Database", kind="node", shape="data_store", default_width=100, default_height=64),
         ToolboxItem(id="note", label="Note", kind="node", shape="note", default_width=120, default_height=80),
@@ -159,8 +159,10 @@ DIAGRAM_TYPE_GUIDANCE: dict[DiagramType, str] = {
         "Flowchart completeness rules (strict):\n"
         "- Start/end terminators required.\n"
         "- Every stated step = its own process (do not merge distinct steps).\n"
-        "- Every conditional = decision diamond with ≥2 labeled branches.\n"
+        "- Every conditional = decision diamond with ≥2 labeled branches (Yes/No, 2FA, retry, etc.).\n"
         "- Preserve prompt order; do not invent extra business rules.\n"
+        "- Loop-backs / retries: route orthogonally around nodes (offset x/y), never short diagonals "
+        "cutting through the diagram.\n"
         "- Layout: ≥ 70px gaps between shapes; may use x:40–1600, y:40–1200 — do not cram."
     ),
     "sequence": (
@@ -202,14 +204,22 @@ CRITICAL:
 - Do NOT create a single node representing the whole diagram.
 - Completeness over brevity: if the brief (or PROCESS INVENTORY) lists N activities/decisions/lanes,
   the JSON must contain all of them. Never silently drop branches or merge distinct actions.
+- STABILITY: when an EXISTING diagram JSON is provided, MODIFY it — keep node/edge ids, message order,
+  activation boxes, and labels unless the user explicitly asks to change them. Do not recreate from scratch.
+- Deterministic structure: same brief ⇒ same participants, same message/edge sequence, same required shapes.
 
-JSON schema:
+JSON schema (strict):
 {
   "diagram_type": "<type>",
   "title": "string",
   "nodes": [{"id":"n1","type":"<toolbox_node_id>","label":"text","x":0,"y":0,"width":120,"height":60,"meta":{}}],
   "edges": [{"id":"e1","from":"n1","to":"n2","label":"","type":"<toolbox_edge_id>","meta":{}}]
 }
+- Every edge "from"/"to" MUST be an existing node id.
+- Sequence: put message_y (number) on each message edge meta or field; use activation nodes when brief asks.
+- ERD: use crow's-foot edge types (one, many, one_to_many, …) — never plain connector for cardinality.
+- Flowchart: route loop-backs as orthogonal paths (large x/y offsets around nodes), not short diagonals
+  through the middle; every decision needs Yes and No (or equivalent) labeled branches.
 
 Layout rules:
 1. Use unique ids (n1, n2, e1…).
@@ -336,7 +346,9 @@ def build_diagram_user_prompt(
         parts.extend(
             [
                 "",
-                "Extend this existing diagram using ONLY toolbox types (keep ids when possible):",
+                "EXISTING DIAGRAM (base — MODIFY, do not recreate):",
+                "Keep ids, activation boxes, message order, and polished labels unless the request",
+                "explicitly changes them. Apply only the requested edits (resize, relabel, add branch, etc.).",
                 existing_json,
             ]
         )

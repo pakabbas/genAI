@@ -30,6 +30,7 @@ from app.services.process_coverage import (
     repair_merged_process_nodes,
     validate_process_coverage,
 )
+from app.services.brief_coverage import looks_like_edit_request, validate_brief_coverage
 from app.services.prompt_guard import reject_if_non_diagram
 from app.services import settings_service as cfg
 
@@ -184,8 +185,21 @@ def generate_diagram_with_qc(
         )
         step += 1
 
+    edit_mode = looks_like_edit_request(generation_prompt, existing is not None)
+    if edit_mode:
+        _append_trace(
+            trace,
+            step=step,
+            agent="generator",
+            phase="edit_mode",
+            message="Edit request detected — Generator will modify the existing diagram (not recreate).",
+            on_entry=on_trace,
+        )
+        step += 1
+
     # Process-oriented types: derive structured inventory before drawing
-    if diagram_type in process_oriented_types():
+    # Skip full re-inventory on small edits so we don't thrash a good canvas.
+    if diagram_type in process_oriented_types() and not edit_mode:
         _append_trace(
             trace,
             step=step,
@@ -231,7 +245,11 @@ def generate_diagram_with_qc(
         step=step,
         agent="generator",
         phase="draft",
-        message="Generator is composing the diagram from toolbox shapes…",
+        message=(
+            "Generator is applying edits to the existing diagram…"
+            if edit_mode
+            else "Generator is composing the diagram from toolbox shapes…"
+        ),
         detail=(
             f"Diagram type: {type_label(diagram_type)} · "
             f"models analyst/planner/generator/qc: "
@@ -252,6 +270,38 @@ def generate_diagram_with_qc(
     if process_model is not None:
         diagram = repair_merged_process_nodes(diagram, process_model)
         diagram = normalize_diagram(diagram_type, diagram)
+
+    # Brief coverage validation — one Generator re-ask when required elements are missing.
+    brief_gaps = validate_brief_coverage(diagram_type, qc_prompt, diagram)
+    if brief_gaps and not edit_mode:
+        _append_trace(
+            trace,
+            step=step,
+            agent="generator",
+            phase="brief_validate",
+            message=f"Brief validation found {len(brief_gaps)} gap(s) — re-asking Generator once.",
+            detail="\n".join(f"• {g}" for g in brief_gaps),
+            on_entry=on_trace,
+        )
+        step += 1
+        fix_prompt = build_revision_prompt(
+            diagram_type,
+            generation_prompt,
+            diagram,
+            brief_gaps,
+            process_inventory=process_inventory,
+        )
+        diagram = _generate_diagram_document(
+            diagram_type,
+            generation_prompt,
+            revision_context=fix_prompt,
+            process_inventory=process_inventory,
+        )
+        diagram = normalize_diagram(diagram_type, diagram)
+        if process_model is not None:
+            diagram = repair_merged_process_nodes(diagram, process_model)
+            diagram = normalize_diagram(diagram_type, diagram)
+        brief_gaps = validate_brief_coverage(diagram_type, qc_prompt, diagram)
 
     _append_trace(
         trace,
@@ -286,6 +336,12 @@ def generate_diagram_with_qc(
             on_entry=on_trace,
         )
         step += 1
+
+    # Remaining brief gaps after the Generator re-ask become QC blocking coverage items.
+    if brief_gaps:
+        for g in brief_gaps:
+            if g not in coverage_gaps:
+                coverage_gaps.append(g)
 
     max_revisions = int(cfg.get_value("pipeline.max_qc_revisions"))
     qc_enabled = bool(cfg.get_value("pipeline.qc_enabled"))

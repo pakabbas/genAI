@@ -48,23 +48,27 @@ def build_qc_audit_prompt(
 
     type_checklist = {
         "swim_lane": (
-            "Checklist: every named lane present? every stated activity its own task? "
-            "every if/or/accept-reject as gateway_xor with ≥2 labeled branches? start/end present?"
+            "Checklist (tick each): every named lane? every stated activity its own task? "
+            "every if/or/accept-reject as gateway_xor with ≥2 labeled branches? start/end?"
         ),
         "flowchart": (
-            "Checklist: every stated step present? every conditional a decision with ≥2 "
-            "labeled branches? start/end terminators present?"
+            "Checklist (tick each): every stated step? every conditional a decision with ≥2 "
+            "labeled branches (incl. No/2FA/retry)? start/end? loop-backs routed around nodes?"
         ),
         "sequence": (
-            "Checklist: major participants present? messages use message/async_message/"
-            "return_message? humans as actor where appropriate?"
+            "Checklist (tick each): each participant? message count/order/types "
+            "(message/async_message/return_message)? activation boxes if requested? "
+            "humans as actor?"
         ),
-        "erd": "Checklist: major entities present? relationships connect valid entity ids?",
-        "class_diagram": "Checklist: major classes/interfaces present? associations valid?",
-        "use_case": "Checklist: primary actors and major use cases present?",
-        "network": "Checklist: major devices/sites present? data_store OK for databases?",
-        "architecture": "Checklist: major services/APIs/stores present? service≠api shapes?",
-    }.get(diagram_type, "Checklist: all major requested elements present?")
+        "erd": (
+            "Checklist (tick each): major entities? relationships on valid ids? "
+            "cardinality edge types (one/many/one_to_many) when brief asks?"
+        ),
+        "class_diagram": "Checklist (tick each): major classes/interfaces? associations valid?",
+        "use_case": "Checklist (tick each): primary actors and major use cases?",
+        "network": "Checklist (tick each): major devices/sites? data_store for databases?",
+        "architecture": "Checklist (tick each): major services/APIs/stores? service≠api shapes?",
+    }.get(diagram_type, "Checklist (tick each): all major requested elements present?")
 
     return "\n".join(
         [
@@ -78,6 +82,9 @@ def build_qc_audit_prompt(
             "",
             stats,
             "",
+            "REQUIREMENT-BY-REQUIREMENT AUDIT:",
+            "List each concrete requirement from the user request, mark PASS or FAIL,",
+            "and set revision_required if any FAIL.",
             type_checklist,
             "",
             "Generated diagram JSON to review:",
@@ -110,17 +117,30 @@ def build_revision_prompt(
         revision_header = cfg.active_prompt_body("qc.revision").strip()
     except Exception:
         revision_header = (
-            "QC / COVERAGE REVISION REQUIRED — fix these blocking issues and return a COMPLETE diagram JSON:\n"
-            "\n"
-            "Do not omit activities, lanes, decisions, or branches that appear in the brief/inventory.\n"
-            "Do not invent unrelated flows (refunds, retries, etc.) unless they were requested."
+            "QC / COVERAGE REVISION REQUIRED — fix these blocking issues and return a COMPLETE diagram JSON:"
         )
+    # v2.6.9 order: header → issue list → do-not-omit notes (never bury issues under notes).
+    header_line = revision_header.split("\n")[0].strip() or (
+        "QC / COVERAGE REVISION REQUIRED — fix these blocking issues and return a COMPLETE diagram JSON:"
+    )
+    trailing_notes = [
+        line
+        for line in revision_header.split("\n")[1:]
+        if line.strip() and not line.strip().startswith("-")
+    ]
+    if not trailing_notes:
+        trailing_notes = [
+            "Do not omit activities, lanes, decisions, or branches that appear in the brief/inventory.",
+            "Do not invent unrelated flows (refunds, retries, etc.) unless they were requested.",
+        ]
     return "\n".join(
         [
             base,
             "",
-            revision_header,
+            header_line,
             issues,
+            "",
+            *trailing_notes,
             "",
             "Previous attempt (improve, do not discard valid parts unless necessary):",
             previous_diagram.model_dump_json(by_alias=True, indent=2),

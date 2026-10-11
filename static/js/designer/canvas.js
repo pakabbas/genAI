@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.1";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.2";
 
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
 
@@ -39,8 +39,8 @@ export class DiagramCanvas {
     this.MIN_ZOOM = Number(cfg["canvas.zoom_min"]) || 0.25;
     this.MAX_ZOOM = Number(cfg["canvas.zoom_max"]) || 2.5;
     this.MAX_UNDO = Number(cfg["canvas.undo_depth"]) || 48;
-    this.SPAWN_STEP_X = Number(cfg["canvas.spawn_step_x"]) || 40;
-    this.SPAWN_STEP_Y = Number(cfg["canvas.spawn_step_y"]) || 20;
+    this.SPAWN_STEP_X = Number(cfg["canvas.spawn_step_x"]) || 160;
+    this.SPAWN_STEP_Y = Number(cfg["canvas.spawn_step_y"]) || 80;
     this.SEQUENCE_START_Y = Number(cfg["sequence.start_y"]) || 88;
     this.SEQUENCE_STEP = Number(cfg["sequence.step"]) || 52;
     this.LIFELINE_PADDING = Number(cfg["sequence.lifeline_padding"]) || 80;
@@ -104,9 +104,16 @@ export class DiagramCanvas {
   }
 
   undo() {
-    if (this._historyIndex <= 0) return false;
-    this._historyIndex -= 1;
-    this.diagram = JSON.parse(this._history[this._historyIndex]);
+    if (!this._history?.length) return false;
+    const current = JSON.stringify(this.diagram);
+    // Mutations save the pre-change snapshot at the tip; restore that first.
+    if (current !== this._history[this._historyIndex]) {
+      this.diagram = JSON.parse(this._history[this._historyIndex]);
+    } else {
+      if (this._historyIndex <= 0) return false;
+      this._historyIndex -= 1;
+      this.diagram = JSON.parse(this._history[this._historyIndex]);
+    }
     this.selectedIds.clear();
     this.connectFrom = null;
     this.render();
@@ -208,35 +215,37 @@ export class DiagramCanvas {
     openArrow.appendChild(openPath);
     defs.appendChild(openArrow);
 
-    // Crow's-foot ERD markers (tip points along the edge toward the connected entity)
-    const addCf = (id, d, refX = 12) => {
+    // Crow's-foot ERD markers — userSpaceOnUse so they stay visible at normal zoom
+    const addCf = (id, d, refX = 18) => {
       const m = document.createElementNS("http://www.w3.org/2000/svg", "marker");
       m.setAttribute("id", id);
-      m.setAttribute("viewBox", "0 0 14 14");
+      m.setAttribute("viewBox", "0 0 20 20");
       m.setAttribute("refX", String(refX));
-      m.setAttribute("refY", "7");
-      m.setAttribute("markerWidth", "10");
-      m.setAttribute("markerHeight", "10");
+      m.setAttribute("refY", "10");
+      m.setAttribute("markerUnits", "userSpaceOnUse");
+      m.setAttribute("markerWidth", "22");
+      m.setAttribute("markerHeight", "22");
       m.setAttribute("orient", "auto");
       const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
       p.setAttribute("d", d);
       p.setAttribute("fill", "none");
-      p.setAttribute("stroke", "#1e293b");
-      p.setAttribute("stroke-width", "1.5");
+      p.setAttribute("stroke", "#0f172a");
+      p.setAttribute("stroke-width", "2");
       p.setAttribute("stroke-linecap", "round");
+      p.setAttribute("stroke-linejoin", "round");
       m.appendChild(p);
       defs.appendChild(m);
     };
     // Vertical bar = one
-    addCf("cf-one", "M 11 2 L 11 12");
+    addCf("cf-one", "M 16 3 L 16 17");
     // Crow's foot = many
-    addCf("cf-many", "M 12 7 L 2 2 M 12 7 L 2 7 M 12 7 L 2 12");
+    addCf("cf-many", "M 17 10 L 4 3 M 17 10 L 4 10 M 17 10 L 4 17");
     // Bar + crow's foot = one or many
-    addCf("cf-one-many", "M 13 2 L 13 12 M 11 7 L 1 2 M 11 7 L 1 7 M 11 7 L 1 12");
+    addCf("cf-one-many", "M 18 3 L 18 17 M 15 10 L 3 3 M 15 10 L 3 10 M 15 10 L 3 17");
     // Circle + bar = zero or one
-    addCf("cf-zero-one", "M 3 7 A 2.5 2.5 0 1 1 3.01 7 M 11 2 L 11 12", 12);
+    addCf("cf-zero-one", "M 5 10 A 3.5 3.5 0 1 1 5.01 10 M 16 3 L 16 17", 18);
     // Circle + crow's foot = zero or many
-    addCf("cf-zero-many", "M 3 7 A 2.5 2.5 0 1 1 3.01 7 M 12 7 L 5 2 M 12 7 L 5 7 M 12 7 L 5 12", 12);
+    addCf("cf-zero-many", "M 5 10 A 3.5 3.5 0 1 1 5.01 10 M 17 10 L 8 3 M 17 10 L 8 10 M 17 10 L 8 17", 18);
   }
 
   _bindEvents() {
@@ -322,18 +331,33 @@ export class DiagramCanvas {
     const [w, h] = defaultNodeSize(type);
     let nx = Math.round((Number.isFinite(x) ? x : 120) / this.GRID) * this.GRID;
     let ny = Math.round((Number.isFinite(y) ? y : 120) / this.GRID) * this.GRID;
-    // Palette drops: nudge until the top-left does not sit on an existing node
+
+    // Keep large containers (pool/lane) inside the visible viewport
+    if (["pool", "lane"].includes(type) || opts.clampViewport) {
+      const clamped = this._clampSpawnToViewport(nx, ny, w, h);
+      nx = clamped.x;
+      ny = clamped.y;
+    }
+
+    // Palette drops: step by ~shape width + gap; wrap to a new row when colliding
     if (!opts.exact) {
+      const stepX = Math.max(this.SPAWN_STEP_X, Math.round(w + 40));
+      const stepY = Math.max(this.SPAWN_STEP_Y || 80, Math.round(h + 24));
+      const originX = nx;
       let guard = 0;
-      while (
-        guard < 40 &&
-        this.diagram.nodes.some((n) => Math.abs(n.x - nx) < 12 && Math.abs(n.y - ny) < 12)
-      ) {
-        nx += this.SPAWN_STEP_X;
-        ny += this.SPAWN_STEP_Y;
+      let col = 0;
+      while (guard < 60 && this._spawnOverlaps(nx, ny, w, h)) {
+        col += 1;
+        nx = originX + col * stepX;
+        if (col >= 4) {
+          col = 0;
+          nx = originX;
+          ny += stepY;
+        }
         guard += 1;
       }
     }
+
     const node = {
       id: nextId("n", this.diagram.nodes),
       type,
@@ -348,7 +372,37 @@ export class DiagramCanvas {
     this.selectOnly(node.id);
     this.render();
     this.onChange(this.getDiagram());
+    if (["pool", "lane"].includes(type)) {
+      this.scheduleFitToContent();
+    }
     return node;
+  }
+
+  _spawnOverlaps(x, y, w, h) {
+    const pad = 8;
+    return this.diagram.nodes.some((n) => {
+      const nw = Number(n.width) || 80;
+      const nh = Number(n.height) || 40;
+      return !(
+        x + w + pad <= n.x ||
+        n.x + nw + pad <= x ||
+        y + h + pad <= n.y ||
+        n.y + nh + pad <= y
+      );
+    });
+  }
+
+  _clampSpawnToViewport(x, y, w, h) {
+    const rect = this.viewport?.getBoundingClientRect?.();
+    if (!rect || !rect.width) return { x, y };
+    const tl = this._screenToWorld(rect.left + 24, rect.top + 24);
+    const br = this._screenToWorld(rect.right - 24, rect.bottom - 24);
+    const maxX = Math.max(tl.x, br.x - w);
+    const maxY = Math.max(tl.y, br.y - Math.min(h, (br.y - tl.y) * 0.85));
+    return {
+      x: Math.round(Math.min(Math.max(x, tl.x), maxX) / this.GRID) * this.GRID,
+      y: Math.round(Math.min(Math.max(y, tl.y), maxY) / this.GRID) * this.GRID,
+    };
   }
 
   addEdge(fromId, toId, type = "connector", label = "") {
@@ -1759,9 +1813,9 @@ export class DiagramCanvas {
       return {
         cx: w / 2,
         cy: h / 2,
-        maxW: Math.max(28, w * 0.46),
-        maxH: Math.max(24, h * 0.46),
-        fontSize: 8.5,
+        maxW: Math.max(36, w * 0.62),
+        maxH: Math.max(28, h * 0.62),
+        fontSize: Math.max(9, this.BASE_FONT),
         align: "middle",
       };
     }
@@ -1775,13 +1829,34 @@ export class DiagramCanvas {
       return { cx: w / 2, cy: h / 2, maxW: Math.max(36, w - 20), maxH: Math.max(20, h - 14), fontSize: 9, align: "middle" };
     }
     if (type === "api") {
-      return { cx: w / 2, cy: h / 2, maxW: Math.max(36, w - 40), maxH: Math.max(20, h - 16), fontSize, align: "middle" };
+      return {
+        cx: w / 2,
+        cy: h / 2,
+        maxW: Math.max(48, w - 28),
+        maxH: Math.max(24, h - 12),
+        fontSize: Math.max(9.5, fontSize),
+        align: "middle",
+      };
     }
     if (["package", "fragment", "cloud", "service"].includes(type)) {
-      return { cx: w / 2, cy: 14, maxW: Math.max(36, w - 16), maxH: 34, fontSize, align: "top" };
+      return {
+        cx: w / 2,
+        cy: 16,
+        maxW: Math.max(48, w - 16),
+        maxH: 40,
+        fontSize: Math.max(9.5, fontSize),
+        align: "top",
+      };
     }
     if (type === "lifeline" || type === "object") {
-      return { cx: w / 2, cy: 16, maxW: Math.max(36, w - 12), maxH: 28, fontSize, align: "top" };
+      return {
+        cx: w / 2,
+        cy: 18,
+        maxW: Math.max(48, w - 10),
+        maxH: 36,
+        fontSize: Math.max(9.5, fontSize),
+        align: "top",
+      };
     }
     return {
       cx: w / 2,
@@ -1808,6 +1883,14 @@ export class DiagramCanvas {
       "decision",
       "relationship",
       "use_case",
+      "api",
+      "service",
+      "lifeline",
+      "object",
+      "class",
+      "interface",
+      "gateway_xor",
+      "gateway_and",
     ].includes(type);
   }
 
@@ -1825,10 +1908,12 @@ export class DiagramCanvas {
     const neededW = Math.ceil(longest * layout.fontSize * 0.56 + (node.width - layout.maxW));
     if (neededW > node.width) {
       const nextW = Math.min(280, Math.max(node.width, neededW));
-      if (["decision", "relationship"].includes(node.type)) {
-        const side = Math.min(168, Math.max(nextW, neededH, node.height));
+      if (["decision", "relationship", "gateway_xor", "gateway_and"].includes(node.type)) {
+        const side = Math.min(180, Math.max(nextW, neededH, node.height));
         node.width = side;
         node.height = side;
+      } else if (node.type === "lifeline" || node.type === "object") {
+        node.width = Math.min(220, Math.max(node.width, neededW));
       } else {
         node.width = nextW;
       }

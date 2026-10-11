@@ -18,10 +18,11 @@ from app.services.settings_registry import (
 logger = logging.getLogger(__name__)
 
 _CACHE_TTL = 30.0
+_SCHEMA_RETRY_SECONDS = 60.0
 _cache: dict[str, Any] | None = None
 _cache_at = 0.0
 _schema_ready = False
-_schema_failed = False
+_schema_failed_at = 0.0
 _prompt_body_cache: dict[str, tuple[float, str]] = {}
 _prompt_meta_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
@@ -48,8 +49,10 @@ CREATE TABLE IF NOT EXISTS genai_prompts (
 
 
 def ensure_schema() -> None:
-    global _schema_ready, _schema_failed
-    if _schema_ready or _schema_failed:
+    global _schema_ready, _schema_failed_at
+    if _schema_ready:
+        return
+    if _schema_failed_at and (time.time() - _schema_failed_at) < _SCHEMA_RETRY_SECONDS:
         return
     if not check_connection():
         return
@@ -61,9 +64,10 @@ def ensure_schema() -> None:
                     if sql:
                         cur.execute(sql)
         _schema_ready = True
+        _schema_failed_at = 0.0
     except Exception as exc:
-        _schema_failed = True
-        logger.warning("genai settings schema ensure failed: %s", exc)
+        _schema_failed_at = time.time()
+        logger.warning("genai settings schema ensure failed (retry in %ss): %s", int(_SCHEMA_RETRY_SECONDS), exc)
 
 
 def invalidate_cache() -> None:
@@ -122,9 +126,18 @@ def _coerce(meta: dict[str, Any], value: Any) -> Any:
             if isinstance(value, bool):
                 return value
             if isinstance(value, str):
-                return value.strip().lower() in {"1", "true", "yes", "on"}
-            if isinstance(value, (int, float)):
+                token = value.strip().lower()
+                if token in {"1", "true", "yes", "on"}:
+                    return True
+                if token in {"0", "false", "no", "off"}:
+                    return False
+                raise ValueError(
+                    f"{key} must be true/false/1/0/yes/no (got {value!r})."
+                )
+            if isinstance(value, int) and value in (0, 1):
                 return bool(value)
+            if isinstance(value, float) and value in (0.0, 1.0):
+                return bool(int(value))
             raise ValueError(f"{key} must be a boolean.")
         if t == "integer":
             if isinstance(value, bool):
@@ -361,6 +374,7 @@ def _code_prompt_default(prompt_key: str) -> str:
     if prompt_key == "qc.base.response_format":
         return qc_base.QC_RESPONSE_FORMAT
     if prompt_key == "qc.revision":
+        # Header only — issue list is injected immediately after (v2.6.9 order).
         return (
             "QC / COVERAGE REVISION REQUIRED — fix these blocking issues and return a COMPLETE diagram JSON:\n"
             "\n"
@@ -389,7 +403,7 @@ def get_prompt(prompt_key: str) -> dict[str, Any]:
     versions: list[dict[str, Any]] = []
     active_body = default_body
     active_version = 0
-    if check_connection() and not _schema_failed:
+    if check_connection() and _schema_ready:
         try:
             with get_connection() as conn:
                 with conn.cursor() as cur:

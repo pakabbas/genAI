@@ -35,7 +35,9 @@ function formatDefault(val) {
 
 function renderStatus() {
   const s = state.status || {};
-  els.status.textContent = `v${s.version || "?"} · API ${s.api_key_status || "?"} · DB ${s.db_connected ? "on" : "off"}`;
+  const text = `v${s.version || "?"} · API ${s.api_key_status || "?"} · DB ${s.db_connected ? "on" : "off"}`;
+  els.status.textContent = text;
+  els.status.title = text;
 }
 
 function fieldControl(setting) {

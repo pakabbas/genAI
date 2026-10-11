@@ -11,9 +11,12 @@ QC_SYSTEM = compose_qc_system(
     vocabulary="actors, lifelines, messages (never say entity boxes)",
     blocking_rules="""
 1. Diagram empty / unusable.
-2. A major participant or message exchange explicitly named in the request is missing.
-3. Edges use invalid types (must be message / async_message / return_message — not connector).
-4. Edges reference missing node ids, or node types outside the sequence toolbox.
-5. Wrong diagram type for the request.
+2. A major participant explicitly named in the request is missing.
+3. Message count/order/types contradict the brief (wrong sync/async/return; missing exchanges).
+4. Brief asks for activation boxes but none are present (or they vanished vs. a prior draft).
+5. Brief asks for dashed return / async edges but those edge types are missing.
+6. Edges use invalid types (must be message / async_message / return_message — not connector).
+7. Edges reference missing node ids, or node types outside the sequence toolbox.
+8. Wrong diagram type for the request.
 """,
 )

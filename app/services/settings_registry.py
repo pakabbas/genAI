@@ -294,12 +294,12 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
         label="Grid size", help="Snap grid in world units.", min=5, max=80, scope="public",
     ),
     "canvas.spawn_step_x": _s(
-        "canvas.spawn_step_x", type="integer", default=40, group="canvas",
-        label="Spawn step X", help="Collision nudge when dropping shapes.", min=10, max=200, scope="public",
+        "canvas.spawn_step_x", type="integer", default=160, group="canvas",
+        label="Spawn step X", help="Horizontal gap when stacking palette drops (~shape width + gap).", min=10, max=400, scope="public",
     ),
     "canvas.spawn_step_y": _s(
-        "canvas.spawn_step_y", type="integer", default=20, group="canvas",
-        label="Spawn step Y", help="Collision nudge when dropping shapes.", min=10, max=200, scope="public",
+        "canvas.spawn_step_y", type="integer", default=80, group="canvas",
+        label="Spawn step Y", help="Row wrap offset when palette drops collide.", min=0, max=400, scope="public",
     ),
     "canvas.zoom_min": _s(
         "canvas.zoom_min", type="number", default=0.25, group="canvas",

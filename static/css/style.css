@@ -433,8 +433,8 @@ input {
 .toolbox-glyph {
   display: grid;
   place-items: center;
-  min-width: 2rem;
-  height: 1.35rem;
+  min-width: 2.1rem;
+  height: 1.55rem;
   border-radius: 6px;
   background: var(--accent-soft);
   font-size: 0.62rem;
@@ -443,10 +443,21 @@ input {
   color: var(--accent);
 }
 
+.toolbox-glyph-svg {
+  width: 1.35rem;
+  height: 1.35rem;
+  display: block;
+}
+
 .toolbox-edge .toolbox-glyph {
-  background: #f5f3ff;
-  color: #6d28d9;
+  background: #eff6ff;
+  color: #1d4ed8;
   font-size: 0.85rem;
+}
+
+.toolbox-edge .toolbox-glyph-svg {
+  width: 1.7rem;
+  height: 0.95rem;
 }
 
 .diagram-type-grid {

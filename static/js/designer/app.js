@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.1";
-import { DiagramCanvas } from "./canvas.js?v=2.7.1";
-import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.1";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.2";
+import { DiagramCanvas } from "./canvas.js?v=2.7.2";
+import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.2";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -166,6 +166,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.1";
     welcomeProgressFill: document.getElementById("welcomeProgressFill"),
     welcomeVisualStage: document.getElementById("welcomeVisualStage"),
     welcomeVisualCaption: document.getElementById("welcomeVisualCaption"),
+    tourHelpBtn: document.getElementById("tourHelpBtn"),
   };
 
   let contextMenuTargetId = null;
@@ -365,6 +366,10 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.1";
     if (els.canvasLoadingSub) {
       els.canvasLoadingSub.textContent =
         stageSub || "Requirements Analyst → Generator → QC Auditor";
+    }
+    // Prevent mid-generation type switches from dropping the result under the wrong type.
+    for (const sel of [els.diagramTypeSelect, els.diagramTypeSelectLeft]) {
+      if (sel) sel.disabled = Boolean(isGenerating);
     }
   }
 
@@ -874,22 +879,88 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.1";
   }
 
   function glyphFor(item) {
-    const map = {
-      actor: "Actor",
-      use_case: "UC",
-      entity: "Ent",
-      process: "Proc",
-      service: "Svc",
-      api: "API",
-      lane: "Lane",
-      pool: "Pool",
-      gateway_xor: "XOR",
-      gateway_and: "AND",
-      class: "Class",
-      cloud: "Cloud",
+    const shape = item.shape || item.id;
+    if (item.kind === "edge") {
+      const edgeGlyphs = {
+        association: "—",
+        include: "«i»",
+        extend: "«e»",
+        generalization: "◁",
+        dependency: "⇢",
+        one: "1",
+        many: "*",
+        one_or_many: "1..*",
+        zero_or_one: "0..1",
+        zero_or_many: "0..*",
+        one_to_many: "1—*",
+        many_to_many: "*—*",
+        identifying: "═",
+        message: "→",
+        async_message: "⇢",
+        return_message: "↩",
+        flow: "→",
+        message_flow: "⇏",
+        connector: "→",
+        inheritance: "△",
+        realization: "△̆",
+        composition: "◆",
+        aggregation: "◇",
+        network_link: "━",
+        wireless: "≋",
+        data_flow: "⇒",
+      };
+      return (
+        `<svg class="toolbox-glyph-svg" viewBox="0 0 32 16" aria-hidden="true">` +
+        `<text x="16" y="12" text-anchor="middle" font-size="11" font-weight="700">${edgeGlyphs[shape] || "→"}</text></svg>`
+      );
+    }
+    const icons = {
+      actor: '<circle cx="12" cy="7" r="3.2"/><path d="M12 10v6M8 13h8M9 22l3-6 3 6"/>',
+      use_case: '<ellipse cx="12" cy="12" rx="9" ry="6"/>',
+      system_boundary: '<rect x="3" y="3" width="18" height="18" rx="2"/>',
+      package: '<path d="M3 8h7l2 3h9v10H3z"/>',
+      note: '<path d="M6 4h10l4 4v12H6zM16 4v4h4"/>',
+      text_box: '<rect x="4" y="7" width="16" height="10" rx="1"/><path d="M7 12h10"/>',
+      entity: '<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 10h18"/>',
+      weak_entity: '<rect x="3" y="5" width="18" height="14" rx="1"/><rect x="5" y="7" width="14" height="10"/>',
+      attribute: '<ellipse cx="12" cy="12" rx="8" ry="5"/>',
+      relationship: '<path d="M12 4l7 8-7 8-7-8z"/>',
+      pool: '<rect x="2" y="4" width="20" height="16"/><path d="M2 10h20"/>',
+      lane: '<rect x="2" y="6" width="20" height="12"/><path d="M7 6v12"/>',
+      start: '<circle cx="12" cy="12" r="7"/>',
+      end: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="4"/>',
+      process: '<rect x="3" y="7" width="18" height="10" rx="1"/>',
+      subprocess: '<rect x="3" y="7" width="18" height="10" rx="1"/><path d="M6 7v10M18 7v10"/>',
+      gateway_xor: '<path d="M12 3l9 9-9 9-9-9z"/><path d="M9 9l6 6M15 9l-6 6"/>',
+      gateway_and: '<path d="M12 3l9 9-9 9-9-9z"/><path d="M12 7v10M7 12h10"/>',
+      decision: '<path d="M12 3l9 9-9 9-9-9z"/>',
+      document: '<path d="M5 4h12v12c-2 2-4 2-6 0s-4-2-6 0V4z"/>',
+      data_store: '<path d="M4 7c0-2 3.5-3 8-3s8 1 8 3v10c0 2-3.5 3-8 3s-8-1-8-3z"/><path d="M4 7c0 2 3.5 3 8 3s8-1 8-3"/>',
+      terminator: '<rect x="3" y="8" width="18" height="8" rx="4"/>',
+      input: '<path d="M6 7h14l-3 10H3z"/>',
+      lifeline: '<rect x="5" y="3" width="14" height="7" rx="1"/><path d="M12 10v11" stroke-dasharray="2 2"/>',
+      object: '<rect x="4" y="6" width="16" height="8" rx="1"/>',
+      activation: '<rect x="10" y="4" width="4" height="16"/>',
+      fragment: '<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h8l2 3"/>',
+      class: '<rect x="3" y="4" width="18" height="16"/><path d="M3 9h18M3 14h18"/>',
+      interface: '<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 10h18"/>',
+      enum: '<rect x="3" y="5" width="18" height="14"/><path d="M3 10h18"/>',
+      cloud: '<path d="M7 16c-3 0-4-2-4-4 0-2 2-3 3-3 0-3 2-5 5-5 3 0 5 2 5 4 2 0 4 1 4 3s-2 5-5 5H7z"/>',
+      router: '<rect x="5" y="8" width="14" height="8" rx="1"/><circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/>',
+      switch: '<rect x="4" y="8" width="16" height="8" rx="1"/><path d="M8 10v4M12 10v4M16 10v4"/>',
+      firewall: '<rect x="6" y="4" width="12" height="16" rx="1"/><path d="M6 8h12M6 12h12M6 16h12"/>',
+      load_balancer: '<path d="M4 12h6l2-5 2 10 2-5h4"/>',
+      server: '<rect x="7" y="3" width="10" height="18" rx="1"/><path d="M7 8h10M7 13h10M7 18h10"/>',
+      client: '<rect x="5" y="5" width="14" height="10" rx="1"/><path d="M9 18h6"/>',
+      workstation: '<rect x="4" y="5" width="16" height="10"/><path d="M8 18h8M10 15v3M14 15v3"/>',
+      service: '<rect x="3" y="6" width="18" height="12" rx="2"/>',
+      api: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/>',
     };
-    if (item.kind === "edge") return "→";
-    return map[item.shape] || item.label.slice(0, 4);
+    const path = icons[shape] || '<rect x="5" y="5" width="14" height="14" rx="2"/>';
+    return (
+      `<svg class="toolbox-glyph-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
+      `stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`
+    );
   }
 
   function onToolboxClick(item) {
@@ -1275,7 +1346,8 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.1";
       prompt_enhanced: true,
       original_prompt: state.originalPrompt || prompt,
     };
-    if (state.isDirty && canvas.diagram.nodes.length) {
+    // Always send the canvas as the edit base when shapes exist (modify, don't recreate).
+    if (canvas.diagram.nodes.length) {
       payload.existing = canvas.getDiagram();
     }
 
@@ -1485,6 +1557,10 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.1";
   els.welcomeBackdrop?.addEventListener("click", closeWelcomeModal);
   els.welcomeNextBtn?.addEventListener("click", welcomeNext);
   els.welcomeBackBtn?.addEventListener("click", welcomeBack);
+  els.tourHelpBtn?.addEventListener("click", () => {
+    if (els.welcomeDontShow) els.welcomeDontShow.checked = false;
+    openWelcomeModal();
+  });
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
