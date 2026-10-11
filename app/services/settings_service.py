@@ -586,7 +586,7 @@ def resolve_model(role: str) -> str:
     value = str(get_value(key) if key in SETTINGS_REGISTRY else "").strip()
     if value:
         return value
-    return str(get_env_settings().get("gemini_model") or "gemini-flash-lite-latest")
+    return str(get_env_settings().get("gemini_model") or "gemini-3.1-pro-preview")
 
 
 def fallback_model() -> str:

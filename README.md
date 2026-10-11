@@ -37,7 +37,7 @@ See [deploy/README.md](deploy/README.md) for GitHub secrets and workflow details
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `GEMINI_API_KEY` | Google AI Studio API key | *(required for AI)* |
-| `GEMINI_MODEL` | Gemini model id | `gemini-flash-lite-latest` |
+| `GEMINI_MODEL` | Gemini model id | `gemini-3.1-pro-preview` |
 | `APP_ROOT_PATH` | URL prefix when behind nginx | empty locally, `/genAI` in production |
 | `DB_HOST` | MySQL host | `127.0.0.1` on GCP |
 | `DB_PORT` | MySQL port | `3306` |

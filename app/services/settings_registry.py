@@ -103,7 +103,7 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
     "ai.model.analyst": _s(
         "ai.model.analyst",
         type="string",
-        default="gemini-flash-lite-latest",
+        default="gemini-3.1-pro-preview",
         group="ai_models",
         label="Analyst model (Agent 0)",
         help="Model for Requirements Analyst. Falls back to GEMINI_MODEL env when empty.",
@@ -111,7 +111,7 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
     "ai.model.planner": _s(
         "ai.model.planner",
         type="string",
-        default="gemini-flash-lite-latest",
+        default="gemini-3.1-pro-preview",
         group="ai_models",
         label="Planner model",
         help="Model for process inventory extraction.",
@@ -119,7 +119,7 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
     "ai.model.generator": _s(
         "ai.model.generator",
         type="string",
-        default="gemini-flash-lite-latest",
+        default="gemini-3.1-pro-preview",
         group="ai_models",
         label="Generator model (Agent 1)",
         help="Model for diagram JSON generation.",
@@ -127,7 +127,7 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
     "ai.model.qc": _s(
         "ai.model.qc",
         type="string",
-        default="gemini-flash-lite-latest",
+        default="gemini-3.1-pro-preview",
         group="ai_models",
         label="QC model (Agent 2)",
         help="Model for QC audit.",
@@ -135,10 +135,10 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
     "ai.model.fallback": _s(
         "ai.model.fallback",
         type="string",
-        default="",
+        default="gemini-3.8-flash",
         group="ai_models",
         label="Fallback model",
-        help="Optional model used after retries are exhausted.",
+        help="Optional model used after retries are exhausted (newest stable Flash).",
     ),
     # B. Generation parameters
     "ai.analyst.temperature": _s(

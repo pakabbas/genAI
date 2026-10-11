@@ -34,7 +34,7 @@ if [[ -z "${DB_PASSWORD:-}" ]]; then
 fi
 cat > .env <<EOF
 GEMINI_API_KEY=${GEMINI_API_KEY:?GEMINI_API_KEY is required}
-GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-lite-latest}
+GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.1-pro-preview}
 APP_ROOT_PATH=${APP_ROOT_PATH}
 DB_HOST=${DB_HOST:-127.0.0.1}
 DB_PORT=${DB_PORT:-3306}
