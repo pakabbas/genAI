@@ -299,7 +299,7 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
     ),
     "canvas.spawn_step_y": _s(
         "canvas.spawn_step_y", type="integer", default=80, group="canvas",
-        label="Spawn step Y", help="Row wrap offset when palette drops collide.", min=0, max=400, scope="public",
+        label="Spawn step Y", help="Row wrap offset when palette drops collide (0 = use shape height + gap).", min=0, max=400, scope="public",
     ),
     "canvas.zoom_min": _s(
         "canvas.zoom_min", type="number", default=0.25, group="canvas",

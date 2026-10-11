@@ -3,16 +3,43 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from app.schemas.diagram import DiagramDocument, DiagramType
 
+# Require phrasing that refers to an existing diagram — bare "make a … diagram" is NOT an edit.
 _EDIT_HINT = re.compile(
-    r"\b(make|wider|narrower|taller|shorter|resize|relabel|rename|move|shift|"
-    r"add (a |an |the )?(branch|edge|arrow|box|node|lane|message)|"
-    r"change (the )?(label|color|size|width|height)|"
-    r"only (change|update|fix|edit)|don'?t recreate|modify|patch|tweak)\b",
+    r"(?:"
+    r"\bmake\s+(these|the|those|this)\b|"
+    r"\b(wider|narrower|taller|shorter|resize|relabel|rename)\b|"
+    r"\bmove\s+\S|"
+    r"\bchange\s+(the\s+)?(label|color|size|width|height|boxes?|nodes?|shapes?)\b|"
+    r"\badd\s+(a\s+|an\s+|the\s+)?(branch|edge|arrow|box|node|lane|message)\b|"
+    r"\bonly\s+(change|update|fix|edit)\b|"
+    r"\bdon'?t\s+recreate\b|"
+    r"\b(modify|patch|tweak)\s+(the\s+|this\s+|these\s+)?(diagram|canvas|current)\b|"
+    r"\bedit\s+(the\s+|this\s+|current\s+)?diagram\b"
+    r")",
     re.I,
 )
+
+_STOP_PARTICIPANTS = {
+    "the", "a", "an", "user", "system", "then", "when", "after", "before",
+    "finally", "next", "first", "second", "third", "participants", "participant",
+    "sequence", "diagram", "message", "return", "async", "sync", "actor",
+    "lifeline", "service", "client", "server", "request", "response",
+}
+
+
+@dataclass(frozen=True)
+class BriefGaps:
+    """advisory = trace-only; blocking = high-confidence (re-ask / QC)."""
+
+    advisory: list[str]
+    blocking: list[str]
+
+    def all(self) -> list[str]:
+        return [*self.blocking, *self.advisory]
 
 
 def looks_like_edit_request(prompt: str, has_existing: bool) -> bool:
@@ -25,126 +52,132 @@ def validate_brief_coverage(
     diagram_type: DiagramType | str,
     brief: str,
     diagram: DiagramDocument,
-) -> list[str]:
-    """Return human-readable gaps (empty = OK). Heuristic, not LLM."""
+) -> BriefGaps:
+    """Heuristic gaps. Prefer advisory; only high-confidence items are blocking."""
     text = (brief or "").strip()
     if len(text) < 12:
-        return []
+        return BriefGaps([], [])
     dtype = str(diagram_type)
     labels = " ".join((n.label or "") for n in diagram.nodes).lower()
     edge_labels = " ".join((e.label or "") for e in diagram.edges).lower()
-    gaps: list[str] = []
 
     if dtype == "sequence":
-        gaps.extend(_sequence_gaps(text, diagram, labels))
-    elif dtype == "flowchart":
-        gaps.extend(_flowchart_gaps(text, diagram, labels, edge_labels))
-    elif dtype == "erd":
-        gaps.extend(_erd_gaps(text, diagram, labels))
-    elif dtype in {"swim_lane", "architecture", "use_case", "class_diagram", "network"}:
-        gaps.extend(_named_token_gaps(text, labels, min_len=4, limit=6))
-
-    return gaps[:12]
+        return _sequence_gaps(text, diagram, labels)
+    if dtype == "flowchart":
+        return _flowchart_gaps(text, diagram, labels, edge_labels)
+    if dtype == "erd":
+        return _erd_gaps(text, diagram, labels)
+    advisory = _named_token_gaps(text, labels, min_len=4, limit=6)
+    return BriefGaps(advisory=advisory, blocking=[])
 
 
-def _sequence_gaps(text: str, diagram: DiagramDocument, labels: str) -> list[str]:
-    gaps: list[str] = []
-    # Quoted or Title-Case participant-like tokens
-    candidates = re.findall(r'"([^"]{2,40})"', text)
-    candidates += re.findall(
-        r"\b([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,2})\b", text
-    )
-    skip = {
-        "The", "A", "An", "User", "System", "Then", "When", "After", "Before",
-        "Sequence", "Diagram", "Message", "Return", "Async", "Sync",
-    }
-    seen: set[str] = set()
-    for name in candidates:
-        key = name.strip()
-        if len(key) < 3 or key in skip or key.lower() in seen:
+def _sequence_gaps(text: str, diagram: DiagramDocument, labels: str) -> BriefGaps:
+    advisory: list[str] = []
+    blocking: list[str] = []
+
+    # Only explicit participant lists: "Participants: A, B" / "actors: …" / bullet lists after that heading
+    for name in _explicit_participant_names(text):
+        if name.lower() in _STOP_PARTICIPANTS:
             continue
-        seen.add(key.lower())
-        if key.lower() not in labels and not any(
-            key.lower() in (n.label or "").lower() for n in diagram.nodes
-        ):
-            # Only flag if brief presents it as a participant
-            if re.search(
-                rf"\b(participant|actor|lifeline|service|api|client|server|gateway)\b.*\b{re.escape(key)}\b"
-                rf"|\b{re.escape(key)}\b.*\b(participant|actor|lifeline|calls?|sends?|receives?)\b",
-                text,
-                re.I,
-            ):
-                gaps.append(f"Missing participant mentioned in brief: {key}")
+        if not any(name.lower() in (n.label or "").lower() for n in diagram.nodes):
+            advisory.append(f"Possible missing participant from brief list: {name}")
 
     msg_count = len(diagram.edges)
-    asked_msgs = re.findall(
-        r"\b(\d+)\s*(messages?|calls?|steps?)\b", text, re.I
-    )
+    asked_msgs = re.findall(r"\b(\d+)\s*(messages?|calls?)\b", text, re.I)
     for num_s, _ in asked_msgs:
         need = int(num_s)
         if need >= 3 and msg_count < need:
-            gaps.append(f"Brief asks for ~{need} messages/calls but diagram has {msg_count}.")
+            blocking.append(f"Brief asks for ~{need} messages/calls but diagram has {msg_count}.")
 
-    if re.search(r"\bactivation\b", text, re.I):
+    if re.search(r"\bactivation\s+box", text, re.I) or re.search(
+        r"\bwith\s+activations?\b", text, re.I
+    ):
         if not any(n.type == "activation" for n in diagram.nodes):
-            gaps.append("Brief requests activation boxes but none are present.")
+            blocking.append("Brief requests activation boxes but none are present.")
 
-    if re.search(r"\b(dashed return|return message|async)\b", text, re.I):
-        types = {e.type for e in diagram.edges}
-        if re.search(r"\basync\b", text, re.I) and "async_message" not in types:
-            gaps.append("Brief mentions async messages but no async_message edges.")
-        if re.search(r"\breturn\b", text, re.I) and "return_message" not in types:
-            gaps.append("Brief mentions return messages but no return_message edges.")
+    types = {e.type for e in diagram.edges}
+    if re.search(r"\basync(?:hronous)?\s+messages?\b", text, re.I) and "async_message" not in types:
+        blocking.append("Brief mentions async messages but no async_message edges.")
+    if re.search(r"\b(?:dashed\s+)?return\s+messages?\b", text, re.I) and "return_message" not in types:
+        blocking.append("Brief mentions return messages but no return_message edges.")
 
-    return gaps
+    return BriefGaps(advisory=advisory[:8], blocking=blocking[:8])
+
+
+def _explicit_participant_names(text: str) -> list[str]:
+    names: list[str] = []
+    # Quoted names near participant wording
+    for m in re.finditer(
+        r"(?i)(?:participants?|actors?|lifelines?)\s*[:=]\s*([^\n.]+)",
+        text,
+    ):
+        chunk = m.group(1)
+        for part in re.split(r"[,;/]| and ", chunk):
+            part = part.strip().strip("\"'")
+            if 2 <= len(part) <= 40:
+                names.append(part)
+    for m in re.finditer(r'"([^"]{2,40})"', text):
+        # Only if the quote sits near participant language
+        start = max(0, m.start() - 40)
+        window = text[start : m.end() + 40]
+        if re.search(r"(?i)participant|actor|lifeline", window):
+            names.append(m.group(1).strip())
+    # Dedupe preserve order
+    seen: set[str] = set()
+    out: list[str] = []
+    for n in names:
+        key = n.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(n)
+    return out
 
 
 def _flowchart_gaps(
     text: str, diagram: DiagramDocument, labels: str, edge_labels: str
-) -> list[str]:
-    gaps: list[str] = []
+) -> BriefGaps:
+    advisory: list[str] = []
+    blocking: list[str] = []
     decisions = [n for n in diagram.nodes if n.type == "decision"]
     for n in decisions:
         outs = [e for e in diagram.edges if e.from_node == n.id]
         if len(outs) < 2:
-            gaps.append(f"Decision {n.label!r} needs ≥2 outgoing labeled branches.")
+            blocking.append(f"Decision {n.label!r} needs ≥2 outgoing labeled branches.")
         elif sum(1 for e in outs if (e.label or "").strip()) < 2:
-            gaps.append(f"Decision {n.label!r} branches need labels (e.g. Yes/No).")
+            blocking.append(f"Decision {n.label!r} branches need labels (e.g. Yes/No).")
 
-    if re.search(r"\b(yes|no|true|false|2fa|mfa|retry)\b", text, re.I):
-        if "no" in text.lower() and "no" not in edge_labels and "n" not in edge_labels.split():
-            # soft: only if a decision exists
-            if decisions and not any(
-                re.search(r"\bno\b", (e.label or ""), re.I) for e in diagram.edges
-            ):
-                gaps.append("Brief implies a No/alternate branch that is missing on a decision.")
+    # Whole-word "No" branch — never match substring of "not"/"another"
+    if decisions and re.search(r"(?i)\b(yes\s*/\s*no|yes\s+or\s+no|\bno\s+branch)\b", text):
+        if not any(re.search(r"(?i)^\s*no\s*$", (e.label or "").strip()) for e in diagram.edges):
+            if not any(re.search(r"(?i)\bno\b", (e.label or "")) for e in diagram.edges):
+                advisory.append("Brief implies a No branch that may be missing on a decision.")
 
-    gaps.extend(_named_token_gaps(text, labels, min_len=5, limit=5))
-    return gaps
+    advisory.extend(_named_token_gaps(text, labels, min_len=5, limit=4))
+    return BriefGaps(advisory=advisory[:8], blocking=blocking[:8])
 
 
-def _erd_gaps(text: str, diagram: DiagramDocument, labels: str) -> list[str]:
-    gaps: list[str] = []
+def _erd_gaps(text: str, diagram: DiagramDocument, labels: str) -> BriefGaps:
+    advisory: list[str] = []
+    blocking: list[str] = []
     entities = [n for n in diagram.nodes if n.type in {"entity", "weak_entity"}]
-    if re.search(r"\b(one[- ]to[- ]many|many[- ]to[- ]many|cardinality|1\.\.\*)\b", text, re.I):
+    if re.search(r"(?i)\b(one[- ]to[- ]many|many[- ]to[- ]many|cardinality|1\.\.\*)\b", text):
         card_types = {
             "one", "many", "one_or_many", "zero_or_one", "zero_or_many",
             "one_to_many", "many_to_many", "identifying",
         }
         if not any(e.type in card_types for e in diagram.edges):
-            gaps.append("Brief requests cardinalities but no crow's-foot edge types are used.")
-    if len(entities) < 2 and re.search(r"\b(entities|tables|relationship)\b", text, re.I):
-        gaps.append("ERD should include multiple entity tables for the brief.")
-    gaps.extend(_named_token_gaps(text, labels, min_len=4, limit=5))
-    return gaps
+            blocking.append("Brief requests cardinalities but no crow's-foot edge types are used.")
+    if len(entities) < 2 and re.search(r"(?i)\b(entities|tables)\b", text):
+        advisory.append("ERD may need more entity tables for the brief.")
+    advisory.extend(_named_token_gaps(text, labels, min_len=4, limit=4))
+    return BriefGaps(advisory=advisory[:8], blocking=blocking[:8])
 
 
 def _named_token_gaps(text: str, labels: str, *, min_len: int, limit: int) -> list[str]:
     gaps: list[str] = []
-    # Prefer quoted names
     for name in re.findall(r'"([^"]{2,40})"', text):
         if len(name) >= min_len and name.lower() not in labels:
-            gaps.append(f"Missing element mentioned in brief: {name}")
+            gaps.append(f"Missing quoted element from brief: {name}")
         if len(gaps) >= limit:
             break
     return gaps

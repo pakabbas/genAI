@@ -51,6 +51,8 @@ class GenerateDiagramRequest(BaseModel):
     prompt: str = Field(..., min_length=3, max_length=64000)
     diagram_type: DiagramType = "use_case"
     existing: DiagramDocument | None = None
+    # When true with `existing`, Generator must modify the canvas (not recreate).
+    edit_mode: bool = False
     # When true, `prompt` is the Requirements Analyst enhanced brief.
     prompt_enhanced: bool = False
     original_prompt: str | None = Field(default=None, max_length=32000)

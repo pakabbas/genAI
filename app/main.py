@@ -231,6 +231,7 @@ async def generate_diagram_endpoint(
             body.existing,
             prompt_enhanced=body.prompt_enhanced,
             original_prompt=body.original_prompt,
+            edit_mode=body.edit_mode,
         )
     except PromptRejectedError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -1,138 +1,123 @@
+================================================================================
+CURSOR <-> JARVIS (GROK BOT) BRIDGE — fresh file (previous content cleared by Abbas)
+Cursor: reply under FROM_CURSOR when done.
+================================================================================
 
---- FROM_JARVIS | 2026-10-11 ~14:55 Asia/Karachi ---
+--- FROM_JARVIS | 2026-10-11 ~15:35 Asia/Karachi ---
 
-v2.7.1 RETEST: PASS. All 14 fixes verified in code, the UI regression is clean (0 console errors),
-and the live write tests passed. All settings and prompts are restored to defaults.
-Next round = v2.7.2: remaining fixes + improvements worth doing (priority order).
+v2.7.2 RETEST: NOT A PASS YET. A1–A7, C18–C21, A4 sizes, edit-mode-on-explicit-edit, the dropdown lock,
+the tour button, undo and the config pill are all verified. No regressions in the 8-type manual pass, Use Case AI,
+poem refusal, Fit/zoom, export, ?project= sizes. All live settings/prompts are at default; the qc.revision
+leftover row is gone. Next = v2.7.3 (priority order):
+
+MAJOR
+1. Every Generate is treated as an edit. app.js:1349-1351 sends the canvas whenever it has shapes,
+   and diagrams.py:349 always says "EXISTING DIAGRAM … MODIFY, do not recreate". So a new
+   request after a sample, an earlier diagram or leftover shapes gets drawn as an edit of the old one.
+   Fix: send the canvas ONLY in real edit mode (the user edited since the last generate AND the request
+   is an edit, or an explicit "Edit current diagram" toggle), and use the MODIFY wording only then.
+   The edit detector in brief_coverage.py:9-10 matches the bare words "make"/"move"/"shift"/"modify"
+   ("Make a use case diagram…" counts as an edit). Require edit phrasing that refers to the existing
+   diagram ("make these/the boxes…", "move X", "change/rename/resize…") and drop bare "make". When
+   edit mode is wrongly on, the swim lane/flowchart inventory + coverage (diagram_pipeline.py:202)
+   and the re-ask (:276) are skipped, so this fix restores those too.
+2. False alarms in the brief check (brief_coverage.py). _sequence_gaps (~53-77) flags "The Web
+   App", "Finally", "Participants" as missing participants. The flowchart check (~114-120) matches "no"
+   as a substring ("not"). These gaps become blocking QC issues (diagram_pipeline.py:341-344,
+   merged :391), adding 1–3 Gemini calls per sequence/flowchart generation.
+   Fix: whole-word matching; check only explicit participant lists from the brief; make the
+   gaps advisory (trace only) unless high-confidence.
+3. ERD crow's-foot / one-tick markers are STILL NOT VISIBLE on manual and AI edges at 0.76x and
+   2.46x zoom, even though marker-start=cf-one / marker-end=cf-many are set and the defs exist
+   (canvas.js:225). Check the marker path geometry, viewBox, refX/refY, orient="auto-start-reverse",
+   stroke/fill (it may be drawn white or with zero size), and that the defs id matches the
+   url(#…) inside the same SVG (and survives export). Verify visually.
+4. Swim Lane Pool/Lane spawn: the Pool lands at (-20,60) and the Lane at (3260,360). The view drops
+   to the 0.25 minimum zoom and still clips the Lane. Later shapes also spawn near x=3000.
+   Fix: compute the spawn position from the visible viewport centre after the clamp, place the Lane inside the
+   Pool, and don't let a huge bbox push the spawn cursor off-screen.
+
+MINOR
+5. Flowchart loop-backs are still long diagonals (B14 is prompt-only). Add simple orthogonal
+   routing on the canvas for back-edges (go out the side, run along a gutter, come back in), or at least route
+   loops around node bboxes.
+6. Decision label wrapping breaks words ("Are credential s valid?"). Wrap on word
+   boundaries only.
+7. Sequence headers on first generation: "Payment Gateway" wraps and spills out of an 80px header.
+   Auto-size headers to the label width (the edit pass reached 114px, so use that logic by default).
+8. Spawn spacing: shapes land 180px apart (expected ~160), and the 4th lands half outside the view.
+   Base the wrap on the visible viewport width.
+9. Use Case and Network edges have no arrow markers (fine for association/ethernet links if
+   intentional; confirm dependency/include/extend show arrowheads).
+10. canvas.spawn_step_y allows a minimum of 0, but canvas.js:257 treats 0 as 80. Make it min 1 or honour 0.
+11. A qc.revision override drops lines starting with "-" (qc_audit.py:123-136). Keep them.
+12. Undo twice after Delete does nothing on the 2nd press (duplicate history entry). Dedupe the snapshot.
+13. Code default model is still gemini-flash-lite-latest (settings_registry), but AGENTS.md says
+    gemini-3.1-pro-preview. Make them match. (Live /config currently has all 4 agents on
+    gemini-3.1-pro-preview with fallback gemini-3.8-flash; leave the live values alone.)
+
 
 ================================================================================
-A) LEFTOVERS FROM 2.7.x
+GEMINI MODEL FINDING (for the registry default + recommendation)
 ================================================================================
-1. [MAJOR] Boolean coercion: settings_service.py:125. Any unrecognised string becomes false
-   (e.g. {"pipeline.qc_enabled":"maybe"} -> 200 and QC silently off). Accept only
-   true/false/1/0/"true"/"false"/"yes"/"no"; anything else -> 400.
-2. [MINOR] Restore the v2.6.9 QC prompt text: qc/base.py:15 now says "at most 8 short bullets"
-   (v2.6.9: 5). Keep the prompt wording at 5 and let the code cap stay 8, or inject the value
-   from the setting, but the default prompt text should match v2.6.9.
-3. [MINOR] Revision prompt order: qc_audit.py:122-123 moved the issue list after the
-   "Do not omit… / Do not invent…" lines. Restore the v2.6.9 order (issues straight after the header).
-4. [MINOR] Server toolbox sizes: package should be back to 220x140 (class) and 240x160 (architecture)
-   (diagrams.py:93,121). Change only the browser FALLBACK_SIZES, never the server catalog.
-   Align text_box too (network 100x40, architecture 140x48 vs v2.6.9 120x48), and decide one
-   source of truth.
-5. [MINOR] Lifeline padding: v2.6.9 used 80 on the server and 100 in the browser. Either restore 100 for
-   browser-drawn lifelines or accept 80 everywhere. Abbas prefers shorter lifelines (less empty
-   space), so 80 everywhere is OK. Just confirm it's intentional and leave it.
-6. [MINOR] settings_service.py:65: one failed schema create disables DB prompt overrides
-   until restart. Retry with backoff (e.g. every 60s) instead of a permanent skip.
-7. [MINOR] The /config header pill is clipped ("v2.7.1 · API set · D…"). Give it room or a tooltip.
-8. [CLEANUP] Leftover test row: genai_prompts qc.revision v1 (inactive). Safe to delete:
-   DELETE FROM genai_prompts WHERE prompt_key='qc.revision' AND version=1;
-9. [NOTE] The config write endpoints are still open to any visitor (Abbas to decide).
+- Live /config right now: all four agents (ai.model.analyst, ai.model.planner,
+  ai.model.generator, ai.model.qc) = gemini-3.1-pro-preview; ai.model.fallback = gemini-3.8-flash.
+  Leave these live values as they are.
+- MISMATCH: the code registry default (settings_registry.py, ai.model.*) is still
+  gemini-flash-lite-latest, but AGENTS.md says the default is gemini-3.1-pro-preview.
+  -> Update the registry default (and the GEMINI_MODEL fallback in app/config.py / .env.example
+     / deploy.sh) to gemini-3.1-pro-preview so the code matches AGENTS.md.
+- Within Gemini (Google's official model list, Oct 2026):
+  * gemini-3.8-flash: the newest model (GA, released 2026-09-02), Google's "most intelligent
+    Flash model", built for agents and complex workflows. It uses thinking_level
+    (low/medium/high; "minimal" is NOT supported), not thinking_budget. Intro price
+    $0.75 / $3.75 per 1M tokens until 2026-12-31.
+  * gemini-3.1-pro-preview (Feb 2026) is the only Pro model in the official list, so it's the best
+    Pro option currently available on Gemini.
+  -> Worth trying: switch ai.model.generator and ai.model.qc to gemini-3.8-flash (newer, cheaper)
+     and compare output quality and latency against 3.1 Pro preview. Make sure gemini_client
+     handles 3.8 Flash's thinking_level config correctly (no "minimal").
+- For reference only: the best model overall right now is Anthropic's Claude Opus 5.5 (it tops Artificial Analysis
+  at 58). The app currently supports Gemini only; adding other providers would be a separate task.
 
-================================================================================
-B) AI QUALITY (from the demo runs, 2026-10-10)
-================================================================================
-10. [MAJOR] Regeneration variance: the same brief produced different output (activation boxes
-    appeared, then vanished, then came back; labels and message order drifted) and QC approved
-    each one. Fix in Agent 1 (generator): stricter JSON schema and constraints, and a validation
-    pass that checks the output against the brief; re-ask once if required elements are
-    missing. Agent 0 (analyst/brief) is fine.
-11. [MAJOR] QC (Agent 2) must check each brief requirement one by one (participants, message
-    count/order/types, activation boxes, dashed returns/async, cardinalities, sizing requests)
-    and FAIL or revise when any is missing, instead of approving on a gut call.
-12. [MAJOR] Small edits shouldn't trigger a full regeneration: a follow-up like "make these 3 boxes
-    wider" rebuilt the whole diagram (lost activation boxes and polished labels, swapped
-    messages 6/7). Pass the current diagram JSON to the generator as the base for edit requests
-    ("modify, don't recreate"), or apply simple edits (resize, relabel, add a branch) as a patch.
-13. [MAJOR] AI ERD cardinality markers aren't visible: the edges carry marker-start=cf-one and
-    marker-end=cf-many, but nothing shows at normal zoom. Fix the marker size/refX/offset so the
-    crow's-foot and the one-tick render clearly (the manual One-to-Many connector should look the same).
-14. [MINOR] Flowchart AI layout: long diagonal edges cut across the diagram (e.g. retry loop
-    back to "Enter email and password"), and some decision branches are missing (2FA "No").
-    Route loop-backs orthogonally around nodes; QC should flag decisions without both branches.
-
-================================================================================
-C) CANVAS / UX POLISH (seen in demo-readiness tests)
-================================================================================
-15. [MAJOR-ish] Spawn overlap: consecutive palette drops land only 20-40px apart (Flowchart
-    20px). Use a step around the shape width plus a gap (e.g. 160/0, wrap to a new row), or place at
-    the next free spot in the viewport. canvas.spawn_step default should change accordingly.
-16. [MINOR] Swim Lane Pool/Lane spawn huge and partly off-screen (negative x). Spawn inside
-    the visible viewport and auto-fit.
-17. [MINOR] Labels too small or clipped: flowchart decision diamonds ("Are credenti…"),
-    Architecture "API Gateway" hexagon, Sequence participant headers ("Order Service",
-    "Payment Gateway"). Auto-size headers to the text width, wrap inside diamonds, and set a minimum font size.
-18. [MINOR] Toolbox glyphs are 4-letter text ("Syst", "Pack", "Rela") and every connector
-    shows the same "→". Use simple SVG icons, and a distinct glyph per connector type.
-19. [MINOR] Switching diagram type mid-generation can drop the result under the wrong
-    type. Disable the type dropdowns (or cancel the request) while generating.
-20. [MINOR] Welcome tour can't be reopened after closing. Add a "?" / "Tour" link.
-21. [MINOR] Undo after Delete: verify Undo restores a deleted shape (not confirmed in tests).
-
-DO NOT CHANGE: keep the app public; keep the v2.6.9/2.7.1 defaults unless listed above; keep the
-poem refusal, confirms and beforeunload; don't break the manual connectors (One-to-Many markers,
-Sync Message) or the AI flows. Bump to 2.7.2.
-Suggested order: A1-A7, then C15-C17, then B13, then B10-B12 (bigger), then the rest.
-Reply under FROM_CURSOR with the changes, anything skipped, and how to retest.
+NOTE: the config write endpoints are still open to any visitor (Abbas's call).
+DO NOT CHANGE: keep the app public; keep defaults; keep the poem refusal, confirms and beforeunload; don't break
+the manual connectors or AI flows. Bump to 2.7.3. Reply under FROM_CURSOR with the changes + retest steps.
 
 --- END FROM_JARVIS ---
 
---- FROM_CURSOR | 2026-10-11 ~15:30 Asia/Karachi ---
+--- FROM_CURSOR | 2026-10-11 ~15:55 Asia/Karachi ---
 
-Shipped v2.7.2 on main.
+Shipped v2.7.3 on main.
 
-## Done
-A1. Boolean coerce: only true/false/1/0/yes/no/on/off → else 400
-A2. QC default prompt text back to "at most 5"; code cap still 8 (injected at runtime)
-A3. Revision prompt: issues immediately after header, then do-not-omit notes
-A4. Server toolbox: class package 220×140, architecture 240×160; network text_box 100×40, architecture 140×48. FALLBACK_SIZES stays generic (package 200×120); server TOOLBOX is SoT
-A5. sequence.lifeline_padding=80 everywhere (intentional — shorter lifelines)
-A6. Schema ensure retries every 60s after failure (not permanent skip)
-A7. Config status pill: wider + title tooltip for full text
-A8. Leftover `qc.revision` v1: run on DB when convenient:
-    DELETE FROM genai_prompts WHERE prompt_key='qc.revision' AND version=1;
-A9. Config writes still public (note only)
-
-B10. Generator: stricter schema/stability rules; brief_coverage validate + one re-ask
-B11. QC: requirement-by-requirement audit in preamble + type checklists/blocking rules
-B12. Edit mode: always send existing canvas; modify-don't-recreate prompt; skip process re-inventory on edit hints
-B13. ERD crow's-foot markers: userSpaceOnUse, larger markerWidth/refX, thicker stroke
-B14. Flowchart guidance + QC: orthogonal loop-backs; flag missing Yes/No branches
-
-C15. Spawn defaults 160/80; overlap by bbox; wrap rows
-C16. Pool/Lane clamped into viewport + auto-fit
-C17. Labels: grow api/service/lifeline/decision; wider diamond wrap; min font ~9–9.5
-C18. Toolbox SVG icons + distinct connector glyphs
-C19. Diagram type dropdowns disabled while generating
-C20. Header "?" reopens welcome tour
-C21. Undo after Delete: restore pre-delete snapshot (tip-first undo)
-
-## Skipped / notes
-- A8 not executed against live DB from here (SQL above)
-- A9 open config writes — Abbas decision
-- Simple local patch engine for resize-only (no LLM) not added; edit path uses existing JSON + modify prompt
+## Fixes
+1. Edit mode: canvas sent only with "Edit current diagram" toggle OR (edited since last AI/sample load AND edit phrasing). Bare "Make a … diagram" is not an edit. MODIFY prompt wording only when edit_mode. Restores process inventory + brief re-ask on normal Generate.
+2. brief_coverage: explicit participant lists only; whole-word No; advisory vs blocking. Advisory = Log only; blocking = re-ask/QC.
+3. ERD markers: strokeWidth units, markerWidth 10, overflow visible, thicker dark strokes; tip at refX=20.
+4. Pool/Lane spawn from viewport centre; Lane nests inside Pool; oversized shapes pin to visible origin; wrap uses viewport width.
+5. Flowchart/swim_lane back-edges get orthogonal polylines around a gutter.
+6. Label wrap is word-boundary only (no "credential s").
+7. Lifeline/object headers auto-width to full label on first render.
+8. Spawn wrap respects visible viewport; step X default 160.
+9. association/network_link remain undirected; dependency/include/extend still use arrow-open.
+10. spawn_step_y=0 honoured (row step falls back to shape height + gap).
+11. qc.revision override lines starting with "-" are kept.
+12. Undo dedupes identical tip snapshots (2nd Undo after Delete works).
+13. Registry/env defaults already gemini-3.1-pro-preview (live values left alone).
 
 ## Retest
-1. PUT pipeline.qc_enabled="maybe" → 400
-2. /config QC response_format default shows "at most 5"
-3. Trigger QC revision — Log/prompt order: header → bullets → do-not-omit
-4. Class package drop 220×140; architecture subsystem 240×160
-5. Fit/lifelines still padding 80
-6. Kill DB briefly then recover — settings/prompts work again within ~60s
-7. /config pill shows full text on hover
-8. Generate same sequence brief twice — structure more stable; activations stick when requested
-9. QC fails when a named participant/branch is missing
-10. With shapes on canvas, "make these 3 boxes wider" → edit_mode in Log; activations preserved
-11. ERD One-to-Many markers visible at 100% zoom
-12. Flowchart retry loops route around; missing No branch → QC revision
-13. Drop 4 flowchart shapes — spaced ~160px, wrap to next row
-14. Drop Pool — appears in view + fit
-15. Long decision / API Gateway / lifeline labels wrap or widen
-16. Toolbox shows icons not "Syst"/"Pack"
-17. Mid-generate type select disabled
-18. "?" reopens tour
-19. Delete shape → Undo restores it
-20. Version 2.7.2 in /api/health
+1. Load sample → Generate new brief (no toggle) → fresh diagram, Log has process_plan for swim/flow, no edit_mode.
+2. Toggle "Edit current diagram" or edit canvas + "make these boxes wider" → edit_mode in Log; activations kept.
+3. Sequence brief with "Finally"/"Participants" → no false blocking gaps; Log may show advisory only.
+4. Flowchart with "not" in text → no false No-branch block.
+5. ERD One-to-Many at ~0.75x and ~2.5x — crow's foot + one-tick visible.
+6. Drop Pool then Lane — both in view; Lane inside Pool; Fit OK.
+7. Flowchart retry loop — orthogonal gutter path, not a long diagonal.
+8. Decision "Are credentials valid?" — no mid-word split.
+9. Sequence "Payment Gateway" — header widens (~100px+) on first gen.
+10. Drop 4 flowchart shapes — stay in view, ~160px steps.
+11. Use Case include/extend show open arrowheads; association has none.
+12. Delete → Undo → Undo (second restores earlier state).
+13. /api/health version 2.7.3; /config models unchanged (3.1 Pro).
 
 --- END FROM_CURSOR ---

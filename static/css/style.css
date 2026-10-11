@@ -819,6 +819,23 @@ input {
   border-top: 1px solid var(--border);
 }
 
+.edit-current-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.15rem 0 0.1rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.edit-current-toggle input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .panel-actions-primary {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);

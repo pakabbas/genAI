@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.2";
-import { DiagramCanvas } from "./canvas.js?v=2.7.2";
-import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.2";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.3";
+import { DiagramCanvas } from "./canvas.js?v=2.7.3";
+import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.3";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -43,6 +43,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.2";
     isChatting: false,
     isGenerating: false,
     isDirty: false,
+    editedSinceAiLoad: false,
     suppressDirty: false,
     currentProjectId: null,
     externalProjectId: null,
@@ -64,6 +65,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.2";
   function markDirty() {
     if (state.suppressDirty) return;
     state.isDirty = true;
+    state.editedSinceAiLoad = true;
     if (els.canvasBadge) {
       els.canvasBadge.textContent = "Edited";
       els.canvasBadge.classList.add("is-live");
@@ -72,6 +74,13 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.2";
 
   function clearDirty() {
     state.isDirty = false;
+  }
+
+  /** Client-side edit phrasing — must refer to the existing diagram (not bare "make a …"). */
+  function looksLikeEditRequest(text) {
+    return /(?:\bmake\s+(these|the|those|this)\b|\b(wider|narrower|taller|shorter|resize|relabel|rename)\b|\bmove\s+\S|\bchange\s+(the\s+)?(label|color|size|width|height|boxes?|nodes?|shapes?)\b|\badd\s+(a\s+|an\s+|the\s+)?(branch|edge|arrow|box|node|lane|message)\b|\bonly\s+(change|update|fix|edit)\b|\bdon'?t\s+recreate\b|\b(modify|patch|tweak)\s+(the\s+|this\s+|these\s+)?(diagram|canvas|current)\b|\bedit\s+(the\s+|this\s+|current\s+)?diagram\b)/i.test(
+      String(text || ""),
+    );
   }
 
   const els = {
@@ -92,6 +101,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.2";
     reqChatMessages: document.getElementById("reqChatMessages"),
     viewBriefBtn: document.getElementById("viewBriefBtn"),
     generateBtn: document.getElementById("generateBtn"),
+    editCurrentToggle: document.getElementById("editCurrentToggle"),
     aiThinkingLogBtn: document.getElementById("aiThinkingLogBtn"),
     aiThinkingModal: document.getElementById("aiThinkingModal"),
     aiThinkingBody: document.getElementById("aiThinkingBody"),
@@ -806,6 +816,8 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.2";
       canvas.loadNormalizedDiagram(normalized);
       if (els.diagramTitle) els.diagramTitle.value = normalized.title;
       clearDirty();
+      state.editedSinceAiLoad = false;
+      if (els.editCurrentToggle) els.editCurrentToggle.checked = false;
       canvas.scheduleFitToContent();
       els.canvasBadge.textContent = badge;
       els.canvasBadge.classList.add("is-live");
@@ -1346,9 +1358,16 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.2";
       prompt_enhanced: true,
       original_prompt: state.originalPrompt || prompt,
     };
-    // Always send the canvas as the edit base when shapes exist (modify, don't recreate).
-    if (canvas.diagram.nodes.length) {
+    // Only send the canvas in real edit mode (toggle OR user edited since last AI load + edit phrasing).
+    const forceEdit = Boolean(els.editCurrentToggle?.checked);
+    const editRequest =
+      canvas.diagram.nodes.length > 0 &&
+      (forceEdit ||
+        (state.editedSinceAiLoad &&
+          looksLikeEditRequest(`${state.originalPrompt || ""} ${prompt}`)));
+    if (editRequest) {
       payload.existing = canvas.getDiagram();
+      payload.edit_mode = true;
     }
 
     try {

@@ -312,6 +312,8 @@ def build_diagram_user_prompt(
     user_prompt: str,
     existing_json: str | None = None,
     process_inventory: str | None = None,
+    *,
+    edit_mode: bool = False,
 ) -> str:
     label = type_label(diagram_type)
     try:
@@ -342,7 +344,7 @@ def build_diagram_user_prompt(
             ]
         )
 
-    if existing_json:
+    if existing_json and edit_mode:
         parts.extend(
             [
                 "",

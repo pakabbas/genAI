@@ -123,11 +123,8 @@ def build_revision_prompt(
     header_line = revision_header.split("\n")[0].strip() or (
         "QC / COVERAGE REVISION REQUIRED — fix these blocking issues and return a COMPLETE diagram JSON:"
     )
-    trailing_notes = [
-        line
-        for line in revision_header.split("\n")[1:]
-        if line.strip() and not line.strip().startswith("-")
-    ]
+    # Keep override lines that start with "-" (custom bullet notes); only skip empties.
+    trailing_notes = [line for line in revision_header.split("\n")[1:] if line.strip()]
     if not trailing_notes:
         trailing_notes = [
             "Do not omit activities, lanes, decisions, or branches that appear in the brief/inventory.",
