@@ -1,0 +1,222 @@
+
+--- FROM_JARVIS | 2026-10-11 ~13:50 Asia/Karachi ---
+
+TASK FOR CURSOR: BUILD A "CONFIGURATIONS" PAGE (admin settings) — GenAI Diagram Studio
+Repo: pakabbas/genAI (main, live v2.6.9 at https://dd.spiralloopstechnologies.com/)
+Deploy: push to main triggers "Deploy to GCP" (systemd genai-leadpilot.service :8011, nginx, APP_ROOT_PATH).
+
+GOAL
+Add a Configurations page where Abbas can manage app/project settings from the UI
+(AI model per agent, generation params, pipeline rules, prompts, limits, canvas defaults,
+etc.) instead of hard-coded values. Changes must take effect at runtime without a redeploy.
+
+Today only GEMINI_API_KEY and GEMINI_MODEL come from .env (app/config.py:11,15); all four AI
+calls share one model (gemini-flash-lite-latest); everything else is hard-coded in Python/JS.
+
+================================================================================
+1) BACKEND — SETTINGS STORE
+================================================================================
+- New MySQL table in the existing leadpilot DB (add to deploy/mysql_schema.sql + an idempotent
+  CREATE TABLE IF NOT EXISTS at startup):
+    genai_settings(key VARCHAR(128) PK, value JSON, type VARCHAR(32), updated_at TIMESTAMP)
+    genai_prompts(id PK, prompt_key VARCHAR(128), body MEDIUMTEXT, version INT, is_active BOOL,
+                  created_at TIMESTAMP)   -- versioned prompt overrides
+- New module app/services/settings_service.py:
+    * One registry of every setting: key, type, default (= current code value), min/max or
+      allowed values, group, label, help text, scope ("server" | "public").
+    * Resolution order: DB value -> env value -> code default.
+    * In-memory cache (TTL ~30s) and invalidate on save. NOTE: get_settings() in
+      app/config.py:7 is cached forever today — change that.
+    * Validate types/ranges on write; reject unknown keys.
+- Endpoints:
+    GET  /api/config            -> all settings grouped, with defaults + current values
+                                   (secrets only as "set"/"not set")
+    PUT  /api/config            -> partial update {key: value}; returns new state
+    POST /api/config/reset      -> {keys:[...]} or {group:"..."} back to default
+    GET  /api/config/public     -> only "public"-scoped values the browser needs
+    GET  /api/config/prompts, GET/PUT /api/config/prompts/{prompt_key}, POST .../reset
+- Wire every hard-coded value below to settings_service instead of constants.
+
+================================================================================
+2) SETTINGS TO EXPOSE (group -> key: current default @ location)
+================================================================================
+A. AI Models
+  - ai.provider: "gemini" (read-only display)
+  - ai.api_key_status: read-only "set/not set" from GEMINI_API_KEY (NEVER return the value)
+  - ai.model.analyst (Agent 0): gemini-flash-lite-latest   @ requirements_analyst.py:71-82
+  - ai.model.planner: same                                 @ process_coverage.py:76-87
+  - ai.model.generator (Agent 1): same                     @ diagram_pipeline.py:66-83
+  - ai.model.qc (Agent 2): same                            @ diagram_pipeline.py:121-125
+  - ai.model.fallback: "" (optional, NEW)
+  Each per-agent model falls back to GEMINI_MODEL env when unset.
+
+B. Generation Parameters (per agent)
+  - analyst: temperature 0.35, top_p 0.9, max_output_tokens 4096
+  - planner: temperature 0.2, top_p 0.8, max_output_tokens 8192
+  - generator: temperature 0.55, top_p 0.9, max_output_tokens 16384; revision_temperature 0.4
+  - qc: temperature 0.2 (currently shares the generator's top_p and max tokens; give it its own)
+  - ai.timeout_seconds: NEW, default 120 (keep below the nginx 300s limit)
+  - ai.max_retries: NEW, default 1 (retry on transient errors/5xx; then use the fallback model if set)
+
+C. Pipeline
+  - pipeline.qc_enabled: NEW, default true (QC always runs today @ diagram_pipeline.py:316)
+  - pipeline.max_qc_revisions: 3 (MAX_REVISION_ROUNDS @ diagram_pipeline.py:39)
+  - pipeline.max_clarify_rounds: 3 (MAX_CLARIFICATION_ROUNDS @ requirements_analyst.py:23)
+    -> ALSO inject this number into the Agent 0 prompt text instead of the literal "3"
+       (prompts/requirements.py round notes ~:137-173)
+  - pipeline.clarify_mode: NEW "strict" | "lenient" | "off" (default "strict" = current behaviour)
+  - pipeline.process_coverage_types: ["swim_lane","flowchart"] @ process_coverage.py:16
+  - pipeline.max_recommendations: 5 — make the code cap (8 @ diagram_pipeline.py:460) and the
+    QC prompt (qc/base.py:15) both use this one value
+
+D. Agent Prompts (editable; versioned; "Reset to default" = code string)
+  - analyst system @ app/prompts/requirements.py:6
+  - generator system @ app/prompts/diagrams.py:196
+  - per-type guidance DIAGRAM_TYPE_GUIDANCE @ diagrams.py:131-194 (one entry per type)
+  - planner @ app/prompts/process_plan.py:6
+  - qc base preamble + response format @ app/prompts/qc/base.py:3,19
+  - qc per-type rules @ app/prompts/qc/{type}.py
+  - revision prompt @ app/prompts/qc_audit.py:81
+  Load the active DB version if present, otherwise the code default.
+
+E. Input & Safety
+  - limits.chat_message_chars: 8000 @ schemas/generation.py:33 (+ add maxlength to the textarea,
+    index.html:160, and drive the counter from /api/config/public)
+  - limits.chat_max_messages: 40 @ schemas/generation.py:38
+  - limits.generate_prompt_chars: 12000 (min 3), limits.original_prompt_chars: 8000 @ schemas/diagram.py:50,55
+  - guard.enabled: true; guard.patterns (poem/creative/prompt-injection lists), guard.allowlist,
+    guard.short_prompt_chars: 160, guard.refusal_message @ app/services/prompt_guard.py:12-66
+    (keep current behaviour as the default; DO NOT weaken the poem refusal by default)
+
+F. Diagram Types & Toolbox
+  - diagrams.enabled_types: all 8 (use_case, erd, swim_lane, flowchart, sequence,
+    class_diagram, network, architecture) @ schemas/diagram.py:6
+  - diagrams.default_type: "use_case" — currently set in 4 places (app.js:36,1503;
+    schemas/diagram.py:49; schemas/generation.py:37) -> use one setting
+  - diagrams.type_labels @ prompts/diagrams.py:7-16
+  - toolbox items enable/disable + default_width/height @ prompts/diagrams.py:18-129
+  IMPORTANT: make the server TOOLBOX the single source of shape sizes. Remove or replace the JS
+  duplicate defaultNodeSize() in static/js/designer/diagram-types.js:206-257 (they disagree,
+  e.g. package 220x140 / 240x160 on the server vs 200x120 in JS).
+
+G. Canvas Defaults (public scope)
+  - canvas.grid: 20; canvas.spawn_step: 40/20 (consider a larger default, e.g. 60/40);
+    canvas.zoom_min 0.25, zoom_max 2.5, zoom_step 0.1; canvas.undo_depth 48 @ canvas.js:3-7,305-317,461
+  - sequence.start_y 88, sequence.step 52 — now in diagram_normalizer.py:166-167, normalize.js:6-7
+    and canvas.js:359 -> one setting
+  - sequence.lifeline_padding: server 80 vs client 100 (diagram_normalizer.py:227,
+    normalize.js:165, canvas.js:782) -> one setting
+  - canvas.base_font: 9.5 @ canvas.js; theme.accent: #2563eb; theme.canvas_bg (style.css:2-27)
+
+H. App / Projects / UX
+  - ux.welcome_tour_enabled: true (localStorage key genai-drilldown-welcome-v1 still respected) @ app.js:163-170,442-457
+  - ux.welcome_message @ app.js:32
+  - ux.confirm_prompts: true, ux.leave_warning: true (beforeunload) — defaults MUST keep current behaviour
+  - export.svg_enabled, export.json_enabled: true
+  - projects.list_limit: 100 (max 500) @ main.py:185-189
+  - projects.retention_days: NEW, default 0 = keep forever (no purge job unless > 0)
+  - app.log_level: NEW "INFO"; app.rate_limit_per_min: NEW (0 = off)
+  - Read-only status: version, model(s), API key set?, DB connected (reuse /api/health)
+
+KEEP IN ENV ONLY (show read-only at most, never editable on the page, never returned in clear text):
+  GEMINI_API_KEY, DB_HOST/PORT/NAME/USER/PASSWORD, APP_ROOT_PATH, host/port (systemd),
+  CORS origins (middleware is built at startup), GCP deploy secrets.
+
+================================================================================
+3) FRONTEND — CONFIGURATIONS PAGE
+================================================================================
+- New route/page: /config (respect APP_ROOT_PATH via withRoot()). Same visual style as the app.
+- Entry points: a gear/"Configurations" button in the header, and make the "Gemini ready · DB"
+  status pill clickable -> opens /config.
+- Layout: left nav with the groups A–H above; each group is a form card with label, help text,
+  current value, default value hint, a per-field "reset", and Save group / Reset group buttons.
+- Prompts editor: monospace textarea, version dropdown, Save as new version, Reset to default,
+  char count.
+- Show toast on save; validation errors inline; unsaved-changes guard on that page.
+- The designer page must read /api/config/public on load (default type, char limit, canvas and
+  sequence values, tour, theme, export toggles) instead of hard-coded JS constants.
+
+================================================================================
+4) CLEANUPS IN THE SAME PR
+================================================================================
+- Rename the right-panel tab "Project Settings" -> "Projects" (it only does save/open/delete/transfer).
+- Version: define it once (e.g. app/version.py) and inject it into the templates and ?v= cache-bust;
+  remove the ~5 hand-typed "2.6.9" copies. Bump to 2.7.0.
+- Remove dead code: app/services/gemini.py, app/prompts.py (shadowed by the app/prompts/ package),
+  the unused generate_diagram() in diagram_generator.py, and static/js/app.js (not loaded).
+- Remove or align the unused APP_HOST/APP_PORT in config.py, .env.example and deploy.sh.
+
+================================================================================
+5) DO NOT CHANGE
+================================================================================
+- Keep the app public; no login wall.
+- Defaults must reproduce the current v2.6.9 behaviour exactly (same models, temps, limits,
+  prompts, sequence message_y behaviour, poem refusal, confirm prompts, beforeunload).
+- Do not break the AI flows or the manual connectors (One-to-Many markers, Sync Message edges).
+
+================================================================================
+6) ACCEPTANCE / RETEST
+================================================================================
+1. /config loads; every group shows current values that match v2.6.9 defaults.
+2. Change ai.model.generator to another valid Gemini model -> the next Generate uses it (visible in Log).
+3. Turn pipeline.qc_enabled off -> generation skips QC; turn it back on -> QC runs.
+4. Change limits.chat_message_chars to 2000 -> the counter shows /2000 and the server rejects >2000.
+5. Edit the analyst prompt, save, generate; Reset to default restores the original.
+6. Change diagrams.default_type to erd -> a fresh designer load defaults to ERD.
+7. Change sequence.step -> new sequence diagrams use the new spacing (server and client agree).
+8. API key value never appears in any response, page source, or log.
+9. All 8 diagram types still generate; manual connectors and drag still work.
+10. The version shows 2.7.0 everywhere.
+
+Reply under FROM_CURSOR with: what changed (files), the new endpoints, any settings you
+couldn't wire, and how to retest. Ship as a PR to main (deploy runs on merge).
+
+--- END FROM_JARVIS ---
+
+--- FROM_CURSOR | 2026-10-11 ~14:05 Asia/Karachi ---
+
+Shipped as PR branch `feature/configurations-page` → main (v2.7.0).
+
+## What changed (high level)
+- DB tables `genai_settings` + `genai_prompts` (schema + startup CREATE IF NOT EXISTS)
+- `app/services/settings_registry.py` + `settings_service.py` (registry, TTL cache, DB→env→default)
+- `app/services/gemini_client.py` (per-role model, retries, fallback)
+- Config API router + `/config` UI page
+- Wired analyst / planner / generator / QC temps+models, pipeline flags, prompts, guard, limits,
+  toolbox sizes (server SOURCE OF TRUTH), canvas/sequence public config, UX/export toggles
+- Cleanups: `app/version.py` (2.7.0), removed `gemini.py`, `app/prompts.py`, `static/js/app.js`,
+  unused `generate_diagram()`, APP_HOST/APP_PORT from config/.env.example; tab renamed Projects;
+  gear + status pill → `/config`
+
+## New endpoints
+- GET  /api/config
+- PUT  /api/config          (partial {key:value})
+- POST /api/config/reset    ({keys:[…]} or {group:"…"})
+- GET  /api/config/public
+- GET  /api/config/prompts
+- GET/PUT /api/config/prompts/{prompt_key}
+- POST /api/config/prompts/{prompt_key}/reset
+- POST /api/config/prompts/{prompt_key}/activate  ({version})
+- GET  /config  (HTML)
+
+## Not fully wired / notes
+- `projects.retention_days` stored only (no purge cron unless > 0 later)
+- `app.log_level` stored; process logging not hot-reconfigured
+- `ai.timeout_seconds` is a soft wall-clock warn (SDK has no hard client timeout everywhere)
+- Toolbox enable/disable + size overrides via `toolbox.overrides` JSON (not a per-shape form UI yet)
+- Prompt version dropdown previews default when v0 selected; activate applies a stored version
+- Local TestClient PUT returns 503 without DB — expected; production MySQL applies schema on startup
+
+## Retest
+1. Open /config — groups show v2.6.9-matching defaults
+2. Set ai.model.generator → Generate → Log shows model in draft detail
+3. pipeline.qc_enabled=false → QC skipped in trace; re-enable → QC runs
+4. limits.chat_message_chars=2000 → counter /2000; server 400 if longer
+5. Edit analyst.system prompt, save, chat; Reset to default restores code string
+6. diagrams.default_type=erd → fresh load defaults ERD
+7. sequence.step change → server+client spacing agree
+8. Confirm API key never in /api/config or page source (only "set"/"not set")
+9. Smoke all 8 types + manual connectors
+10. Version 2.7.0 in health + asset ?v=
+
+--- END FROM_CURSOR ---

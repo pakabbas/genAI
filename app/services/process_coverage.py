@@ -6,14 +6,20 @@ import json
 import re
 from difflib import SequenceMatcher
 
-from google.genai import types
-
 from app.prompts.process_plan import PROCESS_PLAN_SYSTEM, build_process_plan_prompt
 from app.schemas.diagram import DiagramDocument, DiagramEdge, DiagramNode, DiagramType
 from app.schemas.process_model import ProcessBranch, ProcessElement, ProcessModel
 from app.services.diagram_generator import _extract_json_object
+from app.services.gemini_client import generate_json
+from app.services import settings_service as cfg
 
+# Default kept for imports/tests; runtime uses settings.
 PROCESS_ORIENTED_TYPES: set[str] = {"swim_lane", "flowchart"}
+
+
+def process_oriented_types() -> set[str]:
+    raw = cfg.get_value("pipeline.process_coverage_types") or ["swim_lane", "flowchart"]
+    return {str(x) for x in raw}
 
 # Heuristic decision cues in the user brief (generic — not domain-specific).
 _DECISION_CUES: list[tuple[str, str, str, list[tuple[str, str]]]] = [
@@ -61,35 +67,17 @@ _STOP = {
 }
 
 
-def _client_and_model():
-    from google import genai
-
-    from app.config import get_settings
-
-    settings = get_settings()
-    api_key = settings["gemini_api_key"]
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY is not configured. Set it in your .env file.")
-    return genai.Client(api_key=api_key), settings["gemini_model"]
-
-
 def extract_process_model(diagram_type: DiagramType, user_prompt: str) -> ProcessModel:
     """Ask Gemini for a structured process inventory derived from the brief."""
-    client, model_name = _client_and_model()
-    response = client.models.generate_content(
-        model=model_name,
-        contents=build_process_plan_prompt(diagram_type, user_prompt),
-        config=types.GenerateContentConfig(
-            system_instruction=PROCESS_PLAN_SYSTEM,
-            temperature=0.2,
-            top_p=0.8,
-            max_output_tokens=8192,
-            response_mime_type="application/json",
-        ),
+    system = cfg.active_prompt_body("planner.system") or PROCESS_PLAN_SYSTEM
+    text = generate_json(
+        role="planner",
+        system_instruction=system,
+        user_content=build_process_plan_prompt(diagram_type, user_prompt),
+        temperature=float(cfg.get_value("ai.planner.temperature")),
+        top_p=float(cfg.get_value("ai.planner.top_p")),
+        max_output_tokens=int(cfg.get_value("ai.planner.max_output_tokens")),
     )
-    text = (response.text or "").strip()
-    if not text:
-        raise RuntimeError("Process planner returned an empty response.")
     data = json.loads(_extract_json_object(text))
     model_obj = ProcessModel.model_validate(data)
     if not model_obj.elements:

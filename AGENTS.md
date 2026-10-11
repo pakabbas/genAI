@@ -17,7 +17,8 @@ Only one service is required. Run it in tmux for long-lived sessions.
 - Requires **Python 3.12+** with `python3.12-venv` (Debian: `apt install python3.12-venv`).
 - Create venv once: `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`.
 - Copy `.env.example` to `.env` and set `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/apikey). Keys typically start with `AIza…`.
-- Default model is `gemini-flash-lite-latest` (override with `GEMINI_MODEL` in `.env`).
+- Default model is `gemini-flash-lite-latest` (override with `GEMINI_MODEL` in `.env`, or per-agent via `/config`).
+- Runtime settings UI: `/config` (DB-backed; falls back to env/code defaults). App version is `app/version.py`.
 - **Do not commit `.env`** — it is gitignored.
 
 ### Testing without a valid Gemini key

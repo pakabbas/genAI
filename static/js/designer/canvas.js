@@ -1,10 +1,6 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.6.9";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.0";
 
-const GRID = 20;
-const MIN_ZOOM = 0.25;
-const MAX_ZOOM = 2.5;
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
-const MAX_UNDO = 48;
 
 export class DiagramCanvas {
   constructor(container, options = {}) {
@@ -13,6 +9,7 @@ export class DiagramCanvas {
     this.onSelectionChange = options.onSelectionChange || (() => {});
     this.onContextMenu = options.onContextMenu || (() => {});
     this.onRequestRename = options.onRequestRename || (() => {});
+    this.applyPublicConfig(options.publicConfig || {});
 
     this.diagram = {
       diagram_type: "use_case",
@@ -34,6 +31,19 @@ export class DiagramCanvas {
     this._buildDom();
     this._bindEvents();
     this.render();
+  }
+
+  applyPublicConfig(cfg = {}) {
+    this.GRID = Number(cfg["canvas.grid"]) || 20;
+    this.MIN_ZOOM = Number(cfg["canvas.zoom_min"]) || 0.25;
+    this.MAX_ZOOM = Number(cfg["canvas.zoom_max"]) || 2.5;
+    this.MAX_UNDO = Number(cfg["canvas.undo_depth"]) || 48;
+    this.SPAWN_STEP_X = Number(cfg["canvas.spawn_step_x"]) || 40;
+    this.SPAWN_STEP_Y = Number(cfg["canvas.spawn_step_y"]) || 20;
+    this.SEQUENCE_START_Y = Number(cfg["sequence.start_y"]) || 88;
+    this.SEQUENCE_STEP = Number(cfg["sequence.step"]) || 52;
+    this.LIFELINE_PADDING = Number(cfg["sequence.lifeline_padding"]) || 100;
+    this.BASE_FONT = Number(cfg["canvas.base_font"]) || 9.5;
   }
 
   _buildDom() {
@@ -78,7 +88,7 @@ export class DiagramCanvas {
     const snap = JSON.stringify(this.diagram);
     this._history = this._history.slice(0, this._historyIndex + 1);
     this._history.push(snap);
-    if (this._history.length > MAX_UNDO) {
+    if (this._history.length > this.MAX_UNDO) {
       this._history.shift();
     } else {
       this._historyIndex += 1;
@@ -103,11 +113,11 @@ export class DiagramCanvas {
 
     const gridPattern = document.createElementNS("http://www.w3.org/2000/svg", "pattern");
     gridPattern.setAttribute("id", "grid");
-    gridPattern.setAttribute("width", String(GRID));
-    gridPattern.setAttribute("height", String(GRID));
+    gridPattern.setAttribute("width", String(this.GRID));
+    gridPattern.setAttribute("height", String(this.GRID));
     gridPattern.setAttribute("patternUnits", "userSpaceOnUse");
     const gridPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    gridPath.setAttribute("d", `M ${GRID} 0 L 0 0 0 ${GRID}`);
+    gridPath.setAttribute("d", `M ${this.GRID} 0 L 0 0 0 ${this.GRID}`);
     gridPath.setAttribute("fill", "none");
     gridPath.setAttribute("stroke", "#e8ecf4");
     gridPath.setAttribute("stroke-width", "1");
@@ -302,8 +312,8 @@ export class DiagramCanvas {
   addNode(type, label = "", x = 120, y = 120, opts = {}) {
     this._saveUndoPoint();
     const [w, h] = defaultNodeSize(type);
-    let nx = Math.round((Number.isFinite(x) ? x : 120) / GRID) * GRID;
-    let ny = Math.round((Number.isFinite(y) ? y : 120) / GRID) * GRID;
+    let nx = Math.round((Number.isFinite(x) ? x : 120) / this.GRID) * this.GRID;
+    let ny = Math.round((Number.isFinite(y) ? y : 120) / this.GRID) * this.GRID;
     // Palette drops: nudge until the top-left does not sit on an existing node
     if (!opts.exact) {
       let guard = 0;
@@ -311,8 +321,8 @@ export class DiagramCanvas {
         guard < 40 &&
         this.diagram.nodes.some((n) => Math.abs(n.x - nx) < 12 && Math.abs(n.y - ny) < 12)
       ) {
-        nx += GRID * 2;
-        ny += GRID;
+        nx += this.SPAWN_STEP_X;
+        ny += this.SPAWN_STEP_Y;
         guard += 1;
       }
     }
@@ -458,7 +468,7 @@ export class DiagramCanvas {
     const px = clientX - rect.left;
     const py = clientY - rect.top;
     const prevScale = this.view.scale;
-    const nextScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prevScale * (delta > 0 ? 1.1 : 0.9)));
+    const nextScale = Math.min(this.MAX_ZOOM, Math.max(this.MIN_ZOOM, prevScale * (delta > 0 ? 1.1 : 0.9)));
     const wx = (px - this.view.x) / prevScale;
     const wy = (py - this.view.y) / prevScale;
     this.view.scale = nextScale;
@@ -675,8 +685,8 @@ export class DiagramCanvas {
     const world = this._screenToWorld(e.clientX, e.clientY);
     const rawDx = world.x - this.dragState.startWorldX;
     const rawDy = world.y - this.dragState.startWorldY;
-    const dx = Math.round(rawDx / GRID) * GRID;
-    const dy = Math.round(rawDy / GRID) * GRID;
+    const dx = Math.round(rawDx / this.GRID) * this.GRID;
+    const dy = Math.round(rawDy / this.GRID) * this.GRID;
     if (dx === 0 && dy === 0 && !this.dragState.moved) return;
 
     this.dragState.moved = true;
@@ -752,8 +762,8 @@ export class DiagramCanvas {
 
   _ensureSequenceMessageLayout() {
     if (this.diagram.diagram_type !== "sequence") return;
-    const startY = 88;
-    const step = 52;
+    const startY = this.SEQUENCE_START_Y;
+    const step = this.SEQUENCE_STEP;
     let index = 0;
     let maxY = startY;
 
@@ -779,7 +789,7 @@ export class DiagramCanvas {
       maxY = Math.max(maxY, y + 24);
     }
 
-    const minHeight = maxY + 100;
+    const minHeight = maxY + this.LIFELINE_PADDING;
     for (const node of this.diagram.nodes) {
       if (["lifeline", "object", "actor"].includes(node.type) && node.height < minHeight) {
         node.height = minHeight;
@@ -1735,7 +1745,7 @@ export class DiagramCanvas {
     const type = node.type;
     const w = node.width;
     const h = node.height;
-    const fontSize = 9.5;
+    const fontSize = this.BASE_FONT;
 
     if (["decision", "relationship", "gateway_xor", "gateway_and"].includes(type)) {
       return {
@@ -1872,7 +1882,8 @@ export class DiagramCanvas {
     );
   }
 
-  _appendWrappedLabel(parent, text, cx, cy, maxWidth, maxHeight, fontSize = 9.5, opts = {}) {
+  _appendWrappedLabel(parent, text, cx, cy, maxWidth, maxHeight, fontSize = null, opts = {}) {
+    if (fontSize == null) fontSize = this.BASE_FONT;
     const align = opts.align || "middle";
     const lines = this._wrapLabelLines(String(text), maxWidth, fontSize, maxHeight);
     const lineHeight = fontSize + 2;

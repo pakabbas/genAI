@@ -226,8 +226,61 @@ Layout rules:
 10. For swim_lane / flowchart: decision gateways need ≥2 labeled outgoing edges; failed paths reach an End."""
 
 
+def type_labels() -> dict[str, str]:
+    try:
+        from app.services import settings_service as cfg
+
+        labels = cfg.get_value("diagrams.type_labels")
+        if isinstance(labels, dict) and labels:
+            return {**DIAGRAM_TYPE_LABELS, **labels}
+    except Exception:
+        pass
+    return dict(DIAGRAM_TYPE_LABELS)
+
+
+def type_label(diagram_type: DiagramType | str) -> str:
+    labels = type_labels()
+    return str(labels.get(str(diagram_type), DIAGRAM_TYPE_LABELS.get(diagram_type, diagram_type)))
+
+
+def effective_toolbox(diagram_type: DiagramType) -> list[ToolboxItem]:
+    """TOOLBOX merged with toolbox.overrides (enabled + sizes)."""
+    base = list(TOOLBOX.get(diagram_type) or [])
+    try:
+        from app.services import settings_service as cfg
+
+        overrides = cfg.get_value("toolbox.overrides") or {}
+    except Exception:
+        overrides = {}
+
+    out: list[ToolboxItem] = []
+    for item in base:
+        key = f"{diagram_type}.{item.id}"
+        ov = overrides.get(key) if isinstance(overrides, dict) else None
+        if isinstance(ov, dict) and ov.get("enabled") is False:
+            continue
+        width = item.default_width
+        height = item.default_height
+        if isinstance(ov, dict):
+            if ov.get("default_width") is not None:
+                width = int(ov["default_width"])
+            if ov.get("default_height") is not None:
+                height = int(ov["default_height"])
+        out.append(
+            ToolboxItem(
+                id=item.id,
+                label=item.label,
+                kind=item.kind,
+                shape=item.shape,
+                default_width=width,
+                default_height=height,
+            )
+        )
+    return out
+
+
 def toolbox_catalog(diagram_type: DiagramType) -> str:
-    items = TOOLBOX[diagram_type]
+    items = effective_toolbox(diagram_type)
     catalog = {
         "nodes": [
             {
@@ -250,8 +303,13 @@ def build_diagram_user_prompt(
     existing_json: str | None = None,
     process_inventory: str | None = None,
 ) -> str:
-    label = DIAGRAM_TYPE_LABELS[diagram_type]
-    guidance = DIAGRAM_TYPE_GUIDANCE[diagram_type]
+    label = type_label(diagram_type)
+    try:
+        from app.services import settings_service as cfg
+
+        guidance = cfg.active_prompt_body(f"generator.guidance.{diagram_type}") or DIAGRAM_TYPE_GUIDANCE[diagram_type]
+    except Exception:
+        guidance = DIAGRAM_TYPE_GUIDANCE[diagram_type]
     catalog = toolbox_catalog(diagram_type)
 
     parts = [

@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v=2.6.9" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -38,10 +38,13 @@
       <input type="text" id="diagramTitle" class="diagram-title-input" value="Untitled Diagram" aria-label="Diagram title" />
     </div>
     <div class="header-actions">
-      <span class="status-pill" id="apiStatus" aria-live="polite">
+      <a class="status-pill status-pill-link" id="apiStatus" href="{{ root_path }}/config" title="Open Configurations" aria-live="polite">
         <span class="status-dot"></span>
         Checking API…
-      </span>
+      </a>
+      <a class="btn btn-ghost btn-icon-only" id="configLink" href="{{ root_path }}/config" title="Configurations" aria-label="Configurations">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </a>
       <button type="button" class="btn btn-ghost btn-icon-only" id="panelToggleLeft" aria-label="Toggle toolbox">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
       </button>
@@ -131,7 +134,7 @@
     <aside class="designer-panel right-panel" id="rightPanel">
       <div class="sidebar-tabs" role="tablist" aria-label="Sidebar sections">
         <button type="button" class="sidebar-tab is-active" id="tabAi" role="tab" aria-selected="true" aria-controls="panelAi">AI Generation</button>
-        <button type="button" class="sidebar-tab" id="tabProject" role="tab" aria-selected="false" aria-controls="panelProject">Project Settings</button>
+        <button type="button" class="sidebar-tab" id="tabProject" role="tab" aria-selected="false" aria-controls="panelProject">Projects</button>
       </div>
 
       <div class="sidebar-tab-panels">
@@ -154,6 +157,7 @@
                 id="promptInput"
                 class="prompt-input req-chat-input"
                 rows="2"
+                maxlength="8000"
                 placeholder='Describe what you need (e.g. "online library member, borrow book, librarian").'
               ></textarea>
               <div class="req-chat-compose-footer">
@@ -461,6 +465,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v=2.6.9"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}"></script>
 </body>
 </html>

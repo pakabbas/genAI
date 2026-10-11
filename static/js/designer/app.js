@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS } from "./diagram-types.js?v=2.6.9";
-import { DiagramCanvas } from "./canvas.js?v=2.6.9";
-import { normalizeDiagram } from "./normalize.js?v=2.6.9";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.0";
+import { DiagramCanvas } from "./canvas.js?v=2.7.0";
+import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.0";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -29,7 +29,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.9";
     return fallback;
   }
 
-  const WELCOME_MESSAGE =
+  let WELCOME_MESSAGE =
     "Tell me what diagram you need. I will ask questions if something important is unclear — then I'll shape a clear brief for your generation.";
 
   const state = {
@@ -49,7 +49,17 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.9";
     dbConnected: false,
     lastGenerationTrace: [],
     lastRecommendations: [],
+    publicConfig: {},
+    chatMessageChars: 8000,
+    confirmPrompts: true,
+    leaveWarning: true,
+    welcomeTourEnabled: true,
   };
+
+  function confirmAction(message) {
+    if (!state.confirmPrompts) return true;
+    return confirm(message);
+  }
 
   function markDirty() {
     if (state.suppressDirty) return;
@@ -440,10 +450,54 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.9";
   }
 
   function welcomeShouldShow() {
+    if (!state.welcomeTourEnabled) return false;
     try {
       return localStorage.getItem(WELCOME_STORAGE_KEY) !== "1";
     } catch {
       return true;
+    }
+  }
+
+  function applyPublicConfig(cfg) {
+    state.publicConfig = cfg || {};
+    state.chatMessageChars = Number(cfg["limits.chat_message_chars"]) || 8000;
+    state.confirmPrompts = cfg["ux.confirm_prompts"] !== false;
+    state.leaveWarning = cfg["ux.leave_warning"] !== false;
+    state.welcomeTourEnabled = cfg["ux.welcome_tour_enabled"] !== false;
+    if (typeof cfg["ux.welcome_message"] === "string" && cfg["ux.welcome_message"].trim()) {
+      WELCOME_MESSAGE = cfg["ux.welcome_message"].trim();
+    }
+    const defaultType = cfg["diagrams.default_type"] || "use_case";
+    if (defaultType) state.diagramType = defaultType;
+
+    if (els.promptInput) els.promptInput.maxLength = state.chatMessageChars;
+    canvas.applyPublicConfig(cfg);
+    applyNormalizeConfig(cfg);
+
+    if (cfg["theme.accent"]) {
+      document.documentElement.style.setProperty("--accent", cfg["theme.accent"]);
+    }
+    if (cfg["theme.canvas_bg"]) {
+      document.documentElement.style.setProperty("--canvas-bg", cfg["theme.canvas_bg"]);
+    }
+    if (els.exportSvgBtn) els.exportSvgBtn.hidden = cfg["export.svg_enabled"] === false;
+    if (els.exportJsonBtn) els.exportJsonBtn.hidden = cfg["export.json_enabled"] === false;
+
+    const labels = cfg["diagrams.type_labels"];
+    if (labels && typeof labels === "object") {
+      Object.assign(DIAGRAM_TYPE_LABELS, labels);
+    }
+    updateCharCount();
+  }
+
+  async function loadPublicConfig() {
+    try {
+      const res = await fetch(withRoot("/api/config/public"));
+      if (!res.ok) return;
+      const data = await res.json();
+      applyPublicConfig(data);
+    } catch {
+      /* keep code defaults */
     }
   }
 
@@ -597,7 +651,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.9";
       if (text) {
         state.chatMessages.push({ role: "user", content: text });
         if (!state.originalPrompt) state.originalPrompt = text;
-        else state.originalPrompt = `${state.originalPrompt}\n${text}`.slice(0, 8000);
+        else state.originalPrompt = `${state.originalPrompt}\n${text}`.slice(0, state.chatMessageChars);
         if (els.promptInput) els.promptInput.value = "";
         updateCharCount();
         renderChatMessages();
@@ -714,7 +768,8 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.9";
   }
 
   function updateCharCount() {
-    els.charCount.textContent = `${els.promptInput.value.length} / 8000`;
+    if (!els.charCount || !els.promptInput) return;
+    els.charCount.textContent = `${els.promptInput.value.length} / ${state.chatMessageChars}`;
   }
 
   function applyDiagramToCanvas(diagram, badge = "Ready") {
@@ -774,6 +829,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.9";
       if (!res.ok) throw new Error(formatApiError(data, "Failed to load toolbox"));
       if (state.diagramType !== type) return; // stale response
       state.toolbox = data.items;
+      setToolboxSizes(data.items);
       renderToolbox(data.items);
       if (els.toolboxHint) els.toolboxHint.textContent = data.label;
     } catch (err) {
@@ -1099,7 +1155,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.9";
       showToast("No saved project selected.", "error");
       return;
     }
-    if (!confirm("Delete this project from the database?")) return;
+    if (!confirmAction("Delete this project from the database?")) return;
 
     try {
       const res = await fetch(withRoot(`/api/projects/${state.currentProjectId}`), { method: "DELETE" });
@@ -1124,7 +1180,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.9";
       return;
     }
     if (
-      !confirm(
+      !confirmAction(
         "Send this diagram to the selected target project? The target copy will be replaced.",
       )
     ) {
@@ -1247,7 +1303,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.9";
     if (
       !skipConfirm &&
       canvas.diagram.nodes.length &&
-      !confirm("Clear all shapes from the canvas?")
+      !confirmAction("Clear all shapes from the canvas?")
     ) {
       return;
     }
@@ -1297,7 +1353,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.9";
     if (value === state.diagramType) return;
     if (canvas.diagram.nodes.length) {
       if (
-        !confirm(
+        !confirmAction(
           "Change diagram type? The canvas will be cleared and the title reset to Untitled.",
         )
       ) {
@@ -1450,7 +1506,7 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.9";
 
   // Register leave warning as early as possible
   window.addEventListener("beforeunload", (e) => {
-    if (!state.isDirty) return;
+    if (!state.leaveWarning || !state.isDirty) return;
     e.preventDefault();
     e.returnValue = "You have unsaved diagram changes.";
     return e.returnValue;
@@ -1499,13 +1555,16 @@ import { normalizeDiagram } from "./normalize.js?v=2.6.9";
 
   resetRequirementsChat({ quiet: true });
   updateCharCount();
-  checkHealth();
-  selectDiagramType("use_case");
-  canvas.resetView();
   initMobileLayout();
   updateApiDemoLink(null);
   clearDirty();
-  if (welcomeShouldShow()) {
-    requestAnimationFrame(() => openWelcomeModal());
-  }
+
+  loadPublicConfig().finally(() => {
+    checkHealth();
+    selectDiagramType(state.diagramType || "use_case");
+    canvas.resetView();
+    if (welcomeShouldShow()) {
+      requestAnimationFrame(() => openWelcomeModal());
+    }
+  });
 })();

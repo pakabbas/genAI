@@ -1,17 +1,10 @@
+"""JSON diagram parsing helpers (generation lives in diagram_pipeline)."""
+
 import json
 import re
 
-from google import genai
-from google.genai import types
-
-from app.config import get_settings
-from app.prompts.diagrams import (
-    DIAGRAM_SYSTEM_INSTRUCTION,
-    DIAGRAM_TYPE_LABELS,
-    build_diagram_user_prompt,
-)
+from app.prompts.diagrams import DIAGRAM_TYPE_LABELS, type_label
 from app.schemas.diagram import DiagramDocument, DiagramType
-from app.services.diagram_normalizer import normalize_diagram
 
 JSON_FENCE_PATTERN = re.compile(
     r"^```(?:json)?\s*\n?(.*?)\n?```\s*$",
@@ -45,41 +38,9 @@ def _parse_diagram_json(raw_text: str, diagram_type: DiagramType) -> DiagramDocu
 
     data["diagram_type"] = diagram_type
     if "title" not in data or not str(data.get("title", "")).strip():
-        data["title"] = DIAGRAM_TYPE_LABELS[diagram_type]
+        try:
+            data["title"] = type_label(diagram_type)
+        except Exception:
+            data["title"] = DIAGRAM_TYPE_LABELS[diagram_type]
 
     return DiagramDocument.model_validate(data)
-
-
-def generate_diagram(
-    diagram_type: DiagramType,
-    user_prompt: str,
-    existing: DiagramDocument | None = None,
-) -> DiagramDocument:
-    settings = get_settings()
-    api_key = settings["gemini_api_key"]
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY is not configured. Set it in your .env file.")
-
-    existing_json = existing.model_dump_json(by_alias=True) if existing else None
-
-    client = genai.Client(api_key=api_key)
-    model = settings["gemini_model"]
-
-    response = client.models.generate_content(
-        model=model,
-        contents=build_diagram_user_prompt(diagram_type, user_prompt, existing_json),
-        config=types.GenerateContentConfig(
-            system_instruction=DIAGRAM_SYSTEM_INSTRUCTION,
-            temperature=0.7,
-            top_p=0.9,
-            max_output_tokens=16384,
-            response_mime_type="application/json",
-        ),
-    )
-
-    text = (response.text or "").strip()
-    if not text:
-        raise RuntimeError("Gemini returned an empty response. Please try again.")
-
-    document = _parse_diagram_json(text, diagram_type)
-    return normalize_diagram(diagram_type, document)
