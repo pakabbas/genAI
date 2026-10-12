@@ -1,10 +1,13 @@
 from pathlib import Path
 from collections import defaultdict
+import json
+import queue
+import threading
 import time
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -217,36 +220,76 @@ async def requirements_chat_endpoint(
         ) from exc
 
 
-@app.post("/api/generate-diagram", response_model=GenerateDiagramResponse)
+def _run_generate(body: GenerateDiagramRequest, on_trace=None) -> GenerateDiagramResponse:
+    return generate_diagram_with_qc(
+        body.diagram_type,
+        body.prompt,
+        body.existing,
+        on_trace=on_trace,
+        prompt_enhanced=body.prompt_enhanced,
+        original_prompt=body.original_prompt,
+        edit_mode=body.edit_mode,
+    )
+
+
+def _map_generate_error(exc: Exception) -> tuple[int, str]:
+    if isinstance(exc, PromptRejectedError):
+        return 400, str(exc)
+    if isinstance(exc, ValueError):
+        msg = str(exc)
+        if "only creates technical diagrams" in msg:
+            return 400, msg
+        return 503, msg
+    return 502, f"Generation failed: {exc}"
+
+
+@app.post("/api/generate-diagram")
 async def generate_diagram_endpoint(
     request: Request,
     body: GenerateDiagramRequest,
-) -> GenerateDiagramResponse:
+):
     _check_rate_limit(request)
     _validate_generate_limits(body)
+    accept = (request.headers.get("accept") or "").lower()
+    if "application/x-ndjson" in accept:
+        events: queue.Queue = queue.Queue()
+
+        def on_trace(entry) -> None:
+            events.put(("trace", entry.model_dump(mode="json")))
+
+        def worker() -> None:
+            try:
+                result = _run_generate(body, on_trace=on_trace)
+                events.put(("result", result.model_dump(mode="json")))
+            except Exception as exc:  # noqa: BLE001 — streamed to the client
+                status, detail = _map_generate_error(exc)
+                events.put(("error", detail if status != 502 else str(exc) or detail))
+            finally:
+                events.put(("eof", None))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+        def stream():
+            while True:
+                kind, payload = events.get()
+                if kind == "eof":
+                    break
+                yield json.dumps({"type": kind, "data": payload}) + "\n"
+
+        return StreamingResponse(stream(), media_type="application/x-ndjson")
+
     try:
-        result = generate_diagram_with_qc(
-            body.diagram_type,
-            body.prompt,
-            body.existing,
-            prompt_enhanced=body.prompt_enhanced,
-            original_prompt=body.original_prompt,
-            edit_mode=body.edit_mode,
-        )
+        return _run_generate(body)
     except PromptRejectedError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
-        msg = str(exc)
-        if "only creates technical diagrams" in msg:
-            raise HTTPException(status_code=400, detail=msg) from exc
-        raise HTTPException(status_code=503, detail=msg) from exc
+        status, msg = _map_generate_error(exc)
+        raise HTTPException(status_code=status, detail=msg) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=502,
             detail=f"Generation failed: {exc}",
         ) from exc
-
-    return result
 
 
 @app.post("/api/validate-diagram")

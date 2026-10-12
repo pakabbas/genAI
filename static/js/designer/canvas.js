@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.4";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.5";
 
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
 
@@ -229,8 +229,8 @@ export class DiagramCanvas {
       m.setAttribute("refX", "20");
       m.setAttribute("refY", "12");
       m.setAttribute("markerUnits", "strokeWidth");
-      m.setAttribute("markerWidth", "8");
-      m.setAttribute("markerHeight", "8");
+      m.setAttribute("markerWidth", "11");
+      m.setAttribute("markerHeight", "11");
       m.setAttribute("orient", orient);
       m.setAttribute("overflow", "visible");
       builders(m);
@@ -257,7 +257,7 @@ export class DiagramCanvas {
       m.appendChild(c);
     };
     const crowEnd = (m) => strokePath(m, "M 8 12 L 20 4 M 8 12 L 20 12 M 8 12 L 20 20");
-    const oneEnd = (m) => strokePath(m, "M 18 4 L 18 20");
+    const oneEnd = (m) => strokePath(m, "M 18 2 L 18 22");
     const oneManyEnd = (m) => {
       strokePath(m, "M 16 4 L 16 20");
       strokePath(m, "M 6 12 L 20 4 M 6 12 L 20 12 M 6 12 L 20 20");
@@ -872,7 +872,14 @@ export class DiagramCanvas {
   }
 
   _onKeyDown(e) {
-    if (e.target.matches("input, textarea, select, [contenteditable=true]")) return;
+    const t = e.target;
+    if (
+      t &&
+      (t.matches?.("input, textarea, select, [contenteditable=true]") ||
+        t.closest?.("textarea, input, select, [contenteditable=true], .req-chat-compose"))
+    ) {
+      return;
+    }
     if (e.code === "Space" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
       this._spacePanActive = true;
@@ -973,27 +980,23 @@ export class DiagramCanvas {
       g.setAttribute("data-kind", "edge");
       g.setAttribute("class", `diagram-edge${this.selectedIds.has(edge.id) ? " is-selected" : ""}`);
 
-      let points;
+      let route;
       if (this.diagram.diagram_type === "sequence") {
         const isMsg =
           SEQUENCE_MESSAGE_TYPES.has(edge.type) ||
           (this._isSequenceParticipant(from) && this._isSequenceParticipant(to));
         if (isMsg) {
-          const y = startY + sequenceIndex * stepY;
+          const y = Number(edge.meta?.message_y);
+          const msgY = Number.isFinite(y) ? y : startY + sequenceIndex * stepY;
           sequenceIndex += 1;
-          edge.meta = { ...(edge.meta || {}), message_y: y };
-          const left = from.x + from.width / 2 <= to.x + to.width / 2 ? from : to;
-          const right = left === from ? to : from;
-          const xL = left.x + left.width - 8;
-          const xR = right.x + 8;
-          points =
-            from === left
-              ? { x1: xL, y1: y, x2: xR, y2: y }
-              : { x1: xR, y1: y, x2: xL, y2: y };
+          edge.meta = { ...(edge.meta || {}), message_y: msgY };
+          route = this._sequenceMessageRoute(from, to, msgY);
         }
       }
-      const ends = points || this._edgePoints(from, to, edge);
-      const route = this._routedEdgePath(from, to, edge, ends.x1, ends.y1, ends.x2, ends.y2);
+      if (!route) {
+        const ends = this._edgePoints(from, to, edge);
+        route = this._routedEdgePath(from, to, edge, ends.x1, ends.y1, ends.x2, ends.y2);
+      }
       const isSelected = this.selectedIds.has(edge.id);
       const ptsAttr = route.map((p) => `${p.x},${p.y}`).join(" ");
 
@@ -1042,10 +1045,10 @@ export class DiagramCanvas {
 
       const labelText = this._dedupeEdgeLabel(edge.label);
       if (labelText) {
-        const anchor = route.length >= 2 ? route[1] : route[0];
+        const anchor = this._labelAnchor(route, from, to);
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", anchor.x);
-        text.setAttribute("y", anchor.y - 8);
+        text.setAttribute("y", anchor.y);
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("class", "edge-label");
         text.textContent = labelText;
@@ -1067,6 +1070,76 @@ export class DiagramCanvas {
       if (!uniq.some((u) => u.toLowerCase() === p.toLowerCase())) uniq.push(p);
     }
     return uniq.join(" / ");
+  }
+
+  _labelAnchor(route, from, to) {
+    const pts = route?.length ? route : [{ x: 0, y: 0 }];
+    let bestI = 0;
+    let bestLen = -1;
+    for (let i = 0; i < pts.length - 1; i += 1) {
+      const dx = pts[i + 1].x - pts[i].x;
+      const dy = pts[i + 1].y - pts[i].y;
+      const len = Math.hypot(dx, dy);
+      if (len > bestLen) {
+        bestLen = len;
+        bestI = i;
+      }
+    }
+    const a = pts[bestI];
+    const b = pts[Math.min(bestI + 1, pts.length - 1)];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    let x = (a.x + b.x) / 2;
+    let y = (a.y + b.y) / 2;
+    // Offset a few px off the stroke, away from the arrowhead (not at the end).
+    x += (-dy / len) * 10;
+    y += (dx / len) * 10;
+    const pushOut = (node) => {
+      if (!node) return;
+      const pad = 10;
+      if (x > node.x - pad && x < node.x + node.width + pad && y > node.y - pad && y < node.y + node.height + pad) {
+        y = node.y - 12;
+      }
+    };
+    pushOut(from);
+    pushOut(to);
+    return { x, y };
+  }
+
+  _messageAttachX(node, y, towardX) {
+    const acts = this.diagram.nodes.filter((n) => {
+      if (n.type !== "activation") return false;
+      if (y < n.y - 2 || y > n.y + n.height + 2) return false;
+      const pcx = node.x + node.width / 2;
+      const acx = n.x + n.width / 2;
+      return Math.abs(acx - pcx) < Math.max(node.width, 48);
+    });
+    if (acts.length) {
+      const act = acts[0];
+      const acx = act.x + act.width / 2;
+      return towardX >= acx ? act.x + act.width : act.x;
+    }
+    return node.x + node.width / 2;
+  }
+
+  _sequenceMessageRoute(from, to, y) {
+    if (from.id === to.id) {
+      const cx = this._messageAttachX(from, y, from.x + from.width + 80);
+      const loop = 36;
+      return [
+        { x: cx, y },
+        { x: cx + loop, y },
+        { x: cx + loop, y: y + 18 },
+        { x: cx, y: y + 18 },
+      ];
+    }
+    const x1 = this._messageAttachX(from, y, to.x + to.width / 2);
+    const x2 = this._messageAttachX(to, y, from.x + from.width / 2);
+    return [
+      { x: x1, y },
+      { x: x2, y },
+    ];
   }
 
   /** Intersection of centre→toward with the node border (rect / diamond / ellipse). */
@@ -1099,32 +1172,13 @@ export class DiagramCanvas {
 
   _edgePoints(from, to, edge = null) {
     if (this.diagram.diagram_type === "sequence" && edge) {
+      // Sequence messages attach at lifeline centres — never clip to the header box.
       const yRaw = Number(edge.message_y ?? edge.meta?.message_y);
-      const cx1 = from.x + from.width / 2;
-      const cx2 = to.x + to.width / 2;
-      if (Number.isFinite(yRaw)) {
-        const p1 = this._borderPoint(from, cx2, yRaw);
-        const p2 = this._borderPoint(to, cx1, yRaw);
-        return { x1: p1.x, y1: yRaw, x2: p2.x, y2: yRaw };
-      }
-      if (
-        SEQUENCE_MESSAGE_TYPES.has(edge.type) ||
-        (this._isSequenceParticipant(from) && this._isSequenceParticipant(to))
-      ) {
-        const msgEdges = this.diagram.edges.filter((e) => {
-          const a = this.diagram.nodes.find((n) => n.id === e.from);
-          const b = this.diagram.nodes.find((n) => n.id === e.to);
-          return (
-            SEQUENCE_MESSAGE_TYPES.has(e.type) ||
-            (this._isSequenceParticipant(a) && this._isSequenceParticipant(b))
-          );
-        });
-        const idx = Math.max(0, msgEdges.findIndex((e) => e.id === edge.id));
-        const y = (this.SEQUENCE_START_Y || 88) + idx * (this.SEQUENCE_STEP || 52);
-        const p1 = this._borderPoint(from, cx2, y);
-        const p2 = this._borderPoint(to, cx1, y);
-        return { x1: p1.x, y1: y, x2: p2.x, y2: y };
-      }
+      const y = Number.isFinite(yRaw) ? yRaw : this.SEQUENCE_START_Y || 88;
+      const route = this._sequenceMessageRoute(from, to, y);
+      const a = route[0];
+      const b = route[route.length - 1];
+      return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
     }
     const cx1 = from.x + from.width / 2;
     const cy1 = from.y + from.height / 2;
@@ -1133,6 +1187,23 @@ export class DiagramCanvas {
     const p1 = this._borderPoint(from, cx2, cy2);
     const p2 = this._borderPoint(to, cx1, cy1);
     return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+  }
+
+  _facingSide(from, to) {
+    const dx = to.x + to.width / 2 - (from.x + from.width / 2);
+    const dy = to.y + to.height / 2 - (from.y + from.height / 2);
+    if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? "right" : "left";
+    return dy >= 0 ? "bottom" : "top";
+  }
+
+  _sideToward(node, side) {
+    const cx = node.x + node.width / 2;
+    const cy = node.y + node.height / 2;
+    const pad = 80;
+    if (side === "right") return { x: node.x + node.width + pad, y: cy };
+    if (side === "left") return { x: node.x - pad, y: cy };
+    if (side === "bottom") return { x: cx, y: node.y + node.height + pad };
+    return { x: cx, y: node.y - pad };
   }
 
   _routedEdgePath(from, to, edge, x1, y1, x2, y2) {
@@ -1147,78 +1218,106 @@ export class DiagramCanvas {
     const isLoop = y2 + 8 < y1 || (x2 + 40 < x1 && Math.abs(y2 - y1) > 20);
     const isNo = /\bno\b|\bfail|\breject|\bfalse\b/.test(label);
     const isYes = /\byes\b|\bok\b|\bsuccess|\btrue\b|\baccept/.test(label);
+    const facing = this._facingSide(from, to);
 
-    if (!isLoop && !isNo && !(isYes && from.type === "decision")) {
-      // Light obstacle jog around intermediate nodes the straight segment crosses.
-      const midX = (x1 + x2) / 2;
-      const midY = (y1 + y2) / 2;
-      const blockers = this.diagram.nodes.filter(
-        (n) =>
-          n.id !== from.id &&
-          n.id !== to.id &&
-          !["pool", "lane", "system_boundary", "package", "fragment"].includes(n.type) &&
-          midX > n.x &&
-          midX < n.x + n.width &&
-          midY > n.y &&
-          midY < n.y + n.height,
-      );
-      if (blockers.length) {
-        const b = blockers[0];
-        const clearY = b.y + b.height + 28;
-        return [
-          { x: x1, y: y1 },
-          { x: x1, y: clearY },
-          { x: x2, y: clearY },
-          { x: x2, y: y2 },
-        ];
-      }
-      return [
-        { x: x1, y: y1 },
-        { x: x2, y: y2 },
-      ];
-    }
-
-    const fromCx = from.x + from.width / 2;
-    let exitX = x1;
-    let exitY = y1;
-    let mid = [];
+    let exitSide = facing;
     if (from.type === "decision" || from.type === "gateway_xor") {
-      if (isNo || isLoop) {
-        // Leave bottom / left
-        exitX = fromCx;
-        exitY = from.y + from.height;
-        const gutter = Math.min(from.x, to.x) - 56;
-        const midY = Math.max(exitY, y2) + 36;
-        if (isLoop) {
-          mid = [
-            { x: exitX, y: midY },
-            { x: gutter, y: midY },
-            { x: gutter, y: y2 },
-          ];
-        } else {
-          mid = [
-            { x: exitX, y: exitY + 28 },
-            { x: x2, y: exitY + 28 },
-          ];
-        }
-      } else if (isYes) {
-        exitX = from.x + from.width;
-        exitY = from.y + from.height / 2;
-        mid = [{ x: exitX + 24, y: exitY }, { x: exitX + 24, y: y2 }];
-      }
+      if (isLoop) exitSide = facing === "bottom" ? "left" : "bottom";
+      else if (isNo) exitSide = facing === "bottom" ? "left" : facing === "right" ? "bottom" : facing;
+      else if (isYes) exitSide = facing;
     } else if (isLoop) {
+      exitSide = "bottom";
+    }
+    let entrySide = this._facingSide(to, from);
+    if (isLoop) entrySide = "left";
+
+    const startToward = this._sideToward(from, exitSide);
+    const endToward = this._sideToward(to, entrySide);
+    const start = this._borderPoint(from, startToward.x, startToward.y);
+    const end = this._borderPoint(to, endToward.x, endToward.y);
+
+    let mids;
+    if (isLoop) {
       const gutter = Math.min(from.x, to.x) - 56;
-      const midY = Math.max(y1, y2) + 40;
-      mid = [
-        { x: x1, y: midY },
+      const midY = Math.max(from.y + from.height, to.y + to.height) + 36;
+      mids = [
+        { x: start.x, y: midY },
         { x: gutter, y: midY },
-        { x: gutter, y: y2 },
+        { x: gutter, y: end.y },
       ];
+    } else if (exitSide === "right" || exitSide === "left") {
+      const stub = exitSide === "right" ? start.x + 24 : start.x - 24;
+      if (entrySide === "left" || entrySide === "right") {
+        mids = [
+          { x: stub, y: start.y },
+          { x: stub, y: end.y },
+        ];
+      } else {
+        mids = [{ x: end.x, y: start.y }];
+      }
+    } else {
+      const stubY = exitSide === "bottom" ? start.y + 24 : start.y - 24;
+      if (entrySide === "top" || entrySide === "bottom") {
+        mids = [
+          { x: start.x, y: stubY },
+          { x: end.x, y: stubY },
+        ];
+      } else {
+        mids = [{ x: start.x, y: end.y }];
+      }
     }
 
-    const start = this._borderPoint(from, mid[0]?.x ?? x2, mid[0]?.y ?? y2);
-    const end = this._borderPoint(to, mid[mid.length - 1]?.x ?? x1, mid[mid.length - 1]?.y ?? y1);
-    return [{ x: start.x, y: start.y }, ...mid, { x: end.x, y: end.y }];
+    const route = [start, ...mids, end];
+    return this._avoidObstacles(route, from, to);
+  }
+
+  _segmentHitsNode(a, b, n) {
+    const pad = 4;
+    const minx = Math.min(a.x, b.x);
+    const maxx = Math.max(a.x, b.x);
+    const miny = Math.min(a.y, b.y);
+    const maxy = Math.max(a.y, b.y);
+    return !(
+      maxx < n.x - pad ||
+      minx > n.x + n.width + pad ||
+      maxy < n.y - pad ||
+      miny > n.y + n.height + pad
+    );
+  }
+
+  _avoidObstacles(pts, from, to) {
+    const skip = new Set([from.id, to.id]);
+    const blockers = this.diagram.nodes.filter(
+      (n) =>
+        !skip.has(n.id) &&
+        !["pool", "lane", "system_boundary", "package", "fragment"].includes(n.type),
+    );
+    const out = [pts[0]];
+    for (let i = 0; i < pts.length - 1; i += 1) {
+      const a = out[out.length - 1];
+      const b = pts[i + 1];
+      const hits = blockers.filter((n) => this._segmentHitsNode(a, b, n));
+      if (!hits.length) {
+        out.push(b);
+        continue;
+      }
+      const n = hits.reduce((best, cur) =>
+        cur.width * cur.height > best.width * best.height ? cur : best,
+      );
+      const vertical = Math.abs(a.x - b.x) < 1;
+      if (vertical) {
+        const left = n.x - 20;
+        const right = n.x + n.width + 20;
+        const side = Math.abs(a.x - left) <= Math.abs(a.x - right) ? left : right;
+        out.push({ x: side, y: a.y }, { x: side, y: b.y }, b);
+      } else {
+        const above = n.y - 20;
+        const below = n.y + n.height + 20;
+        const side = Math.abs(a.y - above) <= Math.abs(a.y - below) ? above : below;
+        out.push({ x: a.x, y: side }, { x: b.x, y: side }, b);
+      }
+    }
+    return out;
   }
 
   _applyEdgeMarkers(line, edge) {
@@ -1268,6 +1367,11 @@ export class DiagramCanvas {
     }
     if (t === "zero_or_many") {
       line.setAttribute("marker-end", "url(#cf-zero-many)");
+      return;
+    }
+    if (t === "one_to_one") {
+      line.setAttribute("marker-start", "url(#cf-one-start)");
+      line.setAttribute("marker-end", "url(#cf-one)");
       return;
     }
     if (t === "one_to_many") {
@@ -1743,7 +1847,7 @@ export class DiagramCanvas {
       g.appendChild(rect);
       const tab = document.createElementNS(ns, "rect");
       tab.setAttribute("x", 8);
-      tab.setAttribute("y", -12);
+      tab.setAttribute("y", type === "fragment" ? 8 : -12);
       tab.setAttribute("width", Math.min(100, w - 16));
       tab.setAttribute("height", 20);
       tab.setAttribute("rx", 4);
@@ -2060,7 +2164,17 @@ export class DiagramCanvas {
         align: "middle",
       };
     }
-    if (["package", "fragment", "cloud", "service"].includes(type)) {
+    if (type === "fragment") {
+      return {
+        cx: Math.min(58, w / 2),
+        cy: 18,
+        maxW: Math.max(48, Math.min(110, w - 24)),
+        maxH: 18,
+        fontSize: Math.max(9, fontSize),
+        align: "top",
+      };
+    }
+    if (["package", "cloud", "service"].includes(type)) {
       return {
         cx: w / 2,
         cy: 16,

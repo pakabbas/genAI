@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.4";
-import { DiagramCanvas } from "./canvas.js?v=2.7.4";
-import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.4";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.5";
+import { DiagramCanvas } from "./canvas.js?v=2.7.5";
+import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -671,10 +671,11 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.4";
 
   async function sendRequirementsMessage({ forceReady = false } = {}) {
     try {
-      const text = (els.promptInput?.value || "").trim();
+      const field = document.getElementById("promptInput") || els.promptInput;
+      const text = String(field?.value || "").trim();
       if (!forceReady && text.length < 3) {
         showToast("Describe your diagram (at least 3 characters).", "error");
-        els.promptInput?.focus();
+        field?.focus();
         return;
       }
       if (state.isChatting || state.isGenerating) return;
@@ -905,6 +906,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.4";
         zero_or_one: "0..1",
         zero_or_many: "0..*",
         one_to_many: "1—*",
+        one_to_one: "1—1",
         many_to_many: "*—*",
         identifying: "═",
         message: "→",
@@ -1196,12 +1198,25 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.4";
     }
   }
 
-  function newProject() {
+  function newProject({ skipConfirm = false } = {}) {
+    const hasContent =
+      canvas.diagram.nodes.length > 0 ||
+      canvas.diagram.edges.length > 0 ||
+      state.isDirty ||
+      ((els.diagramTitle?.value || "").trim() &&
+        els.diagramTitle.value.trim() !== "Untitled Diagram");
+    if (
+      !skipConfirm &&
+      hasContent &&
+      !confirmAction("Start a new project? The canvas, title, and chat will be cleared.")
+    ) {
+      return;
+    }
     state.currentProjectId = null;
     state.externalProjectId = null;
     els.projectNameInput.value = "Untitled Project";
     els.projectSelect.value = "";
-    clearCanvas();
+    clearCanvas({ skipConfirm: true });
     resetRequirementsChat({ quiet: true });
     state.editedSinceAiLoad = false;
     if (els.editCurrentToggle) els.editCurrentToggle.checked = false;
@@ -1275,7 +1290,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.4";
       const res = await fetch(withRoot(`/api/projects/${state.currentProjectId}`), { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(formatApiError(data, "Delete failed."));
-      newProject();
+      newProject({ skipConfirm: true });
       await refreshProjectList();
       showToast("Project deleted.", "success");
     } catch (err) {
@@ -1372,26 +1387,42 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.4";
     const controller = new AbortController();
     const timeoutMs = 540000; // under nginx 600s
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    state.lastGenerationTrace = [
+      {
+        step: 0,
+        agent: "system",
+        phase: "start",
+        message: editRequest ? "Edit started — waiting for Generator…" : "Generation started…",
+        timestamp: new Date().toISOString(),
+      },
+    ];
+    if (els.aiThinkingLogBtn) els.aiThinkingLogBtn.disabled = false;
+    if (editRequest) openThinkingLog();
 
     try {
       const res = await fetch(withRoot("/api/generate-diagram"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
-      const data = await res.json();
       if (!res.ok) {
-        throw new Error(formatApiError(data, "Generation failed."));
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(formatApiError(errBody, "Generation failed."));
+      }
+      const data = await readGenerateResponse(res);
+      if (!data?.diagram) {
+        throw new Error("Generation returned no diagram.");
       }
 
-      state.lastGenerationTrace = data.trace || [];
+      state.lastGenerationTrace = data.trace?.length ? data.trace : state.lastGenerationTrace;
       state.lastRecommendations = data.recommendations || [];
       if (els.aiThinkingLogBtn) els.aiThinkingLogBtn.disabled = !state.lastGenerationTrace.length;
+      renderThinkingLog(state.lastGenerationTrace);
 
       let diagramOut = data.diagram;
       if (editRequest && previousDiagram) {
-        diagramOut = mergeEditPreserveLayout(previousDiagram, data.diagram);
+        diagramOut = mergeEditPreserveLayout(previousDiagram, data.diagram, prompt);
       }
       applyDiagramToCanvas(
         diagramOut,
@@ -1419,6 +1450,18 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.4";
           ? "Generation timed out. Try a shorter brief, or turn QC revisions down in Configurations."
           : err.message || "Something went wrong.";
       showToast(msg, "error");
+      state.lastGenerationTrace = [
+        ...(state.lastGenerationTrace || []),
+        {
+          step: 99,
+          agent: "system",
+          phase: "error",
+          message: msg,
+          timestamp: new Date().toISOString(),
+        },
+      ];
+      if (els.aiThinkingLogBtn) els.aiThinkingLogBtn.disabled = false;
+      renderThinkingLog(state.lastGenerationTrace);
     } finally {
       clearTimeout(timeoutId);
       setGenerating(false);
@@ -1426,13 +1469,62 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.4";
     }
   }
 
-  /** Keep prior x/y/w/h for unchanged node ids; only new ids keep generator placement. */
-  function mergeEditPreserveLayout(previous, next) {
+  async function readGenerateResponse(res) {
+    const ctype = res.headers.get("content-type") || "";
+    if (!ctype.includes("ndjson") || !res.body) {
+      return res.json();
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let result = null;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        let msg;
+        try {
+          msg = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (msg.type === "trace" && msg.data) {
+          state.lastGenerationTrace = [...(state.lastGenerationTrace || []), msg.data];
+          if (els.aiThinkingLogBtn) els.aiThinkingLogBtn.disabled = false;
+          renderThinkingLog(state.lastGenerationTrace);
+          if (els.canvasLoadingSub) els.canvasLoadingSub.textContent = msg.data.message || "";
+        } else if (msg.type === "result") {
+          result = msg.data;
+        } else if (msg.type === "error") {
+          throw new Error(msg.data || "Generation failed.");
+        }
+      }
+    }
+    return result || (buf.trim() ? JSON.parse(buf) : null);
+  }
+
+  /** Keep prior geometry only when the generator left it unchanged (and the prompt is not a resize/move). */
+  function mergeEditPreserveLayout(previous, next, prompt = "") {
     if (!previous?.nodes?.length || !next?.nodes) return next;
+    const geomRequest =
+      /\b(wider|taller|narrower|smaller|bigger|resize|move|align|position|size|shift|spread|scale)\b/i.test(
+        String(prompt || ""),
+      );
     const prevById = new Map(previous.nodes.map((n) => [n.id, n]));
     const nodes = next.nodes.map((n) => {
       const old = prevById.get(n.id);
       if (!old) return n;
+      const sizeChanged =
+        Math.abs(Number(n.width) - Number(old.width)) > 8 ||
+        Math.abs(Number(n.height) - Number(old.height)) > 8;
+      if (geomRequest || sizeChanged) {
+        return { ...n, label: n.label || old.label };
+      }
       return {
         ...n,
         x: old.x,
@@ -1536,10 +1628,16 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.4";
 
   els.promptInput?.addEventListener("input", updateCharCount);
   els.promptInput?.addEventListener("keydown", (e) => {
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendRequirementsMessage();
     }
+  });
+  document.querySelector(".req-chat-compose")?.addEventListener("mousedown", (e) => {
+    if (e.target === els.promptInput) return;
+    if (e.target.closest("#sendChatBtn")) return;
+    els.promptInput?.focus();
   });
   // Bind Send reliably (click + pointerup fallback)
   const onSendChat = (e) => {
@@ -1714,7 +1812,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.4";
   window.addEventListener("popstate", () => {
     const id = getProjectIdFromUrl();
     if (id) loadProject(id, { quiet: true, syncUrl: false });
-    else if (state.currentProjectId) newProject();
+    else if (state.currentProjectId) newProject({ skipConfirm: true });
   });
 
   resetRequirementsChat({ quiet: true });

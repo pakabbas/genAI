@@ -42,6 +42,18 @@ Add these under **Settings → Secrets and variables → Actions** in the **GitH
 | `ci.yml` | PRs, pushes to `main` | Import check + script validation |
 | `deploy.yml` | Push to `main`, manual dispatch | Production deploy |
 
+### Nginx timeouts (manual)
+
+`deploy.yml` only rsyncs the app, installs deps, and restarts the systemd unit. It does **not** copy or reload nginx.
+
+Production GenAI is at the **root** of `dd.spiralloopstechnologies.com` (`location /` → `127.0.0.1:8011`). Use [`nginx-dd-root.conf`](./nginx-dd-root.conf) (`proxy_read_timeout` / `proxy_send_timeout` **600s**). Do not use [`nginx-genai-location.conf`](./nginx-genai-location.conf) (legacy `/genAI/` on port 8010).
+
+```bash
+sudo cp deploy/nginx-dd-root.conf /etc/nginx/snippets/genai-dd-root.conf
+# include the snippet from the dd vhost, then:
+sudo nginx -t && sudo systemctl reload nginx
+```
+
 ### Deploy steps
 
 1. Checkout repository

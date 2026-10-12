@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 
 from app.prompts.diagrams import TOOLBOX
@@ -130,6 +131,9 @@ EDGE_ALIASES: dict[str, str] = {
     "0_n": "zero_or_many",
     "one_to_many": "one_to_many",
     "1n": "one_to_many",
+    "one_to_one": "one_to_one",
+    "onetoone": "one_to_one",
+    "1_1": "one_to_one",
     "many_to_many": "many_to_many",
     "nm": "many_to_many",
     "identifying": "identifying",
@@ -238,50 +242,98 @@ def _layout_sequence_messages(document: DiagramDocument) -> DiagramDocument:
 
     edges = _renumber_sequence_labels(edges)
 
-    msg_ys = [
-        float((e.meta or {}).get("message_y"))
-        for e in edges
-        if e.type in SEQUENCE_MESSAGE_TYPES and (e.meta or {}).get("message_y") is not None
-    ]
-
     updated_nodes: list[DiagramNode] = []
     min_height = max_y + lifeline_padding
+    fragments = [n for n in nodes if n.type == "fragment"]
+    frag_owns = _assign_fragment_messages(fragments, edges, nodes)
     for node in nodes:
         if node.type in SEQUENCE_LIFELINE_TYPES and node.height < min_height:
             updated_nodes.append(node.model_copy(update={"height": float(min_height)}))
-        elif node.type == "fragment" and msg_ys:
-            # Size/place alt/loop fragments from the y-range of messages they should cover.
-            top = min(msg_ys) - 20
-            bot = max(msg_ys) + 48
-            updated_nodes.append(
-                node.model_copy(
-                    update={
-                        "y": float(top),
-                        "height": float(max(96, bot - top)),
-                        "x": float(min(n.x for n in nodes if n.type in SEQUENCE_LIFELINE_TYPES) - 12)
-                        if any(n.type in SEQUENCE_LIFELINE_TYPES for n in nodes)
-                        else node.x,
-                        "width": float(
-                            max(
-                                node.width,
-                                (
-                                    max(n.x + n.width for n in nodes if n.type in SEQUENCE_LIFELINE_TYPES)
-                                    - min(n.x for n in nodes if n.type in SEQUENCE_LIFELINE_TYPES)
-                                    + 24
-                                )
-                                if any(n.type in SEQUENCE_LIFELINE_TYPES for n in nodes)
-                                else node.width,
-                            )
-                        ),
-                    }
-                )
-            )
+        elif node.type == "fragment":
+            updated_nodes.append(_place_fragment(node, frag_owns.get(node.id) or [], nodes))
         elif node.type == "activation":
             updated_nodes.append(node)
         else:
             updated_nodes.append(node)
 
     return document.model_copy(update={"nodes": updated_nodes, "edges": edges})
+
+
+def _messages_claimed_by_fragment(fragment: DiagramNode, edges: list[DiagramEdge]) -> list[DiagramEdge]:
+    msgs = [e for e in edges if e.type in SEQUENCE_MESSAGE_TYPES]
+    meta = fragment.meta or {}
+    raw_ids = (
+        meta.get("covers")
+        or meta.get("message_ids")
+        or meta.get("messages")
+        or meta.get("edge_ids")
+        or []
+    )
+    if isinstance(raw_ids, str):
+        raw_ids = [s.strip() for s in raw_ids.split(",") if s.strip()]
+    idset = {str(i) for i in raw_ids}
+    if idset:
+        hit = [e for e in msgs if e.id in idset or (e.label or "") in idset]
+        if hit:
+            return hit
+    top = float(fragment.y)
+    bot = top + float(fragment.height or 0)
+    inside: list[DiagramEdge] = []
+    for edge in msgs:
+        y = (edge.meta or {}).get("message_y")
+        if y is None:
+            continue
+        if top - 8 <= float(y) <= bot + 8:
+            inside.append(edge)
+    return inside
+
+
+def _assign_fragment_messages(
+    fragments: list[DiagramNode],
+    edges: list[DiagramEdge],
+    _nodes: list[DiagramNode],
+) -> dict[str, list[DiagramEdge]]:
+    msgs = [e for e in edges if e.type in SEQUENCE_MESSAGE_TYPES]
+    assigned: dict[str, list[DiagramEdge]] = {
+        frag.id: _messages_claimed_by_fragment(frag, edges) for frag in fragments
+    }
+    if len(fragments) > 1:
+        signatures = [tuple(e.id for e in assigned[f.id]) for f in fragments]
+        same = len(set(signatures)) == 1
+        if same:
+            ordered_frags = sorted(fragments, key=lambda f: (f.y, f.id))
+            ordered_msgs = sorted(msgs, key=lambda e: (float((e.meta or {}).get("message_y") or 0), e.id))
+            chunk = max(1, math.ceil(len(ordered_msgs) / len(ordered_frags))) if ordered_msgs else 1
+            for i, frag in enumerate(ordered_frags):
+                assigned[frag.id] = ordered_msgs[i * chunk : (i + 1) * chunk]
+    return assigned
+
+
+def _place_fragment(
+    fragment: DiagramNode,
+    own_edges: list[DiagramEdge],
+    nodes: list[DiagramNode],
+) -> DiagramNode:
+    ys = [float((e.meta or {}).get("message_y")) for e in own_edges if (e.meta or {}).get("message_y") is not None]
+    if not ys:
+        return fragment
+    # Room at the top for the in-box label so it does not sit on the first message.
+    top = min(ys) - 36
+    bot = max(ys) + 28
+    touched_ids = {e.from_node for e in own_edges} | {e.to_node for e in own_edges}
+    lifelines = [
+        n for n in nodes if n.type in SEQUENCE_LIFELINE_TYPES and (n.id in touched_ids or not touched_ids)
+    ]
+    if not lifelines:
+        lifelines = [n for n in nodes if n.type in SEQUENCE_LIFELINE_TYPES]
+    x = fragment.x
+    width = fragment.width
+    if lifelines:
+        x = min(n.x for n in lifelines) - 12
+        width = max(fragment.width, max(n.x + n.width for n in lifelines) - min(n.x for n in lifelines) + 24)
+    return fragment.model_copy(
+        update={"y": float(top), "height": float(max(96, bot - top)), "x": float(x), "width": float(width)}
+    )
 
 
 def _toolbox_maps(diagram_type: DiagramType) -> tuple[dict[str, str], dict[str, str], dict[str, tuple[float, float]]]:

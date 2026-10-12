@@ -40,6 +40,7 @@ TOOLBOX: dict[DiagramType, list[ToolboxItem]] = {
         ToolboxItem(id="one_or_many", label="One or Many (1..*)", kind="edge", shape="one_or_many"),
         ToolboxItem(id="zero_or_one", label="Zero or One (0..1)", kind="edge", shape="zero_or_one"),
         ToolboxItem(id="zero_or_many", label="Zero or Many (0..*)", kind="edge", shape="zero_or_many"),
+        ToolboxItem(id="one_to_one", label="One-to-One", kind="edge", shape="one_to_one"),
         ToolboxItem(id="one_to_many", label="One-to-Many", kind="edge", shape="one_to_many"),
         ToolboxItem(id="many_to_many", label="Many-to-Many", kind="edge", shape="many_to_many"),
         ToolboxItem(id="identifying", label="Identifying", kind="edge", shape="identifying"),
@@ -138,7 +139,7 @@ DIAGRAM_TYPE_GUIDANCE: dict[DiagramType, str] = {
         "ERD with table-style entities (label compartments: Name\\n--\\nPK id\\nattr\\nFK other_id). "
         "Optional Chen attribute ovals + relationship diamonds. "
         "Cardinality edges use crow's-foot types: one, many, one_or_many, zero_or_one, zero_or_many, "
-        "one_to_many, many_to_many, identifying. Do NOT use data_store."
+        "one_to_one, one_to_many, many_to_many, identifying. Do NOT use data_store."
     ),
     "swim_lane": (
         "BPMN completeness rules (strict):\n"
@@ -349,8 +350,9 @@ def build_diagram_user_prompt(
             [
                 "",
                 "EXISTING DIAGRAM (EDIT MODE — surgical change only):",
-                "- Keep EVERY existing node/edge id, label, x, y, width, and height unless the user",
-                "  explicitly names that element to change.",
+                "- Keep EVERY existing node/edge id and label unless the user names that element.",
+                "- Keep x, y, width, and height unless the user asks to move, resize, widen, align,",
+                "  or otherwise change geometry — then apply those geometry changes.",
                 "- Do NOT merge, rename, relocate, or delete unrelated shapes.",
                 "- Only ADD or ALTER what the request asks for (e.g. add a retry loop).",
                 "- Preserve activation boxes, message order, and decision labels.",

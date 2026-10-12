@@ -387,6 +387,8 @@ def generate_diagram_with_qc(
             coverage_gaps.append(g)
 
     max_revisions = int(cfg.get_value("pipeline.max_qc_revisions"))
+    if edit_mode:
+        max_revisions = min(max_revisions, 1)
     qc_enabled = bool(cfg.get_value("pipeline.qc_enabled"))
     max_recs = int(cfg.get_value("pipeline.max_recommendations"))
 

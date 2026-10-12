@@ -171,7 +171,7 @@ def _erd_gaps(text: str, diagram: DiagramDocument, labels: str) -> BriefGaps:
     if re.search(r"(?i)\b(one[- ]to[- ]many|many[- ]to[- ]many|cardinality|1\.\.\*)\b", text):
         card_types = {
             "one", "many", "one_or_many", "zero_or_one", "zero_or_many",
-            "one_to_many", "many_to_many", "identifying",
+            "one_to_many", "one_to_one", "many_to_many", "identifying",
         }
         if not any(e.type in card_types for e in diagram.edges):
             blocking.append("Brief requests cardinalities but no crow's-foot edge types are used.")
