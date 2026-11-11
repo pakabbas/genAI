@@ -6,6 +6,11 @@ const els = {
   nav: document.getElementById("configNav"),
   panels: document.getElementById("configPanels"),
   promptsPanel: document.getElementById("promptsPanel"),
+  geminiKeyPanel: document.getElementById("geminiKeyPanel"),
+  geminiKeyStatus: document.getElementById("geminiKeyStatus"),
+  geminiKeyInput: document.getElementById("geminiKeyInput"),
+  geminiKeyError: document.getElementById("geminiKeyError"),
+  geminiKeySave: document.getElementById("geminiKeySaveBtn"),
   status: document.getElementById("configStatus"),
   toast: document.getElementById("toastContainer"),
   promptKey: document.getElementById("promptKeySelect"),
@@ -33,11 +38,117 @@ function formatDefault(val) {
   return String(val);
 }
 
+function formatKeyStatus(info) {
+  const src = info || state.status || {};
+  if (src.api_key_configured || src.configured) {
+    const last4 = src.api_key_last4 || src.last4;
+    return last4 ? `configured · last 4: ${last4}` : "configured";
+  }
+  if (src.api_key_status === "set") return "configured";
+  return "not configured";
+}
+
 function renderStatus() {
   const s = state.status || {};
-  const text = `v${s.version || "?"} · API ${s.api_key_status || "?"} · DB ${s.db_connected ? "on" : "off"}`;
+  const text = `v${s.version || "?"} · API ${formatKeyStatus(s)} · DB ${s.db_connected ? "on" : "off"}`;
   els.status.textContent = text;
   els.status.title = text;
+}
+
+function renderGeminiKeyStatus(info) {
+  if (!els.geminiKeyStatus) return;
+  const src = info || {
+    configured: state.status?.api_key_configured || state.status?.api_key_status === "set",
+    last4: state.status?.api_key_last4,
+  };
+  const label = formatKeyStatus(src);
+  els.geminiKeyStatus.innerHTML = `<div><strong>Current key:</strong> ${escapeHtml(label)}</div>`;
+}
+
+function setGeminiKeyError(msg) {
+  if (!els.geminiKeyError) return;
+  if (!msg) {
+    els.geminiKeyError.hidden = true;
+    els.geminiKeyError.textContent = "";
+    return;
+  }
+  els.geminiKeyError.hidden = false;
+  els.geminiKeyError.textContent = msg;
+}
+
+function detailMessage(data, fallback) {
+  const d = data?.detail;
+  if (typeof d === "string" && d.trim()) return d;
+  if (Array.isArray(d)) {
+    return d.map((item) => (typeof item === "string" ? item : item?.msg || JSON.stringify(item))).join("; ");
+  }
+  if (d && typeof d === "object" && d.message) return d.message;
+  return fallback;
+}
+
+async function loadGeminiKeyStatus() {
+  try {
+    const res = await fetch(withRoot("/api/config/gemini-key"));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(detailMessage(data, "Could not load key status"));
+    if (state.status) {
+      state.status.api_key_configured = Boolean(data.configured);
+      state.status.api_key_last4 = data.last4 || null;
+      state.status.api_key_status = data.configured ? "set" : "not set";
+    }
+    renderGeminiKeyStatus(data);
+    renderStatus();
+  } catch (err) {
+    if (els.geminiKeyStatus) {
+      els.geminiKeyStatus.textContent = "Could not load the current key status.";
+    }
+  }
+}
+
+async function saveGeminiKey() {
+  const key = (els.geminiKeyInput?.value || "").trim();
+  setGeminiKeyError("");
+  if (!key) {
+    setGeminiKeyError("Enter a Gemini API key.");
+    showToast("Enter a Gemini API key.", "error");
+    return;
+  }
+  if (els.geminiKeySave) {
+    els.geminiKeySave.disabled = true;
+    els.geminiKeySave.textContent = "Testing key…";
+  }
+  try {
+    const res = await fetch(withRoot("/api/config/gemini-key"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: key }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = detailMessage(data, "The key test failed. Nothing was saved.");
+      setGeminiKeyError(msg);
+      showToast(msg, "error");
+      return;
+    }
+    if (els.geminiKeyInput) els.geminiKeyInput.value = "";
+    if (state.status) {
+      state.status.api_key_configured = Boolean(data.configured);
+      state.status.api_key_last4 = data.last4 || null;
+      state.status.api_key_status = data.configured ? "set" : "not set";
+    }
+    renderGeminiKeyStatus(data);
+    renderStatus();
+    showToast("Key tested and saved.", "success");
+  } catch (err) {
+    const msg = err?.message || "The key test failed. Nothing was saved.";
+    setGeminiKeyError(msg);
+    showToast(msg, "error");
+  } finally {
+    if (els.geminiKeySave) {
+      els.geminiKeySave.disabled = false;
+      els.geminiKeySave.textContent = "Test and save";
+    }
+  }
 }
 
 function fieldControl(setting) {
@@ -76,6 +187,7 @@ function escapeAttr(s) {
 
 function renderNav() {
   const items = [
+    { id: "gemini_key", label: "Gemini API key" },
     ...state.groups.map((g) => ({ id: g.id, label: g.label })),
     { id: "prompts", label: "Agent Prompts" },
   ];
@@ -99,10 +211,16 @@ function showGroup(groupId) {
   state.activeGroup = groupId;
   renderNav();
   const isPrompts = groupId === "prompts";
-  els.promptsPanel.hidden = !isPrompts;
-  els.panels.hidden = isPrompts;
+  const isGeminiKey = groupId === "gemini_key";
+  if (els.promptsPanel) els.promptsPanel.hidden = !isPrompts;
+  if (els.geminiKeyPanel) els.geminiKeyPanel.hidden = !isGeminiKey;
+  els.panels.hidden = isPrompts || isGeminiKey;
   if (isPrompts) {
     loadPromptList();
+    return;
+  }
+  if (isGeminiKey) {
+    loadGeminiKeyStatus();
     return;
   }
   const group = state.groups.find((g) => g.id === groupId);
@@ -111,7 +229,7 @@ function showGroup(groupId) {
   const statusBlock =
     groupId === "ai_models"
       ? `<div class="status-ro">
-          <div><strong>API key:</strong> ${escapeHtml(state.status.api_key_status || "unknown")} (env only — never editable here)</div>
+          <div><strong>API key:</strong> ${escapeHtml(formatKeyStatus(state.status))} (change it under Gemini API key)</div>
           <div><strong>Env model:</strong> <code>${escapeHtml(String(state.status.env_model || ""))}</code></div>
           <div><strong>DB:</strong> ${state.status.db_connected ? "connected" : "offline"}</div>
         </div>`
@@ -183,7 +301,8 @@ async function loadConfig() {
   state.groups = data.groups || [];
   state.status = data.status || {};
   renderStatus();
-  if (!state.activeGroup) state.activeGroup = state.groups[0]?.id || "prompts";
+  renderGeminiKeyStatus();
+  if (!state.activeGroup) state.activeGroup = "gemini_key";
   renderNav();
   showGroup(state.activeGroup);
   // Populate prompt keys from API list
@@ -366,6 +485,14 @@ window.addEventListener("beforeunload", (e) => {
   if (state.dirty) {
     e.preventDefault();
     e.returnValue = "";
+  }
+});
+
+els.geminiKeySave?.addEventListener("click", saveGeminiKey);
+els.geminiKeyInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    saveGeminiKey();
   }
 });
 

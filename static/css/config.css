@@ -122,6 +122,7 @@
 }
 
 .config-field input[type="text"],
+.config-field input[type="password"],
 .config-field input[type="number"],
 .config-field select,
 .config-field textarea {
@@ -208,4 +209,8 @@ body.config-page {
     height: auto;
     overflow-y: auto;
   }
+}
+
+.config-gemini-key .status-ro code {
+  font-family: var(--mono);
 }

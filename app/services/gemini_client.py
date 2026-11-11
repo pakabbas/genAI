@@ -42,6 +42,13 @@ def format_call_info(info: dict | None = None) -> str:
     )
 
 
+def reset_client() -> None:
+    """Clear any cached client so the next call picks up the current env key."""
+    # Clients are created per call today; this hook exists so a key rotation
+    # takes effect immediately if caching is added later.
+    return None
+
+
 def _client() -> genai.Client:
     api_key = get_settings()["gemini_api_key"]
     if not api_key:

@@ -7,8 +7,8 @@
   <meta name="app-root" content="{{ root_path }}" />
   <link rel="icon" href="{{ root_path }}/static/favicon.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/config.css?v={{ app_version }}" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-key" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/config.css?v={{ app_version }}-key" />
 </head>
 <body class="config-page">
   <div class="ambient ambient-a"></div>
@@ -35,6 +35,24 @@
   <main class="config-layout">
     <nav class="config-nav" id="configNav" aria-label="Settings groups"></nav>
     <section class="config-main">
+      <div id="geminiKeyPanel" class="config-gemini-key" hidden>
+        <div class="config-card">
+          <h2>Change Gemini API key</h2>
+          <p class="config-help">The current key is never shown in full. A new key is tested with a short generate call against the current generator model (then the fallback model) before it is saved. A failed test is not stored.</p>
+          <div class="status-ro" id="geminiKeyStatus">Checking current key…</div>
+          <div class="config-field">
+            <div class="config-field-head">
+              <label for="geminiKeyInput">New Gemini API key</label>
+            </div>
+            <p class="help">Paste the new key, then use Test and save. The previous key is archived on the server, not in app logs.</p>
+            <input type="password" id="geminiKeyInput" name="gemini-api-key" autocomplete="off" spellcheck="false" placeholder="Enter new Gemini API key" />
+            <div class="error" id="geminiKeyError" hidden></div>
+          </div>
+          <div class="config-actions">
+            <button type="button" class="btn btn-primary" id="geminiKeySaveBtn">Test and save</button>
+          </div>
+        </div>
+      </div>
       <div id="configPanels"></div>
       <div class="config-prompts" id="promptsPanel" hidden>
         <div class="config-card">
@@ -60,6 +78,6 @@
   </main>
 
   <div class="toast-container" id="toastContainer" aria-live="polite"></div>
-  <script type="module" src="{{ root_path }}/static/js/config/app.js?v={{ app_version }}"></script>
+  <script type="module" src="{{ root_path }}/static/js/config/app.js?v={{ app_version }}-key"></script>
 </body>
 </html>

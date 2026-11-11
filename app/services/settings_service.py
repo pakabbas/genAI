@@ -309,9 +309,12 @@ def get_grouped() -> dict[str, Any]:
             }
         )
 
+    raw_key = str(env.get("gemini_api_key") or "")
     status = {
         "version": _app_version(),
-        "api_key_status": "set" if env.get("gemini_api_key") else "not set",
+        "api_key_status": "set" if raw_key else "not set",
+        "api_key_configured": bool(raw_key),
+        "api_key_last4": raw_key[-4:] if len(raw_key) >= 8 else None,
         "db_connected": check_connection(),
         "env_model": env.get("gemini_model"),
         "models": {

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from app.services import gemini_key as gemini_key_svc
 from app.services import settings_service as cfg
 
 router = APIRouter(prefix="/api/config", tags=["config"])
@@ -21,6 +22,40 @@ class PromptSaveBody(BaseModel):
 
 class PromptActivateBody(BaseModel):
     version: int
+
+
+class GeminiKeyBody(BaseModel):
+    api_key: str = Field(..., min_length=1)
+
+
+@router.get("/gemini-key")
+async def get_gemini_key() -> dict:
+    """Masked view of the configured Gemini key. Never returns the full secret."""
+    return gemini_key_svc.mask_key()
+
+
+@router.post("/gemini-key")
+async def change_gemini_key(body: GeminiKeyBody) -> dict:
+    """Test the new key with generateContent, then persist it only if the test passes."""
+    key = (body.api_key or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="Enter a Gemini API key.")
+    ok, message, model = gemini_key_svc.test_gemini_api_key(key)
+    if not ok:
+        raise HTTPException(status_code=400, detail=message)
+    try:
+        masked = gemini_key_svc.persist_verified_key(key)
+    except OSError:
+        raise HTTPException(
+            status_code=503,
+            detail="The key tested successfully but could not be saved to .env.",
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="The key tested successfully but could not be saved.",
+        )
+    return {**masked, "ok": True, "model": model}
 
 
 @router.get("")
