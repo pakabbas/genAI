@@ -8,7 +8,12 @@ from difflib import SequenceMatcher
 
 from app.prompts.process_plan import PROCESS_PLAN_SYSTEM, build_process_plan_prompt
 from app.schemas.diagram import DiagramDocument, DiagramEdge, DiagramNode, DiagramType
-from app.schemas.process_model import ProcessBranch, ProcessElement, ProcessModel
+from app.schemas.process_model import (
+    ProcessBranch,
+    ProcessElement,
+    ProcessModel,
+    coerce_flowchart_kinds,
+)
 from app.services.diagram_generator import _extract_json_object
 from app.services.gemini_client import generate_json
 from app.services import settings_service as cfg
@@ -70,6 +75,11 @@ _STOP = {
 def extract_process_model(diagram_type: DiagramType, user_prompt: str) -> ProcessModel:
     """Ask Gemini for a structured process inventory derived from the brief."""
     system = cfg.active_prompt_body("planner.system") or PROCESS_PLAN_SYSTEM
+    extra: dict = {}
+    if diagram_type == "flowchart":
+        # 2.7.9: never teach merged labels; tell the planner which kinds exist.
+        system = system.replace('"Place Order & Pay"', '"Place Order"') + FLOWCHART_PLAN_NOTE
+        extra["hard_timeout"] = float(cfg.get_value("ai.timeout_seconds"))
     text = generate_json(
         role="planner",
         system_instruction=system,
@@ -77,12 +87,28 @@ def extract_process_model(diagram_type: DiagramType, user_prompt: str) -> Proces
         temperature=float(cfg.get_value("ai.planner.temperature")),
         top_p=float(cfg.get_value("ai.planner.top_p")),
         max_output_tokens=int(cfg.get_value("ai.planner.max_output_tokens")),
+        **extra,
     )
     data = json.loads(_extract_json_object(text))
+    if diagram_type == "flowchart":
+        data = coerce_flowchart_kinds(data)
     model_obj = ProcessModel.model_validate(data)
+    if diagram_type != "flowchart" and any(e.kind == "parallel" for e in model_obj.elements):
+        # Swim lane keeps the pre-2.7.9 strict kinds.
+        raise ValueError("elements.kind 'parallel' is only accepted for flowcharts")
     if not model_obj.elements:
         raise RuntimeError("Process planner returned no elements.")
     return enrich_process_model_from_prompt(model_obj, user_prompt)
+
+
+FLOWCHART_PLAN_NOTE = """
+
+Flowchart notes:
+- kind is one of: start, end, activity, decision, parallel. Input/output/display steps are "activity";
+  fork/join bars are "parallel".
+- Keep each activity label exactly as the brief words it (e.g. "Send confirmation SMS and email" is ONE
+  activity — do not split a single stated step that happens to contain "and").
+"""
 
 
 def enrich_process_model_from_prompt(model: ProcessModel, user_prompt: str) -> ProcessModel:
@@ -342,7 +368,9 @@ def validate_process_coverage(
 
     # Merged multi-action tasks (e.g. "pick up and deliver") are also gaps when inventory
     # expects separate activities with distinct verb stems present in one label.
-    gaps.extend(_merged_activity_gaps(process_model, diagram))
+    # 2.7.9: for flowcharts this check is advisory only (see flowchart_merged_activity_gaps).
+    if diagram_type != "flowchart":
+        gaps.extend(_merged_activity_gaps(process_model, diagram))
 
     decision_labels = _decision_labels(diagram)
     for el in process_model.decisions():
@@ -445,6 +473,57 @@ def _merged_activity_gaps(process_model: ProcessModel, diagram: DiagramDocument)
             gaps.append(
                 f"Merged activities in one task '{label}' — split into separate tasks: {names}"
             )
+    return gaps
+
+
+_SPLIT_PARTS = re.compile(r"\s+and\s+|\s*&\s*|\s*,\s*", re.I)
+
+
+def flowchart_merged_activity_gaps(
+    process_model: ProcessModel, diagram: DiagramDocument
+) -> list[str]:
+    """
+    2.7.9 (flowchart only, ADVISORY): a node is "merged" only when its label splits on
+    'and' / '&' into parts that each match a DIFFERENT inventory activity. A node whose
+    label is itself one inventory activity (e.g. "Send confirmation SMS and email") is
+    never a gap.
+    """
+    acts = [a.label for a in process_model.activities() if (a.label or "").strip()]
+    if not acts:
+        return []
+    gaps: list[str] = []
+    for node in diagram.nodes:
+        if node.type not in {"process", "subprocess", "input"}:
+            continue
+        label = (node.label or "").strip()
+        if " and " not in label.lower() and "&" not in label:
+            continue
+        ln = _norm(label)
+        if any(SequenceMatcher(None, ln, _norm(a)).ratio() >= 0.85 for a in acts):
+            continue
+        parts = [p.strip() for p in _SPLIT_PARTS.split(label) if len(p.strip()) >= 3]
+        if len(parts) < 2:
+            continue
+        used: set[int] = set()
+        matched = 0
+        for part in parts:
+            pn = _norm(part)
+            best_i, best = None, 0.0
+            for i, a in enumerate(acts):
+                if i in used:
+                    continue
+                an = _norm(a)
+                score = SequenceMatcher(None, pn, an).ratio()
+                if pn and (pn == an or (len(pn) > 6 and pn in an)):
+                    score = max(score, 0.9)
+                if score > best:
+                    best, best_i = score, i
+            if best_i is not None and best >= 0.72:
+                used.add(best_i)
+                matched += 1
+        if matched >= 2 and len(used) >= 2:
+            names = ", ".join(f"'{acts[i]}'" for i in sorted(used))
+            gaps.append(f"Possibly merged steps in '{label}' (advisory): {names}")
     return gaps
 
 

@@ -159,12 +159,20 @@ DIAGRAM_TYPE_GUIDANCE: dict[DiagramType, str] = {
     "flowchart": (
         "Flowchart completeness rules (strict):\n"
         "- Start/end terminators required.\n"
-        "- Every stated step = its own process (do not merge distinct steps).\n"
-        "- Every conditional = decision diamond with ≥2 labeled branches (Yes/No, 2FA, retry, etc.).\n"
+        "- Every stated step = exactly ONE node with the brief's wording (do not merge distinct steps, "
+        "do not split one stated step, never repeat a step).\n"
+        "- Every conditional = decision diamond with ≥2 labeled branches (Yes/No, 2FA, retry, etc.); "
+        "each answer label appears ONCE per decision.\n"
+        "- Steps that run in parallel: a connector_node labelled 'Fork' fans out to them and a "
+        "connector_node labelled 'Join' merges them (never two same-label edges from a decision).\n"
         "- Preserve prompt order; do not invent extra business rules.\n"
-        "- Loop-backs / retries: route orthogonally around nodes (offset x/y), never short diagonals "
-        "cutting through the diagram.\n"
-        "- Layout: ≥ 70px gaps between shapes; may use x:40–1600, y:40–1200 — do not cram."
+        "- Loop-backs / retries are edges back to the earlier node (the canvas routes them).\n"
+        "- A branch that ends after an error/failure gets its OWN End terminator (e.g. 'End: Link expired') "
+        "unless the brief names the same end.\n"
+        "- Shapes: terminator = Start/End, process = action, decision = question, "
+        "input = Input/Output (every 'Show …' message/screen and every user entry/selection).\n"
+        "- Layout is automatic (top-to-bottom): coordinates are optional — do not spend output on "
+        "x/y/width/height or waypoints."
     ),
     "sequence": (
         "UML sequence: lifelines top-to-bottom. "
@@ -364,5 +372,10 @@ def build_diagram_user_prompt(
         parts.append(
             "Build a new diagram by placing toolbox nodes and connecting them with toolbox edges."
         )
+        if diagram_type == "flowchart":
+            parts.append(
+                "Flowchart output: x/y/width/height may be 0 (automatic layered layout). "
+                "Edge order: list each decision's main/continuing branch first."
+            )
 
     return "\n".join(parts)

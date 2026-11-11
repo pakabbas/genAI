@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.5";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.9";
 
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
 
@@ -644,7 +644,9 @@ export class DiagramCanvas {
     const pad = 56;
     const scaleX = (rect.width - pad * 2) / Math.max(bounds.width, 1);
     const scaleY = (rect.height - pad * 2) / Math.max(bounds.height, 1);
-    this.view.scale = Math.min(this.MAX_ZOOM, Math.max(this.MIN_ZOOM, Math.min(scaleX, scaleY)));
+    // 2.7.9: flowcharts may fit below MIN_ZOOM (fit-only floor) so Start/End are never clipped.
+    const minFit = this.diagram.diagram_type === "flowchart" ? Math.min(this.MIN_ZOOM, 0.1) : this.MIN_ZOOM;
+    this.view.scale = Math.min(this.MAX_ZOOM, Math.max(minFit, Math.min(scaleX, scaleY)));
     this.view.x = (rect.width - bounds.width * this.view.scale) / 2 - bounds.x * this.view.scale;
     this.view.y = (rect.height - bounds.height * this.view.scale) / 2 - bounds.y * this.view.scale;
     this._applyViewTransform();
@@ -658,21 +660,101 @@ export class DiagramCanvas {
   }
 
   exportSvg() {
+    // 2.7.9: self-contained SVG — inlined styles + sans-serif font so it reads outside the app.
+    const prevSel = this.selectedIds;
+    if (prevSel?.size) {
+      this.selectedIds = new Set();
+      this.render();
+    }
     const clone = this.svg.cloneNode(true);
+    if (prevSel?.size) {
+      this.selectedIds = prevSel;
+      this.render();
+    }
     clone.removeAttribute("style");
+    clone.removeAttribute("class");
     const world = clone.querySelector(".diagram-world");
     world?.removeAttribute("transform");
     const bounds = this._contentBounds();
     const pad = 40;
-    clone.setAttribute(
-      "viewBox",
-      `${bounds.x - pad} ${bounds.y - pad} ${bounds.width + pad * 2} ${bounds.height + pad * 2}`,
-    );
-    clone.setAttribute("width", String(bounds.width + pad * 2));
-    clone.setAttribute("height", String(bounds.height + pad * 2));
-    const grid = clone.querySelector(".layer-grid");
-    grid?.remove();
+    const vx = bounds.x - pad;
+    const vy = bounds.y - pad;
+    const vw = bounds.width + pad * 2;
+    const vh = bounds.height + pad * 2;
+    clone.setAttribute("viewBox", `${vx} ${vy} ${vw} ${vh}`);
+    clone.setAttribute("width", String(Math.ceil(vw)));
+    clone.setAttribute("height", String(Math.ceil(vh)));
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clone.setAttribute("font-family", "Inter, Arial, Helvetica, sans-serif");
+    clone.querySelector(".layer-grid")?.remove();
+    clone.querySelector(".layer-overlay")?.replaceChildren();
+    clone.querySelectorAll(".edge-hit, .edge-glow").forEach((el) => el.remove());
+    const isFc = this.diagram.diagram_type === "flowchart";
+    const nodeFont = isFc ? this._fcNodeFont() : this.BASE_FONT;
+    const edgeFont = isFc ? this._fcEdgeFont() : this.BASE_FONT;
+    const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+    style.textContent = [
+      "svg{background:#ffffff}",
+      "text{font-family:Inter,Arial,Helvetica,sans-serif;fill:#0f172a}",
+      `.node-label{font-size:${nodeFont}px;fill:#0f172a}`,
+      `.edge-label{font-size:${edgeFont}px;fill:#0f172a;font-weight:600}`,
+      ".boundary-label,.lane-label{font-size:12px;font-weight:600;fill:#475569}",
+      "polyline{fill:none}",
+    ].join("\n");
+    clone.insertBefore(style, clone.firstChild);
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bg.setAttribute("x", String(vx));
+    bg.setAttribute("y", String(vy));
+    bg.setAttribute("width", String(vw));
+    bg.setAttribute("height", String(vh));
+    bg.setAttribute("fill", "#ffffff");
+    const firstLayer = clone.querySelector(".diagram-world");
+    if (firstLayer) firstLayer.insertBefore(bg, firstLayer.firstChild);
+    // Inline font sizes on every label so viewers that ignore <style> still render them.
+    clone.querySelectorAll("text").forEach((t) => {
+      if (!t.getAttribute("font-family")) t.setAttribute("font-family", "Inter, Arial, Helvetica, sans-serif");
+      if (!t.getAttribute("fill")) t.setAttribute("fill", "#0f172a");
+      if (!t.getAttribute("font-size") && !/font-size/.test(t.getAttribute("style") || "")) {
+        const cls = t.getAttribute("class") || "";
+        t.setAttribute("font-size", String(cls.includes("edge-label") ? edgeFont : cls.includes("lane-label") || cls.includes("boundary-label") ? 12 : nodeFont));
+      }
+    });
     return new XMLSerializer().serializeToString(clone);
+  }
+
+  /** 2.7.9: PNG export at `scale`× (default 2×) of the tightly cropped SVG. */
+  exportPngBlob(scale = 2) {
+    const svgText = this.exportSvg();
+    const m = svgText.match(/<svg[^>]*\swidth="(\d+)"[^>]*\sheight="(\d+)"/);
+    const w = m ? Number(m[1]) : 1200;
+    const h = m ? Number(m[2]) : 800;
+    const maxSide = 16000;
+    const s = Math.max(0.5, Math.min(scale, maxSide / Math.max(w, h)));
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml;charset=utf-8" }));
+      img.onload = () => {
+        try {
+          const c = document.createElement("canvas");
+          c.width = Math.ceil(w * s);
+          c.height = Math.ceil(h * s);
+          const ctx = c.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, c.width, c.height);
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(url);
+          c.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("PNG export failed"))), "image/png");
+        } catch (err) {
+          URL.revokeObjectURL(url);
+          reject(err);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("PNG export failed"));
+      };
+      img.src = url;
+    });
   }
 
   _contentBounds() {
@@ -687,6 +769,13 @@ export class DiagramCanvas {
       minY = Math.min(minY, n.y);
       maxX = Math.max(maxX, n.x + n.width);
       maxY = Math.max(maxY, n.y + n.height);
+    }
+    if (this.diagram.diagram_type === "flowchart" && this._routeBounds) {
+      // Back-edge gutters and edge labels live outside the node box.
+      minX = Math.min(minX, this._routeBounds.minX - 8);
+      minY = Math.min(minY, this._routeBounds.minY - 8);
+      maxX = Math.max(maxX, this._routeBounds.maxX + 8);
+      maxY = Math.max(maxY, this._routeBounds.maxY + 8);
     }
     return {
       x: minX - margin,
@@ -967,6 +1056,12 @@ export class DiagramCanvas {
 
   _drawEdges() {
     this.edgesLayer.innerHTML = "";
+    this._fc = null;
+    this._routeBounds = null;
+    if (this.diagram.diagram_type === "flowchart") {
+      // Size nodes for their labels BEFORE routing so edges attach to the final borders.
+      for (const n of this.diagram.nodes) this._maybeGrowNodeForLabel(n);
+    }
     let sequenceIndex = 0;
     const startY = this.SEQUENCE_START_Y || 88;
     const stepY = this.SEQUENCE_STEP || 52;
@@ -1043,14 +1138,33 @@ export class DiagramCanvas {
 
       g.appendChild(line);
 
+      if (this.diagram.diagram_type === "flowchart") {
+        const rb = this._routeBounds || { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+        for (const p of route) {
+          rb.minX = Math.min(rb.minX, p.x);
+          rb.minY = Math.min(rb.minY, p.y);
+          rb.maxX = Math.max(rb.maxX, p.x);
+          rb.maxY = Math.max(rb.maxY, p.y);
+        }
+        this._routeBounds = rb;
+      }
+
       const labelText = this._dedupeEdgeLabel(edge.label);
       if (labelText) {
-        const anchor = this._labelAnchor(route, from, to);
+        const isFc = this.diagram.diagram_type === "flowchart";
+        const anchor = isFc ? this._fcLabelAnchor(route, from, to) : this._labelAnchor(route, from, to);
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", anchor.x);
         text.setAttribute("y", anchor.y);
-        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("text-anchor", anchor.anchor || "middle");
         text.setAttribute("class", "edge-label");
+        if (isFc) {
+          text.setAttribute("style", `font-size:${this._fcEdgeFont()}px;font-weight:600`);
+          text.setAttribute("paint-order", "stroke");
+          text.setAttribute("stroke", "#ffffff");
+          text.setAttribute("stroke-width", "4");
+          text.setAttribute("stroke-linejoin", "round");
+        }
         text.textContent = labelText;
         g.appendChild(text);
       }
@@ -1070,6 +1184,37 @@ export class DiagramCanvas {
       if (!uniq.some((u) => u.toLowerCase() === p.toLowerCase())) uniq.push(p);
     }
     return uniq.join(" / ");
+  }
+
+  _fcEdgeFont() {
+    return Math.max(12, Number(this.BASE_FONT) || 0);
+  }
+
+  _fcNodeFont() {
+    return Math.max(13, Number(this.BASE_FONT) || 0);
+  }
+
+  /** Flowchart: branch labels sit on the FIRST segment, ~16px from the decision exit. */
+  _fcLabelAnchor(route, from, to) {
+    const pts = route?.length > 1 ? route : null;
+    if (!pts || !["decision", "gateway_xor"].includes(from?.type)) {
+      const a = this._labelAnchor(route, from, to);
+      return { ...a, anchor: "middle" };
+    }
+    const a = pts[0];
+    const b = pts[1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      const dir = dx >= 0 ? 1 : -1;
+      return { x: a.x + dir * 8, y: a.y - 7, anchor: dir > 0 ? "start" : "end" };
+    }
+    const dir = dy >= 0 ? 1 : -1;
+    if (dir > 0 && Math.abs(dy) < 30 && pts.length > 2) {
+      // Short drop into a horizontal run (bottom-exit loop): sit just below that run.
+      return { x: a.x + 7, y: b.y + 16, anchor: "start" };
+    }
+    return { x: a.x + 7, y: a.y + dir * 18 + (dir > 0 ? 0 : 4), anchor: "start" };
   }
 
   _labelAnchor(route, from, to) {
@@ -1208,6 +1353,7 @@ export class DiagramCanvas {
 
   _routedEdgePath(from, to, edge, x1, y1, x2, y2) {
     const dtype = this.diagram.diagram_type;
+    if (dtype === "flowchart") return this._flowchartRoute(from, to, edge);
     if (dtype !== "flowchart" && dtype !== "swim_lane") {
       return [
         { x: x1, y: y1 },
@@ -1269,6 +1415,363 @@ export class DiagramCanvas {
 
     const route = [start, ...mids, end];
     return this._avoidObstacles(route, from, to);
+  }
+
+  // ---------------------------------------------------------------- 2.7.9 flowchart routing
+  /** Back-edges from the graph (server edge.meta.back_edge, else a client DFS from Start). */
+  _fcComputeBackEdges() {
+    const edges = this.diagram.edges || [];
+    const nodes = this.diagram.nodes || [];
+    if (edges.some((e) => e.meta && Object.prototype.hasOwnProperty.call(e.meta, "back_edge"))) {
+      return new Set(edges.filter((e) => e.meta?.back_edge).map((e) => e.id));
+    }
+    const pref = (label) => {
+      const t = String(label || "").trim().toLowerCase();
+      if (!t) return 1;
+      if (/\b(no|fail|failed|invalid|reject|rejected|declin|denied|false|error|cancel)\b/.test(t)) return 3;
+      if (/\b(yes|ok|valid|success|approved|true|accept|continue)\b/.test(t)) return 0;
+      return 2;
+    };
+    const outs = new Map();
+    const indeg = new Map();
+    edges.forEach((e, i) => {
+      if (!outs.has(e.from)) outs.set(e.from, []);
+      outs.get(e.from).push({ e, i });
+      indeg.set(e.to, (indeg.get(e.to) || 0) + 1);
+    });
+    for (const list of outs.values()) list.sort((a, b) => pref(a.e.label) - pref(b.e.label) || a.i - b.i);
+    const byPos = [...nodes].sort((a, b) => a.y - b.y || a.x - b.x);
+    const endWords = /\b(end|stop|done|complete|completed|failed|placed|finish)\b/i;
+    let roots = byPos.filter(
+      (n) => ["terminator", "start"].includes(n.type) && !indeg.get(n.id) && !endWords.test(n.label || ""),
+    );
+    roots.sort((a, b) => (/start|begin/i.test(b.label || "") ? 1 : 0) - (/start|begin/i.test(a.label || "") ? 1 : 0));
+    roots = [...roots, ...byPos.filter((n) => !indeg.get(n.id) && !roots.includes(n)), ...byPos];
+    const color = new Map();
+    const back = new Set();
+    for (const root of roots) {
+      if (color.get(root.id)) continue;
+      const stack = [[root.id, 0]];
+      color.set(root.id, 1);
+      while (stack.length) {
+        const top = stack[stack.length - 1];
+        const list = outs.get(top[0]) || [];
+        if (top[1] < list.length) {
+          const { e } = list[top[1]];
+          top[1] += 1;
+          const c = color.get(e.to) || 0;
+          if (c === 1) back.add(e.id);
+          else if (c === 0) {
+            color.set(e.to, 1);
+            stack.push([e.to, 0]);
+          }
+        } else {
+          color.set(top[0], 2);
+          stack.pop();
+        }
+      }
+    }
+    return back;
+  }
+
+  _fcPrepare() {
+    const nodes = this.diagram.nodes || [];
+    const edges = this.diagram.edges || [];
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const back = this._fcComputeBackEdges();
+    const flowNodes = nodes.filter((n) => n.type !== "text_box");
+    const lanes = new Map();
+    const pref = (label) => {
+      const t = String(label || "").trim().toLowerCase();
+      if (!t) return 1;
+      if (/\b(no|fail|failed|invalid|reject|rejected|declin|denied|false|error|cancel)\b/.test(t)) return 3;
+      if (/\b(yes|ok|valid|success|approved|true|accept|continue)\b/.test(t)) return 0;
+      return 2;
+    };
+    // Gutter lanes: back-edges whose vertical spans overlap get different lanes.
+    const spans = [];
+    for (const e of edges) {
+      if (!back.has(e.id)) continue;
+      const a = byId.get(e.from);
+      const b = byId.get(e.to);
+      if (!a || !b) continue;
+      const top = Math.min(a.y, b.y);
+      const bot = Math.max(a.y + a.height, b.y + b.height);
+      spans.push({ id: e.id, top, bot, span: bot - top });
+    }
+    spans.sort((p, q) => p.span - q.span);
+    const laneUse = [];
+    for (const it of spans) {
+      let lane = 0;
+      while ((laneUse[lane] || []).some((o) => !(o.bot < it.top - 6 || o.top > it.bot + 6))) lane += 1;
+      (laneUse[lane] = laneUse[lane] || []).push(it);
+      lanes.set(it.id, lane);
+    }
+    this._fc = { back, lanes, byId, routes: new Map(), used: new Map() };
+
+    const markUsed = (id, side) => {
+      if (!this._fc.used.has(id)) this._fc.used.set(id, new Set());
+      this._fc.used.get(id).add(side);
+    };
+    const isUsed = (id, side) => Boolean(this._fc.used.get(id)?.has(side));
+    const hitCount = (pts, a, b) => {
+      let n = 0;
+      for (let i = 0; i < pts.length - 1; i += 1) {
+        for (const node of flowNodes) {
+          if (node.id === a.id || node.id === b.id) continue;
+          if (this._segmentHitsNode(pts[i], pts[i + 1], node)) n += 1;
+        }
+      }
+      return n;
+    };
+    const length = (pts) => {
+      let l = 0;
+      for (let i = 0; i < pts.length - 1; i += 1) l += Math.abs(pts[i + 1].x - pts[i].x) + Math.abs(pts[i + 1].y - pts[i].y);
+      return l;
+    };
+    const ups = (pts) => {
+      let n = 0;
+      for (let i = 0; i < pts.length - 1; i += 1) if (pts[i + 1].y < pts[i].y - 1) n += 1;
+      return n;
+    };
+
+    // Forward edges: main-line labels first so they claim the straight exits.
+    const fwd = edges
+      .map((e, i) => ({ e, i }))
+      .filter(({ e }) => !back.has(e.id) && byId.has(e.from) && byId.has(e.to))
+      .map((x) => {
+        const a = byId.get(x.e.from);
+        const b = byId.get(x.e.to);
+        const straight = Math.abs(a.x + a.width / 2 - (b.x + b.width / 2)) < 6 && b.y >= a.y + a.height - 4;
+        return { ...x, straight };
+      })
+      // Straight-down continuations claim the bottom exit first, then main-line labels.
+      .sort((p, q) => Number(q.straight) - Number(p.straight) || pref(p.e.label) - pref(q.e.label) || p.i - q.i);
+    const placed = [];
+    const crossings = (pts) => {
+      let n = 0;
+      for (let i = 0; i < pts.length - 1; i += 1) {
+        for (const other of placed) {
+          for (let j = 0; j < other.length - 1; j += 1) {
+            if (this._fcSegmentsCross(pts[i], pts[i + 1], other[j], other[j + 1])) n += 1;
+          }
+        }
+      }
+      return n;
+    };
+    // Collinear overlap with an already-placed route (two edges drawn on top of each other).
+    const overlaps = (pts, to) => {
+      let n = 0;
+      for (let i = 0; i < pts.length - 1; i += 1) {
+        const p = pts[i], q = pts[i + 1];
+        for (const other of placed) {
+          if (to && other.to === to) continue; // merging into the same target is fine
+          for (let j = 0; j < other.length - 1; j += 1) {
+            const r = other[j], t = other[j + 1];
+            if (Math.abs(p.y - q.y) < 0.5 && Math.abs(r.y - t.y) < 0.5 && Math.abs(p.y - r.y) < 3) {
+              const lo = Math.max(Math.min(p.x, q.x), Math.min(r.x, t.x));
+              const hi = Math.min(Math.max(p.x, q.x), Math.max(r.x, t.x));
+              if (hi - lo > 4) n += 1;
+            } else if (Math.abs(p.x - q.x) < 0.5 && Math.abs(r.x - t.x) < 0.5 && Math.abs(p.x - r.x) < 3) {
+              const lo = Math.max(Math.min(p.y, q.y), Math.min(r.y, t.y));
+              const hi = Math.min(Math.max(p.y, q.y), Math.max(r.y, t.y));
+              if (hi - lo > 4) n += 1;
+            }
+          }
+        }
+      }
+      return n;
+    };
+    for (const { e } of fwd) {
+      const a = byId.get(e.from);
+      const b = byId.get(e.to);
+      const cands = this._fcForwardCandidates(a, b);
+      const isNo = pref(e.label) === 3;
+      const isDec = ["decision", "gateway_xor"].includes(a.type);
+      let best = null;
+      for (const c of cands) {
+        let score =
+          hitCount(c.pts, a, b) * 10000 + ups(c.pts) * 3000 + length(c.pts) + (c.pts.length - 2) * 30 + crossings(c.pts) * 150 +
+          overlaps(c.pts, b.id) * 400;
+        if (isUsed(a.id, c.exit)) score += 600;
+        if (c.entry !== "top" && isUsed(b.id, c.entry)) score += 600;
+        if (isDec && isNo && c.exit === "bottom") score += 40;
+        if (!best || score < best.score) best = { ...c, score };
+      }
+      if (!best) continue;
+      const pts = best.score >= 10000 ? this._avoidObstacles(best.pts, a, b) : best.pts;
+      this._fc.routes.set(e.id, pts);
+      pts.to = b.id;
+      placed.push(pts);
+      markUsed(a.id, best.exit);
+      if (best.entry !== "top") markUsed(b.id, best.entry);
+    }
+
+    // Back-edges: gutter on the left or right, entering beside or just above the target.
+    for (const e of edges) {
+      if (!back.has(e.id)) continue;
+      const a = byId.get(e.from);
+      const b = byId.get(e.to);
+      if (!a || !b) continue;
+      const lane = lanes.get(e.id) || 0;
+      const top = Math.min(a.y, b.y);
+      const bot = Math.max(a.y + a.height, b.y + b.height);
+      const band = flowNodes.filter((n) => n.y < bot + 4 && n.y + n.height > top - 4);
+      const minX = Math.min(a.x, b.x, ...band.map((n) => n.x));
+      const maxX = Math.max(a.x + a.width, b.x + b.width, ...band.map((n) => n.x + n.width));
+      const cx2 = b.x + b.width / 2;
+      let best = null;
+      for (const side of ["left", "right"]) {
+        const gx = side === "left" ? minX - 30 - lane * 22 : maxX + 30 + lane * 22;
+        const sideP = this._fcSidePoint(a, side);
+        const botP = this._fcSidePoint(a, "bottom");
+        const exits = [
+          { exit: side, pre: [sideP, { x: gx, y: sideP.y }] },
+          { exit: "bottom", pre: [botP, { x: botP.x, y: botP.y + 16 + lane * 6 }, { x: gx, y: botP.y + 16 + lane * 6 }] },
+        ];
+        const endSide = this._fcSidePoint(b, side);
+        const ex = cx2 + (side === "left" ? -18 : 18);
+        const ey = b.y - 16 - lane * 6;
+        const entries = [
+          { entry: side, post: [{ x: gx, y: endSide.y }, endSide] },
+          { entry: "top", post: [{ x: gx, y: ey }, { x: ex, y: ey }, { x: ex, y: this._fcDiamondTopY(b, ex) }] },
+        ];
+        for (const x of exits) {
+          for (const y of entries) {
+            const pts = [...x.pre, ...y.post];
+            let score =
+              hitCount(pts, a, b) * 10000 + length(pts) + (pts.length - 2) * 30 + crossings(pts) * 900 + overlaps(pts, b.id) * 2000;
+            if (isUsed(a.id, x.exit)) score += 900;
+            if (y.entry !== "top" && isUsed(b.id, y.entry)) score += 900;
+            if (y.entry === "top") score += 80;
+            if (x.exit === "bottom") score += 60;
+            if (!best || score < best.score) best = { pts, score, exit: x.exit, entry: y.entry };
+          }
+        }
+      }
+      if (!best) continue;
+      this._fc.routes.set(e.id, best.pts);
+      best.pts.to = b.id;
+      placed.push(best.pts);
+      markUsed(a.id, best.exit);
+      if (best.entry !== "top") markUsed(b.id, best.entry);
+    }
+  }
+
+  /** Proper crossing of two axis-aligned segments (shared endpoints / T-joins do not count). */
+  _fcSegmentsCross(a, b, c, d) {
+    const h1 = Math.abs(a.y - b.y) < 0.5;
+    const h2 = Math.abs(c.y - d.y) < 0.5;
+    if (h1 === h2) return false;
+    const [hA, hB, vA, vB] = h1 ? [a, b, c, d] : [c, d, a, b];
+    const x = vA.x;
+    const y = hA.y;
+    const minx = Math.min(hA.x, hB.x) + 1;
+    const maxx = Math.max(hA.x, hB.x) - 1;
+    const miny = Math.min(vA.y, vB.y) + 1;
+    const maxy = Math.max(vA.y, vB.y) - 1;
+    return x > minx && x < maxx && y > miny && y < maxy;
+  }
+
+  _fcDiamondTopY(node, x) {
+    const cx = node.x + node.width / 2;
+    if (!["decision", "gateway_xor"].includes(node.type)) return node.y;
+    const t = Math.min(1, Math.abs(x - cx) / (node.width / 2));
+    return node.y + (node.height / 2) * t;
+  }
+
+  _fcSidePoint(node, side) {
+    const cx = node.x + node.width / 2;
+    const cy = node.y + node.height / 2;
+    if (side === "right") return { x: node.x + node.width, y: cy };
+    if (side === "left") return { x: node.x, y: cy };
+    if (side === "bottom") return { x: cx, y: node.y + node.height };
+    return { x: cx, y: node.y };
+  }
+
+  /** Orthogonal candidate routes for a forward (non-loop) flowchart edge. */
+  _fcForwardCandidates(a, b) {
+    const cx1 = a.x + a.width / 2;
+    const cy1 = a.y + a.height / 2;
+    const cx2 = b.x + b.width / 2;
+    const cy2 = b.y + b.height / 2;
+    const out = [];
+    const bottom = this._fcSidePoint(a, "bottom");
+    const topB = { x: cx2, y: this._fcDiamondTopY(b, cx2) };
+    const below = b.y >= a.y + a.height - 4;
+    const sameRow = !below && b.y < a.y + a.height && b.y + b.height > a.y;
+    const toward = cx2 >= cx1 ? "right" : "left";
+    const away = toward === "right" ? "left" : "right";
+    if (sameRow) {
+      const s = this._fcSidePoint(a, toward);
+      const t = this._fcSidePoint(b, away);
+      if (Math.abs(s.y - t.y) < 2) out.push({ exit: toward, entry: away, pts: [s, t] });
+      else {
+        const mx = (s.x + t.x) / 2;
+        out.push({ exit: toward, entry: away, pts: [s, { x: mx, y: s.y }, { x: mx, y: t.y }, t] });
+      }
+      const gy = Math.min(b.y, a.y) - 18;
+      const ta = this._fcSidePoint(a, "top");
+      out.push({ exit: "top", entry: "top", pts: [ta, { x: ta.x, y: gy }, { x: cx2, y: gy }, { x: cx2, y: b.y }] });
+      return out;
+    }
+    if (below) {
+      const isBar = (n) => n.type === "connector_node" && this._isForkJoin(n);
+      // Fork bar: each branch drops straight down from the bar at the branch's x.
+      if (isBar(a) && cx2 > a.x + 4 && cx2 < a.x + a.width - 4) {
+        out.push({ exit: `bar${Math.round(cx2)}`, entry: "top", pts: [{ x: cx2, y: a.y + a.height }, topB] });
+      }
+      // Join bar: each branch drops straight onto the bar at the branch's x.
+      if (isBar(b) && cx1 > b.x + 4 && cx1 < b.x + b.width - 4) {
+        out.push({ exit: "bottom", entry: "top", pts: [bottom, { x: cx1, y: b.y }] });
+      }
+      if (Math.abs(cx1 - cx2) < 6) out.push({ exit: "bottom", entry: "top", pts: [bottom, { x: bottom.x, y: topB.y }] });
+      const gy = Math.max(bottom.y + 14, b.y - 20);
+      if (Math.abs(cx1 - cx2) >= 6) {
+        out.push({ exit: "bottom", entry: "top", pts: [bottom, { x: bottom.x, y: gy }, { x: cx2, y: gy }, topB] });
+        const s = this._fcSidePoint(a, toward);
+        if ((toward === "right" && cx2 > s.x + 10) || (toward === "left" && cx2 < s.x - 10)) {
+          out.push({ exit: toward, entry: "top", pts: [s, { x: cx2, y: s.y }, topB] });
+        }
+        const sx = s.x + (toward === "right" ? 20 : -20);
+        out.push({ exit: toward, entry: "top", pts: [s, { x: sx, y: s.y }, { x: sx, y: gy }, { x: cx2, y: gy }, topB] });
+        // Enter the target from its side.
+        const tSide = this._fcSidePoint(b, away);
+        if ((toward === "right" && tSide.x > cx1 + 10) || (toward === "left" && tSide.x < cx1 - 10)) {
+          out.push({ exit: "bottom", entry: away, pts: [bottom, { x: bottom.x, y: tSide.y }, tSide] });
+        }
+      } else {
+        // Same column but something may sit in between: detour beside the column.
+        for (const side of ["right", "left"]) {
+          const s = this._fcSidePoint(a, side);
+          const t = this._fcSidePoint(b, side);
+          const gx = side === "right" ? Math.max(a.x + a.width, b.x + b.width) + 24 : Math.min(a.x, b.x) - 24;
+          out.push({ exit: side, entry: side, pts: [s, { x: gx, y: s.y }, { x: gx, y: t.y }, t] });
+        }
+      }
+      void cy1;
+      void cy2;
+      return out;
+    }
+    // Target above without being a loop (hand-placed): orthogonal elbow via the top.
+    const s = this._fcSidePoint(a, "top");
+    const t = this._fcSidePoint(b, "bottom");
+    const midY = (s.y + t.y) / 2;
+    out.push({ exit: "top", entry: "bottom", pts: [s, { x: s.x, y: midY }, { x: t.x, y: midY }, t] });
+    const ts = this._fcSidePoint(b, away);
+    out.push({ exit: "top", entry: away, pts: [s, { x: s.x, y: ts.y }, ts] });
+    return out;
+  }
+
+  _flowchartRoute(from, to, edge) {
+    if (!this._fc) this._fcPrepare();
+    const pts = this._fc.routes.get(edge.id);
+    if (pts) return pts;
+    const ends = this._edgePoints(from, to, edge);
+    return [
+      { x: ends.x1, y: ends.y1 },
+      { x: ends.x2, y: ends.y2 },
+    ];
   }
 
   _segmentHitsNode(a, b, n) {
@@ -1922,6 +2425,20 @@ export class DiagramCanvas {
       return;
     }
 
+    if (type === "connector_node" && this.diagram.diagram_type === "flowchart" && this._isForkJoin(node)) {
+      // 2.7.9: Fork / Join drawn as a flat parallel bar.
+      const el = document.createElementNS(ns, "rect");
+      el.setAttribute("x", 0);
+      el.setAttribute("y", 0);
+      el.setAttribute("width", w);
+      el.setAttribute("height", h);
+      el.setAttribute("rx", 3);
+      el.setAttribute("fill", "#1e293b");
+      el.setAttribute("stroke", "#1e293b");
+      g.appendChild(el);
+      return;
+    }
+
     if (type === "connector_node") {
       // Hidden helper junction — keep hit target tiny/invisible (no stray blue diamond).
       const el = document.createElementNS(ns, "circle");
@@ -2133,7 +2650,8 @@ export class DiagramCanvas {
     const type = node.type;
     const w = node.width;
     const h = node.height;
-    const fontSize = this.BASE_FONT;
+    const isFc = this.diagram.diagram_type === "flowchart";
+    const fontSize = isFc ? this._fcNodeFont() : this.BASE_FONT;
 
     if (["decision", "relationship", "gateway_xor", "gateway_and"].includes(type)) {
       return {
@@ -2141,7 +2659,7 @@ export class DiagramCanvas {
         cy: h / 2,
         maxW: Math.max(36, w * 0.62),
         maxH: Math.max(28, h * 0.62),
-        fontSize: Math.max(9, this.BASE_FONT),
+        fontSize: isFc ? fontSize : Math.max(9, this.BASE_FONT),
         align: "middle",
       };
     }
@@ -2261,9 +2779,27 @@ export class DiagramCanvas {
     }
   }
 
+  _isForkJoin(node) {
+    return /\b(fork|join|parallel|split|sync)\b/i.test(String(node?.label || ""));
+  }
+
   _appendNodeLabel(g, node) {
     if (!node?.label) return;
     const type = node.type;
+
+    if (type === "connector_node" && this.diagram.diagram_type === "flowchart" && this._isForkJoin(node)) {
+      // A bare "Fork"/"Join" bar is self-explanatory; only descriptive labels are drawn.
+      if (/^\s*(fork|join|parallel|split|sync)\s*$/i.test(String(node.label))) return;
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("x", node.width + 8);
+      label.setAttribute("y", node.height / 2 + 4);
+      label.setAttribute("text-anchor", "start");
+      label.setAttribute("class", "node-label");
+      label.setAttribute("style", `font-size:${this._fcEdgeFont()}px;fill:#475569`);
+      label.textContent = node.label;
+      g.appendChild(label);
+      return;
+    }
 
     if (type === "actor") {
       const label = document.createElementNS("http://www.w3.org/2000/svg", "text");

@@ -1,0 +1,204 @@
+GenAI Diagram Studio — improvement report
+Site: https://foodnpals.com/genAI/
+Product version (OpenAPI): 2.1.0
+Reviewed: 4 Oct 2026
+Method: live API calls against the deployed app, plus the shipped designer (HTML, app.js, canvas.js, toolbox catalogs). Test data only. Existing project "Test Food Delivery Use Case" was not deleted or overwritten.
+
+============================================================
+1. What it is today
+============================================================
+
+A single-page diagram editor with seven types (use case, ERD, swim lane / BPMN, flowchart, sequence, class, network), a shape toolbox, and a two-step AI pipeline (generator, then QC auditor) on gemini-flash-lite-latest. Projects save to a database. There is a public JSON API (genai-canvas-v1) and a /demo page that needs no API key.
+
+Generation is fast: about 3 to 6 seconds per diagram in these tests. Health check reported API key configured, database connected.
+
+This is a real MVP, not a toy page. It is not yet something a software team would use instead of Lucidchart, draw.io, or Structurizr.
+
+============================================================
+2. What was generated (evidence)
+============================================================
+
+A. Network — "API gateway, auth service, user service, Postgres, Redis, and a React frontend."
+   200 in 5.9s. Title "API Microservices Architecture". 6 nodes, 5 edges, no overlaps, no dangling edges.
+   Flow is sensible: React --HTTPS--> API Gateway; gateway to Auth and User Service; Auth to Redis; User Service --SQL--> Postgres.
+   Shape choice is wrong for a software diagram:
+   - Auth Service drawn as a router
+   - Redis drawn as a switch
+   - API Gateway drawn as a firewall
+   - Postgres drawn as data_store (the toolbox calls that shape "Database", so this one is closer)
+   QC flagged the mismatch and then recommended a shape named "database", which is not in the network toolbox. The diagram still shipped with the wrong icons. QC did not block delivery.
+
+B. Sequence — "User logs in with email OTP, then loads their dashboard."
+   200 in 5.7s. 4 participants, 9 messages, labels are in the right order (enter email, request OTP, verify, token, load dashboard, render).
+   Visually this is not a sequence diagram. Every lifeline is a tall box starting at the same y. Every message is a straight line from the center of one box to the center of another, so all nine arrows sit on the same horizontal band and cover each other. There is no message order down the page, no activation bars (QC even suggested them; the toolbox has an Activation shape that the model did not use).
+
+C. ERD — SaaS billing (Customer, Subscription, Invoice, PaymentMethod).
+   200 in 5.3s. Chen-style entities, attributes, and relationship diamonds. Cardinality is partly there (Customer 1 — Has — N Subscription; Subscription 1 — Generates — N Invoice).
+   Bugs in the result:
+   - CustomerID overlaps the Owns diamond.
+   - PaymentMethod relationship is backwards in spirit: PaymentMethod --N--> Owns --1--> Customer. A reader will not trust this.
+   - Attributes are separate nodes with unlabeled association edges, so the diagram is busy and easy to misread.
+   QC said "consider balancing node spacing" and did not fix the overlap.
+
+D. Off-topic prompt — "Write a short poem about rain. Do not draw a diagram." as a flowchart.
+   200 in 3.4s. It drew a water-cycle flowchart anyway. QC noticed the prompt was ignored and still delivered the diagram. A professional tool should refuse or ask, not invent a diagram.
+
+E. Too-short prompt "ab".
+   422 in 0.2s. Validation works (minimum 3 characters). The API returns a raw list of Pydantic errors. The UI only shows a string `detail`, so the toast becomes the generic "Generation failed." instead of "at least 3 characters." The client already checks length before calling the API, so this bites other clients and any case the client check misses.
+
+============================================================
+3. Bugs (confirmed)
+============================================================
+
+Blockers for professional use
+
+1. No authentication on any route. OpenAPI security is empty.
+   Anyone can list projects, read full diagram JSON, create, overwrite (PUT), delete, transfer (replace: true), and call /api/generate-diagram (which spends your Gemini quota).
+   /docs, /redoc, and /openapi.json are public.
+   /demo tells visitors the read APIs need no key. Write APIs are open too.
+   One saved project was visible during this review: "Test Food Delivery Use Case" (id d3797636-deaa-489e-bb44-35440f52f59c).
+
+2. Sequence diagrams cannot express time.
+   canvas.js _edgePoints() always connects shape centers. Message order is only in the label text ("1. Enter Email"), not in vertical position. Multiple messages between the same pair draw on top of each other.
+
+3. QC does not enforce its own catalog.
+   It recommended node type "database" for the network toolbox, whose database shape is "data_store". It approved diagrams with overlapping nodes and the wrong network icons.
+
+Major
+
+4. Refresh drops the open canvas. Saving works, but a reload comes back to a blank Untitled Diagram; the user has to pick the project again. There is no beforeunload warning for unsaved edits. Switching diagram type does warn ("Switching diagram type clears the canvas. The saved project stays as it is until you save again. Continue?").
+
+5. "Send to target project" replaces the target (replace: true) with no confirm. Delete does confirm. Transfer should too.
+
+6. Grid is rebuilt by appending a new <pattern id="grid"> into <defs> on every render() without clearing defs. Pan, drag, and zoom will leak DOM nodes and duplicate ids.
+
+7. Network / architecture prompts are forced into router/switch/firewall icons. There is no C4, component, or deployment type, so the closest type lies about what the boxes are.
+
+8. Validation errors that are arrays are swallowed by the UI (generateDiagram treats only string detail as a message).
+
+Minor
+
+9. Clear has no confirm.
+10. Shape properties are a single label field. No notes, color, stereotype, attributes list, or edge label editor beyond what the canvas already stores.
+11. Copy is "duplicate selection", not clipboard. No multi-select marquee was evident in the editor code (selection is a set, but the main path is click / shift-style handling should be verified on screen).
+12. No undo or redo. Keyboard is Delete, Backspace, Escape, and F2 rename only.
+13. Zoom is capped at 0.25–2.5 with no percentage readout.
+14. Export is SVG and a local JSON blob. No PNG, PDF, or draw.io / Visio.
+15. Toolbox labels are injected with innerHTML. If a toolbox label ever contains HTML, it runs as markup.
+16. Hosted under /genAI on foodnpals.com. Fine for a demo, weak as a product URL, and it shares a cookie/origin with an unrelated site.
+
+
+On-screen pass (same day, after the API tests)
+
+- Status pill goes from "Checking API…" to "Gemini ready · DB". No login wall.
+- Empty prompt toast, exact text: "Describe your diagram (at least 3 characters)."
+- An 8,000-character prompt was accepted (counter 8000 / 8000) and returned a flowchart in about 25 seconds. Some branch lines crossed.
+- A mixed Urdu/English prompt was turned into an English-labeled flowchart (Email OTP Login & Dashboard Flow). The model does not keep the user's language.
+- The poem prompt became "Rain and Friendship Metaphor Flowchart". QC did not refuse it.
+- Generate disables the button while running ("Generator drafting diagram…"). A second click did not double-fire.
+- Select, rename (including special characters), toolbox add, Copy ("Duplicated selection."), and Del all work. Ctrl+Z does not restore a deleted shape. There is no Undo control.
+- SVG and JSON export toasts: "SVG exported." and "Diagram JSON exported."
+- "Copy export JSON" before save: "Save the project first to get a canvas export id." After save, that copy did not show a clear success toast.
+- Saved project reopened from Project Settings ("Opened project "AI Test Diagram"."). Node types in the stored JSON match the flowchart toolbox (terminator, decision, process, data_store, and so on). What fails on screen is the text: labels spill out of the boxes ("Heavy Downpour", "Find Shelter Together") and the decision label "Storm? [retry & <special>]" is cramped inside an 88×88 diamond. This is a text-fit bug, not a wrong-shape bug.
+- Sequence diagram on the canvas matches the API result: one actor, three empty headers, every message on a single horizontal line, badge "AI · QC APPROVED".
+- Public demo for that test project: https://foodnpals.com/genAI/demo?project=8c814537-50d8-4ea6-b9eb-eb85dba19d12
+
+============================================================
+4. Limits of the system (even when nothing is "broken")
+============================================================
+
+Model. gemini-flash-lite-latest is cheap and fast, and it shows. It follows the prompt's nouns, then picks the nearest toolbox shape, including a bad one. The auditor is the same class of model, so it comments instead of correcting. A second pass that does not mutate the diagram is not QC.
+
+Canvas. One SVG scene graph: nodes are rectangles (or a few special shapes), edges are straight center lines. That can carry a flowchart. It cannot carry:
+- sequence timing, activations, and combined fragments that actually span messages
+- orthogonal or curved connectors that route around nodes
+- UML class compartments (name / attributes / methods)
+- ERD crow's foot or IE notation as first-class edges (you have Chen diamonds, which most software teams do not use)
+- swim lanes that clip or own their children
+- layers, pages, or frames
+
+Editor. No history, no alignment/distribute, no snap toggle (grid is visual; confirm snap on screen), no styles, no legend, no comments, no presentation mode, no realtime cursors, no version history.
+
+Data. One global project list. No users, teams, folders, permissions, or share links with expiry. external_project_id is the start of an embed API, which is the right idea, but it is unauthenticated.
+
+Trust. AI thinking log is good. Shipping a diagram the auditor disagrees with, with suggestions the user must apply by hand, is not.
+
+============================================================
+5. How to take it from MVP to something a team would pay for
+============================================================
+
+Do these in order. Each stage is usable on its own.
+
+Stage 0 — stop the bleeding (days, not weeks)
+
+- Put auth on every write and on generate. API keys for server-to-server, sessions for the studio. Rate-limit generate per key.
+- Keep a public read demo only for projects the owner marks "public". Default private.
+- Turn off /docs in production or hide it behind auth.
+- Confirm before type change, clear, and transfer.
+- Warn on unload when isDirty.
+- When detail is a list, show the first msg.
+- Clear defs before adding the grid pattern.
+- If QC finds overlap, wrong shape, or a prompt that is not a diagram, either revise the JSON automatically or refuse to replace the canvas. Do not only append suggestions.
+- Give the auditor the exact shape ids from /api/toolbox/{type}, and reject any node.type not in that list before save.
+
+Stage 1 — make the seven types honest
+
+- Sequence: messages need a y (or an index). Draw lifelines as a header plus a vertical line. Place arrow i at headerBottom + i * gap. Support activation as a thin bar, not a peer box.
+- Edges: route to the border of the shape, not the center. Add orthogonal routing for flowcharts and ERDs. Label edges so the text is not on the line.
+- ERD: offer crow's foot as the default for software teams. Keep Chen as an option. Attributes belong inside the entity (or a compartment), not as floating ovals, unless the user asks for Chen.
+- Network: add a "software architecture" type whose shapes are service, database, cache, queue, client, external system. Stop overloading router and switch.
+- Class: render three compartments. The model should fill attributes and methods as structured fields, not extra nodes.
+- Overlap: a small deterministic layout pass (even a grid or ELK) after the model returns, before QC. Do not ask the model to do pixel layout. Models are bad at coordinates. Let the model emit structure only (nodes, edges, labels, compartments) and let code place them.
+- Off-topic prompts: if the user did not ask for a diagram, return a 400 with a short reason instead of a water cycle.
+
+Stage 2 — editor people can live in
+
+- Undo/redo stack (the diagram JSON is already the document; snapshot it on each change).
+- Multi-select, align, distribute, nudge with arrow keys, snap to grid that can be turned off.
+- Edge label editing, node resize, color and a small set of styles.
+- Autosave and named versions.
+- Export PNG and PDF (SVG you already have is the source). Copy as image.
+- Import the JSON you export. Round-trip is the minimum.
+- A real empty state and sample per type (samples already exist in diagram-types.js; surface them before the first generate).
+
+Stage 3 — product, not a page
+
+- Accounts, workspaces, and folders. Share a diagram read-only with a link.
+- Embed: you already have genai-canvas-v1 and external_project_id. Document it, version it, and add a webhook or "diagram updated" event so a client app can refresh.
+- Templates for software work: login sequence, CRUD ERD, service map, CI/CD flowchart. The prompt box should start from a template, not a blank textarea.
+- Prompt-to-edit, not only prompt-to-replace. "Add a payment service between gateway and user service" should patch the current graph. The client already sends `existing` when the canvas is dirty; the model should be required to preserve ids it did not need to change.
+- Stronger model for generate, flash-lite only for the cheap first draft. Or one structured-output call with a JSON schema that matches the toolbox, instead of freeform JSON plus a second model that hopes to catch mistakes.
+- Observability: log latency, token use, QC revision rate, and how often a shape was rejected. You cannot improve the pipeline if you only have the thinking log in the browser.
+
+Stage 4 — only after the above
+
+- Comments and @mentions.
+- Live collaboration.
+- BPMN that is actually executable (this is a different product; do not start here).
+- Visio / draw.io import.
+- Plugins.
+
+============================================================
+6. What is already worth keeping
+============================================================
+
+- Toolbox-constrained shapes per diagram type. This is the right constraint. Most "AI diagram" demos emit unconstrained Mermaid and stop.
+- Separate generator and auditor, plus a visible thinking log.
+- Fast responses (under 6 seconds on these prompts).
+- genai-canvas-v1 export and external_project_id. That is a credible integration story for other apps.
+- Editable canvas (select, rename, delete, duplicate, zoom, fit, SVG, JSON) rather than a picture.
+- Mobile dock and panel toggles. The layout was thought through.
+- Server-side minimum prompt length.
+
+============================================================
+7. Suggested next build (one sprint)
+============================================================
+
+1. Auth + rate limit on generate and all project writes.
+2. Model returns structure only; a layout function places nodes (no overlaps, sequence messages stacked vertically).
+3. Reject unknown shape ids. Drop QC suggestions that name shapes not in the toolbox.
+4. Confirm before Clear and before transfer. beforeunload when the canvas is dirty. (Type switch already confirms.)
+5. One architecture diagram type with service / database / cache / queue / client.
+
+If those five land, the same prompts from section 2 should be re-run and compared to this file. The sequence login and the billing ERD are the acceptance tests. The poem prompt should return an error, not a flowchart.
+

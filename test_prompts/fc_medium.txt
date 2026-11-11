@@ -1,0 +1,21 @@
+Create a flowchart for an employee "Leave request approval" process in an HR system.
+
+Steps:
+- Start: Employee opens the leave form.
+- Input: Employee selects leave type, start date, end date and reason.
+- Process: System calculates number of working days requested.
+- Decision: Enough leave balance? No -> Show "Insufficient balance" -> back to the leave form to edit dates.
+- Decision: Dates overlap an existing approved leave? Yes -> Show "Overlapping leave" -> back to the leave form.
+- Process: Submit request and notify the line manager.
+- Decision: Manager decision within 3 days? No -> Escalate to HR manager.
+- Decision: Manager (or HR manager) approves? No -> Notify employee "Rejected" with comment -> End (Rejected).
+- Decision: Leave longer than 10 days? Yes -> Process: Send to Department Head for second approval ->
+  Decision: Department Head approves? No -> Notify employee "Rejected" -> End (Rejected).
+- Process: Deduct leave balance.
+- Process: Update team calendar.
+- Output: Notify employee "Approved" by email.
+- End: Leave approved.
+
+Rules:
+- Oval Start/End, rectangle Process, diamond Decision, parallelogram Input/Output.
+- Label every decision branch Yes/No. Loops back to the form drawn cleanly without crossing other lines.

@@ -191,7 +191,31 @@ async function loadConfig() {
   els.promptKey.innerHTML = keys.map((k) => `<option value="${escapeAttr(k)}">${escapeHtml(k)}</option>`).join("");
 }
 
+// 2.7.6: read every field at save time instead of relying only on input/change
+// events (autofill, paste-and-click, and some browsers don't always fire them).
+function collectDraft() {
+  const group = state.groups.find((g) => g.id === state.activeGroup);
+  if (!group) return;
+  const byKey = Object.fromEntries(group.settings.map((s) => [s.key, s]));
+  els.panels.querySelectorAll("[data-key]").forEach((input) => {
+    const key = input.dataset.key;
+    const setting = byKey[key];
+    if (!setting || setting.readonly) return;
+    let val;
+    if (input.type === "checkbox") val = input.checked;
+    else if (input.dataset.json) {
+      try { val = JSON.parse(input.value); } catch { return; }
+    } else if (input.type === "number") {
+      if (input.value === "") return;
+      val = setting.type === "integer" ? parseInt(input.value, 10) : Number(input.value);
+    } else val = input.value.trim();
+    if (JSON.stringify(val) !== JSON.stringify(setting.value)) state.draft[key] = val;
+    else delete state.draft[key];
+  });
+}
+
 async function saveDraft() {
+  collectDraft();
   if (!Object.keys(state.draft).length) {
     showToast("No changes to save.", "info");
     return;

@@ -192,3 +192,20 @@
     border-bottom: 1px solid var(--border);
   }
 }
+
+/* 2.7.6: style.css locks body scrolling for the full-screen designer; let the config page scroll. */
+html:has(body.config-page),
+body.config-page {
+  height: auto;
+  min-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+@media (max-width: 900px) {
+  body.config-page {
+    display: block;
+    height: auto;
+    overflow-y: auto;
+  }
+}

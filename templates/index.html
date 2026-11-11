@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-dnd" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -111,7 +111,6 @@
     <section class="designer-canvas-area">
       <div class="canvas-toolbar">
         <div class="canvas-meta">
-          <span class="canvas-badge" id="canvasBadge">Ready</span>
           <span class="canvas-hint">Scroll pans · Ctrl+scroll zooms · Pan tool or Space+drag</span>
         </div>
         <div class="canvas-actions">
@@ -119,6 +118,7 @@
           <button type="button" class="btn btn-ghost btn-sm" id="fitBtn" title="Fit">Fit</button>
           <button type="button" class="btn btn-ghost btn-sm" id="zoomInBtn" title="Zoom in">+</button>
           <button type="button" class="btn btn-ghost btn-sm" id="exportSvgBtn">SVG</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="exportPngBtn" title="PNG at 2x">PNG</button>
           <button type="button" class="btn btn-ghost btn-sm" id="exportJsonBtn">JSON</button>
           <button type="button" class="btn btn-ghost btn-sm" id="clearBtn">Clear</button>
         </div>
@@ -128,8 +128,8 @@
         <div id="canvasHost"></div>
         <div class="canvas-loading" id="canvasLoading" hidden>
           <div class="loading-orbit" aria-hidden="true"></div>
-          <p id="canvasLoadingTitle">Placing toolbox shapes…</p>
-          <span class="loading-sub" id="canvasLoadingSub">Requirements Analyst → Generator → QC Auditor…</span>
+          <p id="canvasLoadingTitle">Creating your diagram…</p>
+          <span class="loading-sub" id="canvasLoadingSub">Understanding your requirements…</span>
         </div>
       </div>
     </section>
@@ -200,8 +200,12 @@
             </div>
           </div>
           <div class="qc-recommendations" id="qcRecommendations" hidden>
-            <p class="qc-recommendations-title">QC suggestions (optional)</p>
-            <ul class="qc-recommendations-list" id="qcRecommendationsList"></ul>
+            <button type="button" class="qc-recommendations-toggle" id="qcRecommendationsToggle"
+                    aria-expanded="false" aria-controls="qcRecommendationsList">
+              <span class="qc-recommendations-title" id="qcRecommendationsTitle">Suggestions</span>
+              <span class="qc-recommendations-chevron" aria-hidden="true"></span>
+            </button>
+            <ul class="qc-recommendations-list" id="qcRecommendationsList" hidden></ul>
           </div>
         </div>
 
@@ -451,7 +455,7 @@
               </p>
               <ul class="welcome-points">
                 <li>Looks for missing entities, weak relationships, and labeling gaps</li>
-                <li>Shows a compact <strong>QC suggestions</strong> list when improvements are useful</li>
+                <li>Shows a collapsed <strong>Suggestions</strong> row when improvements are useful</li>
                 <li>Open the <strong>Log</strong> anytime to inspect Analyst → Generator → QC thinking</li>
               </ul>
             </article>
@@ -472,6 +476,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}-dnd"></script>
 </body>
 </html>

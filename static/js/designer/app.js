@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.5";
-import { DiagramCanvas } from "./canvas.js?v=2.7.5";
-import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.9";
+import { DiagramCanvas } from "./canvas.js?v=2.7.9";
+import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -115,6 +115,8 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
     saveBriefBtn: document.getElementById("saveBriefBtn"),
     qcRecommendations: document.getElementById("qcRecommendations"),
     qcRecommendationsList: document.getElementById("qcRecommendationsList"),
+    qcRecommendationsToggle: document.getElementById("qcRecommendationsToggle"),
+    qcRecommendationsTitle: document.getElementById("qcRecommendationsTitle"),
     canvasLoadingTitle: document.getElementById("canvasLoadingTitle"),
     canvasLoadingSub: document.getElementById("canvasLoadingSub"),
     sampleBtn: document.getElementById("sampleBtn"),
@@ -133,6 +135,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
     zoomOutBtn: document.getElementById("zoomOutBtn"),
     fitBtn: document.getElementById("fitBtn"),
     exportSvgBtn: document.getElementById("exportSvgBtn"),
+    exportPngBtn: document.getElementById("exportPngBtn"),
     exportJsonBtn: document.getElementById("exportJsonBtn"),
     canvasBadge: document.getElementById("canvasBadge"),
     canvasLoading: document.getElementById("canvasLoading"),
@@ -364,18 +367,17 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
     setTimeout(() => toast.remove(), 4200);
   }
 
-  function setGenerating(isGenerating, stageTitle = "Placing toolbox shapes…", stageSub = "") {
+  function setGenerating(isGenerating, stageTitle = "Creating your diagram…", stageSub = "") {
     state.isGenerating = isGenerating;
     updateActionButtons();
     els.generateBtn.classList.toggle("is-loading", isGenerating);
     const spinner = els.generateBtn.querySelector(".btn-spinner");
     if (spinner) spinner.hidden = !isGenerating;
     els.canvasLoading.hidden = !isGenerating;
-    els.canvasBadge.classList.toggle("is-loading", isGenerating);
+    if (els.canvasBadge) els.canvasBadge.classList.toggle("is-loading", isGenerating);
     if (els.canvasLoadingTitle) els.canvasLoadingTitle.textContent = stageTitle;
     if (els.canvasLoadingSub) {
-      els.canvasLoadingSub.textContent =
-        stageSub || "Requirements Analyst → Generator → QC Auditor";
+      els.canvasLoadingSub.textContent = stageSub || "Understanding your requirements…";
     }
     // Prevent mid-generation type switches from dropping the result under the wrong type.
     for (const sel of [els.diagramTypeSelect, els.diagramTypeSelectLeft]) {
@@ -410,6 +412,50 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
     }
     if (els.promptInput) els.promptInput.disabled = busy;
     if (els.resetChatBtn) els.resetChatBtn.disabled = busy;
+  }
+
+  // 2.7.9: the loading overlay only ever shows these fixed, friendly stage labels —
+  // never raw trace text (QC findings, coverage notes, errors stay in the AI thinking log).
+  const STAGE_LABELS = {
+    understanding: "Understanding your requirements…",
+    planning: "Planning the flow…",
+    drawing: "Drawing the diagram…",
+    checking: "Checking quality…",
+    polishing: "Polishing the diagram…",
+    layout: "Polishing layout…",
+    done: "Done",
+  };
+  const PHASE_STAGE = {
+    start: "understanding",
+    brief_ready: "understanding",
+    new_diagram: "planning",
+    edit_mode: "planning",
+    process_plan: "planning",
+    process_plan_ready: "planning",
+    process_plan_skip: "planning",
+    draft: "drawing",
+    brief_advisory: "drawing",
+    brief_validate: "polishing",
+    draft_complete: "drawing",
+    coverage_check: "checking",
+    coverage_advisory: "checking",
+    review: "checking",
+    verdict: "checking",
+    skipped: "checking",
+    revision_handoff: "polishing",
+    revision: "polishing",
+    revision_complete: "polishing",
+    coverage_recheck: "polishing",
+    re_review: "polishing",
+    final_verdict: "polishing",
+    revision_skipped: "layout",
+    layout: "layout",
+    complete: "done",
+  };
+
+  function stageLabelFor(entry) {
+    const key = entry?.stage && STAGE_LABELS[entry.stage] ? entry.stage : PHASE_STAGE[entry?.phase];
+    return STAGE_LABELS[key] || null;
   }
 
   function agentLabel(agent) {
@@ -496,6 +542,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
       document.documentElement.style.setProperty("--canvas-bg", cfg["theme.canvas_bg"]);
     }
     if (els.exportSvgBtn) els.exportSvgBtn.hidden = cfg["export.svg_enabled"] === false;
+    if (els.exportPngBtn) els.exportPngBtn.hidden = cfg["export.svg_enabled"] === false;
     if (els.exportJsonBtn) els.exportJsonBtn.hidden = cfg["export.json_enabled"] === false;
 
     const labels = cfg["diagrams.type_labels"];
@@ -775,18 +822,35 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
       .replace(/>/g, "&gt;");
   }
 
+  // 2.7.9: internal pipeline wording never reaches the user (item 10).
+  const INTERNAL_WORDING = /\b(qc|revision|revised|missing|corrupt\w*|coverage|gaps?|error|failed|required|duplicated)\b/i;
+
+  function setRecommendationsExpanded(expanded) {
+    if (!els.qcRecommendations || !els.qcRecommendationsList) return;
+    els.qcRecommendations.classList.toggle("is-expanded", expanded);
+    els.qcRecommendationsList.hidden = !expanded;
+    els.qcRecommendationsToggle?.setAttribute("aria-expanded", expanded ? "true" : "false");
+  }
+
+  /** Suggestions row: collapsed by default; click / Enter / Space toggles; capped height when open. */
   function showRecommendations(recommendations) {
     if (!els.qcRecommendations || !els.qcRecommendationsList) return;
     els.qcRecommendationsList.innerHTML = "";
-    if (!recommendations?.length) {
+    const items = (recommendations || [])
+      .map((r) => String(r || "").trim())
+      .filter((r) => r && !INTERNAL_WORDING.test(r));
+    if (!items.length) {
       els.qcRecommendations.hidden = true;
+      setRecommendationsExpanded(false);
       return;
     }
-    for (const rec of recommendations) {
+    for (const rec of items) {
       const li = document.createElement("li");
       li.textContent = rec;
       els.qcRecommendationsList.appendChild(li);
     }
+    if (els.qcRecommendationsTitle) els.qcRecommendationsTitle.textContent = `Suggestions (${items.length})`;
+    setRecommendationsExpanded(false);
     els.qcRecommendations.hidden = false;
   }
 
@@ -820,8 +884,11 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
       state.editedSinceAiLoad = false;
       if (els.editCurrentToggle) els.editCurrentToggle.checked = false;
       canvas.scheduleFitToContent();
-      els.canvasBadge.textContent = badge;
-      els.canvasBadge.classList.add("is-live");
+      // 2.7.9: the toolbar status badge was removed (it wrapped the toolbar).
+      if (els.canvasBadge) {
+        els.canvasBadge.textContent = badge;
+        els.canvasBadge.classList.add("is-live");
+      }
     } finally {
       state.suppressDirty = false;
     }
@@ -872,6 +939,166 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
     }
   }
 
+  const TOOLBOX_DRAG_MIME = "application/x-genai-shape";
+  let toolboxDragItem = null;
+  let suppressToolboxClick = false;
+  let toolboxTouchDrag = null;
+
+  function serializeToolboxItem(item) {
+    return JSON.stringify({
+      kind: item.kind,
+      shape: item.shape,
+      label: item.label,
+      default_width: item.default_width,
+      default_height: item.default_height,
+    });
+  }
+
+  function parseToolboxItem(raw) {
+    if (!raw) return null;
+    try {
+      const item = JSON.parse(raw);
+      if (item && item.kind === "node" && item.shape) return item;
+    } catch (_) {
+      /* ignore non-JSON drops */
+    }
+    return null;
+  }
+
+  function itemFromDragEvent(e) {
+    const dt = e.dataTransfer;
+    if (dt) {
+      const raw = dt.getData(TOOLBOX_DRAG_MIME) || dt.getData("text/plain");
+      const parsed = parseToolboxItem(raw);
+      if (parsed) return parsed;
+    }
+    return toolboxDragItem;
+  }
+
+  function isPointInCanvas(clientX, clientY) {
+    const rect = canvas.viewport.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  }
+
+  function addToolboxNodeAtClient(item, clientX, clientY) {
+    if (!item || item.kind !== "node") return;
+    canvas.setMode("select");
+    setActiveTool("select");
+    const world = canvas._screenToWorld(clientX, clientY);
+    const dw = Number(item.default_width) || 120;
+    const dh = Number(item.default_height) || 60;
+    // exact: land on the drop point (grid-snapped by addNode); skip palette overlap-stepping.
+    canvas.addNode(item.shape, "", world.x - dw / 2, world.y - dh / 2, { exact: true });
+    showToast(`Added ${item.label}`, "success");
+  }
+
+  function isToolboxShapeDrag(e) {
+    if (toolboxDragItem) return true;
+    const types = e.dataTransfer ? Array.from(e.dataTransfer.types) : [];
+    return types.includes(TOOLBOX_DRAG_MIME);
+  }
+
+  function onToolboxDragStart(e, item) {
+    if (item.kind !== "node") {
+      e.preventDefault();
+      return;
+    }
+    toolboxDragItem = item;
+    suppressToolboxClick = true;
+    const payload = serializeToolboxItem(item);
+    e.dataTransfer.effectAllowed = "copy";
+    e.dataTransfer.setData(TOOLBOX_DRAG_MIME, payload);
+    e.dataTransfer.setData("text/plain", payload);
+  }
+
+  function onToolboxDragEnd() {
+    toolboxDragItem = null;
+    canvas.viewport.classList.remove("is-shape-drag-over");
+    setTimeout(() => {
+      suppressToolboxClick = false;
+    }, 0);
+  }
+
+  function onCanvasDragOver(e) {
+    if (!isToolboxShapeDrag(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    canvas.viewport.classList.add("is-shape-drag-over");
+  }
+
+  function onCanvasDragLeave(e) {
+    const next = e.relatedTarget;
+    if (next && canvas.viewport.contains(next)) return;
+    canvas.viewport.classList.remove("is-shape-drag-over");
+  }
+
+  function onCanvasDrop(e) {
+    const item = itemFromDragEvent(e);
+    canvas.viewport.classList.remove("is-shape-drag-over");
+    if (!item) return;
+    e.preventDefault();
+    addToolboxNodeAtClient(item, e.clientX, e.clientY);
+    toolboxDragItem = null;
+  }
+
+  function clearToolboxTouch() {
+    if (toolboxTouchDrag?.ghost) toolboxTouchDrag.ghost.remove();
+    document.body.classList.remove("is-toolbox-touch-drag");
+    canvas.viewport.classList.remove("is-shape-drag-over");
+    toolboxTouchDrag = null;
+  }
+
+  function onToolboxTouchStart(e, item) {
+    if (item.kind !== "node" || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    toolboxTouchDrag = {
+      item,
+      startX: t.clientX,
+      startY: t.clientY,
+      dragging: false,
+      ghost: null,
+      id: t.identifier,
+    };
+  }
+
+  function onToolboxTouchMove(e) {
+    if (!toolboxTouchDrag) return;
+    const t = [...e.touches].find((x) => x.identifier === toolboxTouchDrag.id) || e.touches[0];
+    if (!t) return;
+    const dx = t.clientX - toolboxTouchDrag.startX;
+    const dy = t.clientY - toolboxTouchDrag.startY;
+    if (!toolboxTouchDrag.dragging) {
+      if (dx * dx + dy * dy < 64) return;
+      toolboxTouchDrag.dragging = true;
+      suppressToolboxClick = true;
+      const ghost = document.createElement("div");
+      ghost.className = "toolbox-drag-ghost";
+      ghost.textContent = toolboxTouchDrag.item.label;
+      document.body.appendChild(ghost);
+      toolboxTouchDrag.ghost = ghost;
+      document.body.classList.add("is-toolbox-touch-drag");
+    }
+    e.preventDefault();
+    toolboxTouchDrag.ghost.style.transform = `translate(${t.clientX + 12}px, ${t.clientY + 12}px)`;
+    canvas.viewport.classList.toggle("is-shape-drag-over", isPointInCanvas(t.clientX, t.clientY));
+  }
+
+  function onToolboxTouchEnd(e) {
+    if (!toolboxTouchDrag) return;
+    const wasDragging = toolboxTouchDrag.dragging;
+    const item = toolboxTouchDrag.item;
+    const t = [...e.changedTouches].find((x) => x.identifier === toolboxTouchDrag.id) || e.changedTouches[0];
+    clearToolboxTouch();
+    if (wasDragging && t && isPointInCanvas(t.clientX, t.clientY)) {
+      addToolboxNodeAtClient(item, t.clientX, t.clientY);
+    }
+    if (wasDragging) {
+      setTimeout(() => {
+        suppressToolboxClick = false;
+      }, 0);
+    }
+  }
+
   function renderToolbox(items) {
     els.toolboxNodes.innerHTML = "";
     els.toolboxEdges.innerHTML = "";
@@ -885,9 +1112,23 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
         <span class="toolbox-glyph" aria-hidden="true">${glyphFor(item)}</span>
         <span class="toolbox-label">${item.label}</span>
       `;
-      btn.addEventListener("click", () => onToolboxClick(item));
-      if (item.kind === "node") els.toolboxNodes.appendChild(btn);
-      else els.toolboxEdges.appendChild(btn);
+      btn.addEventListener("click", (e) => {
+        if (suppressToolboxClick) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        onToolboxClick(item);
+      });
+      if (item.kind === "node") {
+        btn.draggable = true;
+        btn.addEventListener("dragstart", (e) => onToolboxDragStart(e, item));
+        btn.addEventListener("dragend", onToolboxDragEnd);
+        btn.addEventListener("touchstart", (e) => onToolboxTouchStart(e, item), { passive: true });
+        els.toolboxNodes.appendChild(btn);
+      } else {
+        els.toolboxEdges.appendChild(btn);
+      }
     }
   }
 
@@ -1377,11 +1618,13 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
     if (editRequest) {
       payload.existing = previousDiagram;
       payload.edit_mode = true;
+      const lastUser = [...state.chatMessages].reverse().find((m) => m.role === "user");
+      if (lastUser?.content) payload.edit_request = String(lastUser.content).slice(0, 8000);
     }
     setGenerating(
       true,
-      editRequest ? "Editing current diagram…" : "Generator drafting diagram…",
-      editRequest ? "Edit · keep ids/positions" : "New · Generator → QC",
+      editRequest ? "Updating your diagram…" : "Creating your diagram…",
+      STAGE_LABELS.understanding,
     );
 
     const controller = new AbortController();
@@ -1397,7 +1640,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
       },
     ];
     if (els.aiThinkingLogBtn) els.aiThinkingLogBtn.disabled = false;
-    if (editRequest) openThinkingLog();
+    // 2.7.9: never open the thinking log automatically (it stays behind the Log button).
 
     try {
       const res = await fetch(withRoot("/api/generate-diagram"), {
@@ -1408,11 +1651,15 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
-        throw new Error(formatApiError(errBody, "Generation failed."));
+        const err = new Error(formatApiError(errBody, "Generation failed."));
+        err.detail = err.message;
+        // Refusals / validation (4xx) are written for users; 5xx text is internal.
+        err.userFacing = res.status === 400 || res.status === 429;
+        throw err;
       }
       const data = await readGenerateResponse(res);
       if (!data?.diagram) {
-        throw new Error("Generation returned no diagram.");
+        throw new Error("no-diagram");
       }
 
       state.lastGenerationTrace = data.trace?.length ? data.trace : state.lastGenerationTrace;
@@ -1424,31 +1671,26 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
       if (editRequest && previousDiagram) {
         diagramOut = mergeEditPreserveLayout(previousDiagram, data.diagram, prompt);
       }
-      applyDiagramToCanvas(
-        diagramOut,
-        editRequest
-          ? data.revision_applied
-            ? "AI · Edit · QC revised"
-            : "AI · Edit"
-          : data.revision_applied
-            ? "AI · QC revised"
-            : "AI · QC approved",
-      );
+      // 2.7.9: no toolbar badge; the toast carries no QC / revision wording.
+      applyDiagramToCanvas(diagramOut, editRequest ? "AI edited" : "AI generated");
+      // Suggestions: one collapsed row (expand on demand); never auto-opened.
       showRecommendations(state.lastRecommendations);
 
-      const nodeCount = (data.diagram?.nodes || []).length;
-      let toastMsg = `${data.diagram_type_label}: ${nodeCount} shapes`;
-      if (data.revision_applied) toastMsg += " (QC revision applied)";
-      if (state.lastRecommendations.length) {
-        toastMsg += ` · ${state.lastRecommendations.length} optional QC suggestion(s)`;
-      }
-      showToast(toastMsg, "success");
+      const nodeCount = (diagramOut?.nodes || []).length;
+      const typeLabel = data.diagram_type_label || DIAGRAM_TYPE_LABELS[state.diagramType] || "Diagram";
+      showToast(
+        editRequest ? `${typeLabel} updated - ${nodeCount} shapes` : `${typeLabel} ready - ${nodeCount} shapes`,
+        "success",
+      );
       canvas.scheduleFitToContent();
     } catch (err) {
+      // 2.7.9: one plain message. Off-topic refusals (HTTP 400) keep their own wording.
       const msg =
-        err?.name === "AbortError"
-          ? "Generation timed out. Try a shorter brief, or turn QC revisions down in Configurations."
-          : err.message || "Something went wrong.";
+        err?.userFacing && err?.message
+          ? err.message
+          : err?.name === "AbortError"
+            ? "This is taking longer than expected. Please try again."
+            : "Couldn't finish this diagram. Please try again.";
       showToast(msg, "error");
       state.lastGenerationTrace = [
         ...(state.lastGenerationTrace || []),
@@ -1456,7 +1698,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
           step: 99,
           agent: "system",
           phase: "error",
-          message: msg,
+          message: err?.detail || err?.message || msg,
           timestamp: new Date().toISOString(),
         },
       ];
@@ -1497,18 +1739,28 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
           state.lastGenerationTrace = [...(state.lastGenerationTrace || []), msg.data];
           if (els.aiThinkingLogBtn) els.aiThinkingLogBtn.disabled = false;
           renderThinkingLog(state.lastGenerationTrace);
-          if (els.canvasLoadingSub) els.canvasLoadingSub.textContent = msg.data.message || "";
+          const stage = stageLabelFor(msg.data);
+          if (stage && els.canvasLoadingSub) els.canvasLoadingSub.textContent = stage;
         } else if (msg.type === "result") {
           result = msg.data;
         } else if (msg.type === "error") {
-          throw new Error(msg.data || "Generation failed.");
+          const err = new Error(
+            msg.user_facing && typeof msg.data === "string" ? msg.data : "Generation failed.",
+          );
+          err.detail = typeof msg.data === "string" ? msg.data : "Generation failed.";
+          err.userFacing = Boolean(msg.user_facing);
+          throw err;
         }
       }
     }
     return result || (buf.trim() ? JSON.parse(buf) : null);
   }
 
-  /** Keep prior geometry only when the generator left it unchanged (and the prompt is not a resize/move). */
+  /**
+   * Keep prior geometry only when the generator left it unchanged (and the prompt is not a resize/move).
+   * 2.7.9: if the server deliberately moved a node (|dx| or |dy| > 8) keep the SERVER position unless the
+   * old spot is still free of every new/moved node; then run an overlap pass.
+   */
   function mergeEditPreserveLayout(previous, next, prompt = "") {
     if (!previous?.nodes?.length || !next?.nodes) return next;
     const geomRequest =
@@ -1516,6 +1768,13 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
         String(prompt || ""),
       );
     const prevById = new Map(previous.nodes.map((n) => [n.id, n]));
+    const overlaps = (a, b, pad = 0) =>
+      a.x < b.x + b.width + pad &&
+      a.x + a.width + pad > b.x &&
+      a.y < b.y + b.height + pad &&
+      a.y + a.height + pad > b.y;
+    const isFlow = (next.diagram_type || state.diagramType) === "flowchart";
+    const fresh = next.nodes.filter((n) => !prevById.has(n.id));
     const nodes = next.nodes.map((n) => {
       const old = prevById.get(n.id);
       if (!old) return n;
@@ -1524,6 +1783,13 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
         Math.abs(Number(n.height) - Number(old.height)) > 8;
       if (geomRequest || sizeChanged) {
         return { ...n, label: n.label || old.label };
+      }
+      const moved = Math.abs(Number(n.x) - Number(old.x)) > 8 || Math.abs(Number(n.y) - Number(old.y)) > 8;
+      if (moved && isFlow) {
+        const oldBox = { x: Number(old.x), y: Number(old.y), width: Number(old.width), height: Number(old.height) };
+        const blocked = fresh.some((f) => overlaps(oldBox, f, 12));
+        if (blocked || isFlow) return { ...n, label: n.label || old.label };
+        void blocked;
       }
       return {
         ...n,
@@ -1534,6 +1800,23 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
         label: n.label || old.label,
       };
     });
+    // Overlap pass: push any colliding node down (top-to-bottom flow), a few rounds.
+    const bg = new Set(["pool", "lane", "system_boundary", "package", "fragment"]);
+    for (let round = 0; isFlow && round < 6; round += 1) {
+      let movedAny = false;
+      const sorted = [...nodes].filter((n) => !bg.has(n.type)).sort((a, b) => a.y - b.y || a.x - b.x);
+      for (let i = 0; i < sorted.length; i += 1) {
+        for (let j = i + 1; j < sorted.length; j += 1) {
+          const a = sorted[i];
+          const b = sorted[j];
+          if (overlaps(a, b, 8)) {
+            b.y = a.y + a.height + 40;
+            movedAny = true;
+          }
+        }
+      }
+      if (!movedAny) break;
+    }
     return { ...next, nodes };
   }
 
@@ -1569,8 +1852,10 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
       });
       if (els.diagramTitle) els.diagramTitle.value = "Untitled Diagram";
       clearDirty();
-      els.canvasBadge.textContent = "Empty";
-      els.canvasBadge.classList.remove("is-live");
+      if (els.canvasBadge) {
+        els.canvasBadge.textContent = "Empty";
+        els.canvasBadge.classList.remove("is-live");
+      }
     } finally {
       state.suppressDirty = false;
     }
@@ -1586,6 +1871,21 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
     a.click();
     URL.revokeObjectURL(url);
     showToast("SVG exported.", "success");
+  }
+
+  async function exportPng() {
+    try {
+      const blob = await canvas.exportPngBlob(2);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${state.diagramType}-${Date.now()}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      showToast("PNG exported.", "success");
+    } catch {
+      showToast("PNG export is not available in this browser.", "error");
+    }
   }
 
   function exportJson() {
@@ -1659,6 +1959,9 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
   els.briefBackdrop?.addEventListener("click", closeBriefModal);
   els.saveBriefBtn?.addEventListener("click", saveBriefFromModal);
   els.aiThinkingLogBtn?.addEventListener("click", openThinkingLog);
+  els.qcRecommendationsToggle?.addEventListener("click", () => {
+    setRecommendationsExpanded(els.qcRecommendationsToggle.getAttribute("aria-expanded") !== "true");
+  });
   els.closeAiThinkingBtn?.addEventListener("click", closeThinkingLog);
   els.aiThinkingBackdrop?.addEventListener("click", closeThinkingLog);
   els.sampleBtn.addEventListener("click", loadSample);
@@ -1675,6 +1978,19 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
 
   els.selectTool.addEventListener("click", () => setActiveTool("select"));
   els.panTool.addEventListener("click", () => setActiveTool("pan"));
+
+  canvas.viewport.addEventListener("dragover", onCanvasDragOver);
+  canvas.viewport.addEventListener("dragleave", onCanvasDragLeave);
+  canvas.viewport.addEventListener("drop", onCanvasDrop);
+  document.addEventListener("touchmove", onToolboxTouchMove, { passive: false });
+  document.addEventListener("touchend", onToolboxTouchEnd);
+  document.addEventListener("touchcancel", () => {
+    if (toolboxTouchDrag?.dragging) suppressToolboxClick = true;
+    clearToolboxTouch();
+    setTimeout(() => {
+      suppressToolboxClick = false;
+    }, 0);
+  });
 
   els.propLabel.addEventListener("input", () => canvas.updateSelectedLabel(els.propLabel.value));
 
@@ -1784,6 +2100,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.5";
   });
   els.fitBtn.addEventListener("click", () => canvas.fitToContent());
   els.exportSvgBtn.addEventListener("click", exportSvg);
+  els.exportPngBtn?.addEventListener("click", exportPng);
   els.exportJsonBtn.addEventListener("click", exportJson);
 
   els.panelToggleLeft?.addEventListener("click", () => togglePanel("left"));

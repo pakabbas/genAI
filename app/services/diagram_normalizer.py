@@ -458,8 +458,17 @@ def _is_human_sequence_label(label: str) -> bool:
     return text.lower() in {"user", "actor", "customer", "person", "admin"}
 
 
-def normalize_diagram(diagram_type: DiagramType, document: DiagramDocument) -> DiagramDocument:
-    """Coerce AI output to toolbox shape ids with safe sizes and valid edges."""
+def normalize_diagram(
+    diagram_type: DiagramType,
+    document: DiagramDocument,
+    *,
+    flowchart_layout: str = "auto",
+) -> DiagramDocument:
+    """Coerce AI output to toolbox shape ids with safe sizes and valid edges.
+
+    flowchart_layout (flowchart only, 2.7.9): "auto" = deterministic layered layout;
+    "keep" = keep generator coordinates (edit of a hand-arranged canvas) + overlap pass.
+    """
     allowed_nodes, allowed_edges, sizes = _toolbox_maps(diagram_type)
     default_node = "process" if "process" in allowed_nodes else next(iter(allowed_nodes))
     actor_allowed = "actor" in allowed_nodes
@@ -591,8 +600,24 @@ def normalize_diagram(diagram_type: DiagramType, document: DiagramDocument) -> D
     if diagram_type == "swim_lane":
         result = _layout_swim_lane(result)
     elif diagram_type == "flowchart":
-        result = _layout_flowchart_space(result)
+        result = _finish_flowchart(result, flowchart_layout)
     return result
+
+
+def _finish_flowchart(document: DiagramDocument, mode: str) -> DiagramDocument:
+    """2.7.9 flowchart pass: Show… = Output, duplicate guard, layered layout, back-edge flags."""
+    from app.services import flowchart_layout as fl
+
+    nodes = fl.apply_show_output_shapes(list(document.nodes))
+    nodes, edges = fl.merge_consecutive_duplicates(nodes, list(document.edges))
+    nodes, edges = fl.repair_duplicate_branch_labels(nodes, edges)
+    doc = document.model_copy(update={"nodes": nodes, "edges": edges})
+    if mode == "keep":
+        return fl.mark_back_edges(_layout_flowchart_space(doc))
+    try:
+        return fl.layout_flowchart(doc)
+    except Exception:  # noqa: BLE001 — never lose a diagram over layout
+        return fl.mark_back_edges(_layout_flowchart_space(doc))
 
 
 def _layout_swim_lane(document: DiagramDocument) -> DiagramDocument:

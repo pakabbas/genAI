@@ -1,0 +1,34 @@
+Create a detailed flowchart for "Personal loan application processing" at a digital bank.
+
+Steps:
+- Start: Applicant clicks "Apply for loan".
+- Input: Applicant enters personal details, income, employment and requested amount/term.
+- Decision: All mandatory fields complete? No -> Highlight missing fields -> back to the application form (loop).
+- Input: Upload documents (ID, salary slips, bank statement).
+- Process: OCR and verify documents.
+- Decision: Documents readable and valid? No -> Request re-upload (max 2 attempts) -> after 2 failures -> End (Application incomplete).
+- Process: KYC / identity check.
+- Decision: KYC passed? No -> Flag for manual compliance review ->
+  Decision: Compliance approves? No -> End (Rejected - KYC).
+- In parallel: Process: Pull credit bureau score  AND  Process: Calculate debt-to-income ratio. Join both results.
+- Decision: Credit score >= 650?
+  No -> Decision: Score between 600 and 649? Yes -> Offer smaller amount / require guarantor ->
+        Decision: Applicant accepts counter-offer? No -> End (Applicant declined).
+        No (score < 600) -> End (Rejected - credit).
+- Decision: Debt-to-income <= 40%? No -> Send to underwriter for manual review ->
+  Decision: Underwriter approves? No -> End (Rejected - affordability).
+- Process: Calculate interest rate and monthly instalment.
+- Output: Show loan offer with terms.
+- Decision: Applicant accepts offer within 7 days? No -> End (Offer expired).
+- Process: Generate contract and request e-signature.
+- Decision: Contract signed? No -> Send reminder (loop back to e-signature, max 3 reminders) -> after 3 -> End (Offer expired).
+- Process: Disburse funds to applicant account.
+- Process: Create repayment schedule.
+- Output: Send confirmation SMS and email.
+- End: Loan disbursed.
+
+Rules:
+- Oval Start/End, rectangle Process, diamond Decision, parallelogram Input/Output.
+- Show the parallel credit/DTI checks as a fork and join.
+- Label every decision branch Yes/No. Every end state must be a separate labelled End oval.
+- Top-to-bottom main flow; loops drawn back cleanly without crossing other lines.

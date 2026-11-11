@@ -220,7 +220,9 @@ async def requirements_chat_endpoint(
         ) from exc
 
 
-def _run_generate(body: GenerateDiagramRequest, on_trace=None) -> GenerateDiagramResponse:
+def _run_generate(
+    body: GenerateDiagramRequest, on_trace=None, cancel_event: threading.Event | None = None
+) -> GenerateDiagramResponse:
     return generate_diagram_with_qc(
         body.diagram_type,
         body.prompt,
@@ -229,6 +231,8 @@ def _run_generate(body: GenerateDiagramRequest, on_trace=None) -> GenerateDiagra
         prompt_enhanced=body.prompt_enhanced,
         original_prompt=body.original_prompt,
         edit_mode=body.edit_mode,
+        cancel_event=cancel_event,
+        edit_request=body.edit_request,
     )
 
 
@@ -253,28 +257,50 @@ async def generate_diagram_endpoint(
     accept = (request.headers.get("accept") or "").lower()
     if "application/x-ndjson" in accept:
         events: queue.Queue = queue.Queue()
+        # 2.7.9: set when the browser goes away so the pipeline stops between steps.
+        cancel_event = threading.Event()
 
         def on_trace(entry) -> None:
             events.put(("trace", entry.model_dump(mode="json")))
 
         def worker() -> None:
             try:
-                result = _run_generate(body, on_trace=on_trace)
+                result = _run_generate(body, on_trace=on_trace, cancel_event=cancel_event)
                 events.put(("result", result.model_dump(mode="json")))
             except Exception as exc:  # noqa: BLE001 — streamed to the client
                 status, detail = _map_generate_error(exc)
-                events.put(("error", detail if status != 502 else str(exc) or detail))
+                # user_facing: only refusals / validation text is meant for end users.
+                events.put(
+                    ("error", (detail if status != 502 else str(exc) or detail, status == 400))
+                )
             finally:
                 events.put(("eof", None))
 
         threading.Thread(target=worker, daemon=True).start()
 
-        def stream():
-            while True:
-                kind, payload = events.get()
-                if kind == "eof":
-                    break
-                yield json.dumps({"type": kind, "data": payload}) + "\n"
+        async def stream():
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            try:
+                while True:
+                    try:
+                        kind, payload = await loop.run_in_executor(None, events.get, True, 1.0)
+                    except queue.Empty:
+                        if await request.is_disconnected():
+                            cancel_event.set()
+                            break
+                        continue
+                    if kind == "eof":
+                        break
+                    if kind == "error":
+                        text, user_facing = payload
+                        yield json.dumps({"type": "error", "data": text, "user_facing": user_facing}) + "\n"
+                        continue
+                    yield json.dumps({"type": kind, "data": payload}) + "\n"
+            finally:
+                # Client gone or stream finished: stop any remaining pipeline work.
+                cancel_event.set()
 
         return StreamingResponse(stream(), media_type="application/x-ndjson")
 

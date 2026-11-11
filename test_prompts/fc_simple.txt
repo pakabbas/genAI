@@ -1,0 +1,16 @@
+Create a flowchart for a "Forgot password" reset flow in a web app.
+
+Steps:
+- Start: User clicks "Forgot password".
+- Input: User enters email address.
+- Decision: Is the email registered? No -> Show "If this email exists, a link was sent" -> End.
+- Process: Generate reset token (valid 30 minutes) and send reset email.
+- Input: User opens link and enters a new password.
+- Decision: Is the token valid and not expired? No -> Show "Link expired" -> End.
+- Process: Save new password hash and invalidate token.
+- Output: Show "Password changed" message.
+- End: Password reset complete.
+
+Rules:
+- Oval Start/End, rectangle Process, diamond Decision, parallelogram Input/Output.
+- Label every decision branch Yes/No. Top-to-bottom flow.

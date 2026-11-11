@@ -17,6 +17,9 @@ class AgentTraceEntry(BaseModel):
     phase: str
     message: str
     detail: str | None = None
+    # 2.7.9: short user-safe stage key (understanding|planning|drawing|checking|polishing|layout|done).
+    # The UI shows only a fixed label for it — never `message`/`detail`.
+    stage: str | None = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

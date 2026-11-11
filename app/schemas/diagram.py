@@ -56,6 +56,8 @@ class GenerateDiagramRequest(BaseModel):
     # When true, `prompt` is the Requirements Analyst enhanced brief.
     prompt_enhanced: bool = False
     original_prompt: str | None = Field(default=None, max_length=32000)
+    # Edit mode: the user's latest chat message (the requested change). Optional.
+    edit_request: str | None = Field(default=None, max_length=8000)
 
 
 class ToolboxItem(BaseModel):

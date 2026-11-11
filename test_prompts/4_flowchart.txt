@@ -1,0 +1,27 @@
+Create a detailed flowchart for the "QuickBite" checkout logic (from "Checkout clicked" to "Order placed").
+
+Steps:
+- Start: Checkout clicked.
+- Decision: Is the user logged in? No -> Show login/register -> after login return to checkout.
+- Decision: Is the cart empty? Yes -> Show "Cart is empty" -> End.
+- Process: Re-check item availability and prices.
+- Decision: Any item unavailable or price changed? Yes -> Show changes, ask user to confirm -> 
+  Decision: User confirms? No -> Back to cart -> End.
+- Input: Select or add delivery address.
+- Decision: Address inside delivery zone? No -> Show error -> back to address selection.
+- Decision: Promo code entered? Yes -> Validate code ->
+  Decision: Code valid and not expired? No -> Show "Invalid code" and continue without discount.
+  Yes -> Apply discount.
+- Process: Calculate subtotal, delivery fee, tax, discount, total.
+- Input: Choose payment method (Card / Wallet / Cash on Delivery).
+- Decision: Cash on Delivery? Yes -> skip to Create order.
+  No -> Process online payment -> Decision: Payment approved? No -> Show error, allow retry (max 3 tries) -> 
+  after 3 failures -> End (Checkout failed).
+- Process: Create order record, clear cart.
+- Output: Show order confirmation with estimated delivery time.
+- Process: Send confirmation SMS and email.
+- End: Order placed.
+
+Rules:
+- Standard shapes: oval Start/End, rectangle Process, diamond Decision, parallelogram Input/Output.
+- Label every decision branch Yes/No. Top-to-bottom flow, loops drawn back cleanly without crossing.

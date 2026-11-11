@@ -1,0 +1,295 @@
+--- FROM_JARVIS | 2026-10-30 ~15:05 Asia/Karachi ---
+
+v2.7.9 "FLOWCHART PERFECTION". Flowchart is the most-used type, so it ships first. Every other type stays
+exactly as it is (see DO NOT CHANGE). Evidence comes from 4 live runs on 2.7.8 (/api/health = 2.7.8,
+generator gemini-4-argon, QC gemini-3.8-flash), all through the real UI with no saves and no config writes:
+  QC  = QuickBite checkout (prompts/4_flowchart.txt) + the edit "Add a 'Gift card' payment option before COD"
+  FS  = fc_simple.txt  (password reset, 9 steps, 2 decisions)
+  FM  = fc_medium.txt  (leave approval, ~17 steps, 6 decisions, 2 loops)
+  FX  = fc_complex.txt (loan processing, ~30 steps, nested decisions, fork/join, 3 loops, 8 end states)
+Artifacts: /workspace/drilldown/ours/{4_flowchart,4_flowchart_edit,fc_simple,fc_medium,fc_complex}.json
+(the full NDJSON result incl. trace), *_log.json, *_hires.png, *_canvas.json (canvas after the client merge).
+Screenshots: /workspace/drilldown/ours_4_flowchart*.png, ours_fc_{simple,medium,complex}.png.
+Caveat: /tmp/live static/js/designer/*.js is byte-identical to live. /tmp/live app/version.py still says
+2.7.5, so the backend line numbers below come from that tree. Re-check them on main before editing.
+
+RESULTS (2.7.8)
+| run | chat s | gen s | QC revisions | final QC | nodes/edges | main issues |
+| QC  | 62.7 (attempt 1 timed out at ~540 s, null result) | 266.7 | 3/3 (all from coverage) | "passed with notes" (not approved) | 37/43 | 4 duplicate nodes, n_split misplacement, hook loops, Fit clips the top and bottom |
+| QCe | 18.4 | 37.3 | 0 | approved | 40/48 | new shapes overlap old ones (client merge) |
+| FS  | 13.2 | 45.3 | 0 (planner crashed, coverage skipped) | approved | 11/12 | both failure exits merged into the success End; long loop-around routes |
+| FM  | 11.9 | 157.8 | 3/3 (coverage + QC) | NOT approved | 21/25 | split inserted a wrong "Escalate to HR manager" into the happy path; layout flows upward and is chaotic |
+| FX  | 15.7 | 96.8 | 0 (planner crashed, coverage skipped) | approved | 42/48 | content excellent; hook loops; tiny Fork/Join dots; Yes labels far from their decisions |
+Key pattern: the runs where the planner CRASHED were the clean, fast ones. The runs where the planner worked
+got the merge-splitter, which causes duplicates and 3 wasted revision rounds.
+
+Per-step timing (from trace timestamps; the normalizer and repair take ~0 s):
+  QC : planner 34.7 | gen draft 56.2 | QC 3.6 | rev1 66.2 + QC 3.7 | rev2 45.3 + QC 3.7 | rev3 48.0 + QC 4.4 = 266
+       -> generator 216 s (81%; revisions alone 159.5 s = 60%), planner 35 s (13%), QC 15 s (6%)
+  FM : planner 21.0 | draft 26.6 | QC 5.4 | rev 28.0+6.5 | 31.1+4.2 | 30.1+3.6 = 157
+  FS : planner FAILED after 12.1 | draft 29.0 | QC 3.0 = 45
+  FX : planner FAILED after 42.0 | draft 50.6 | QC 3.2 = 97
+
+================================================================================
+MAJOR
+================================================================================
+1. Merge-splitter creates duplicate or wrong steps and an endless coverage loop (worst flowchart bug).
+   Problem: duplicate boxes. QC: "Show order confirmation & est. delivery time" x2, plus "Show est. delivery
+   time", "Send confirmation SMS and email" + "Send confirmation email", "Show login" + "Show login /
+   register", "Show changes & ask user to confirm" + "Ask user to confirm changes". FM: a second
+   "Escalate to HR manager" inserted between Submit and the 3-day decision, so escalation becomes
+   unconditional.
+   Evidence: QC trace step 9 coverage_check "Merged activities in one task 'Send confirmation SMS and email'
+   — split into: 'Show order confirmation & est. delivery time', 'Send confirmation SMS and email'" and
+   "'Show order confirmation & est. delivery time' — split into: 'Show login / register', 'Show 'Cart is
+   empty'', 'Show changes & ask user to confirm'". The draft already had n_split_1/n_split_2 (QC's own
+   recommendation names them). All 4 QC LLM verdicts said "approved / all steps covered", yet the pipeline
+   forced revisions because of this gap. Revisions 1 and 2 returned 33/39 again, and revision 3 jumped to
+   37/43 by adding a2_no_login, a5_yes_confirm, a20_eta and a21_email: the generator "split" exactly the
+   labels the gap text told it to. FM trace steps 9-29: the same gap 4 times, and the QC LLM blocked the
+   n_split_2 that the repair kept re-inserting.
+   Root cause: app/services/process_coverage.py
+     - _verb_stems (~413-428) treats any token of 4+ chars as a "verb" (show, confirmation, manager, send,
+       deliver, time…). _GENERIC_STEMS misses these.
+     - _merged_activity_gaps (~431-448): any process label containing "and"/"&" whose stems overlap 2+
+       inventory activities counts as a gap. This includes the node's OWN correct activity, e.g. "Send
+       confirmation SMS and email" is itself an inventory item.
+     - repair_merged_process_nodes (~451-556) takes hits[0], hits[1] in inventory order, not the parts of the
+       label. So it replaces "Send confirmation SMS and email" with ["Show order confirmation…" ->
+       "Send confirmation SMS and email"]. The second label still contains "and", so the gap can never clear.
+       The copy keeps type=process, which makes "Show order confirmation…" a process node and triggers a
+       second gap. node_b sits at x+0.35w, y+24 (n_split_2 at x=592 off the spine).
+     - Called after every draft and revision: diagram_pipeline.py:302-304, 345-347, 498-500.
+     - The gap is merged as BLOCKING (diagram_pipeline.py:146-162 _merge_coverage_into_audit) and is added to
+       the revision prompt twice (blocking_issues + coverage_revision_issues, :468-479).
+   Fix:
+     a) Remove repair_merged_process_nodes from the flowchart path. Gate it so it never runs for diagram_type
+        == "flowchart", or delete it.
+     b) _merged_activity_gaps: skip any node whose label matches one inventory activity with ratio >= 0.85.
+        Split the label on " and " / "&" and require each PART to match a DIFFERENT inventory activity.
+        Never count the node's own activity. Make it ADVISORY (trace only) for flowchart, never blocking.
+     c) No-progress guard in the revision loop (diagram_pipeline.py:454): if the blocking set is identical
+        to the previous round (same coverage gaps), stop and return the best draft. Never spend 3 rounds
+        on an identical gap.
+     d) When the QC LLM says approved and only deterministic coverage items remain, run at most 1
+        revision, and only for "Missing activity/decision/branch" gaps, not "Merged…".
+     e) Add coverage gaps to the revision prompt once, not twice.
+   Acceptance: QC prompt → 0 nodes with id n_split_*, no two nodes with the same normalized label, exactly one
+   "Show order confirmation…" and one "Send confirmation SMS and email", no "Show login"/"Ask user to
+   confirm" extras, revisions <= 1. FM → exactly one "Escalate to HR manager", only on the d3 No branch;
+   Submit → d3 directly.
+
+2. Planner crashes on flowchart I/O and fork kinds (wasted 12–42 s, then coverage silently skipped).
+   Evidence: FS process_plan_skip "elements.1.kind Input should be 'start','end','activity' or 'decision'
+   [input_value='input']" (12.1 s wasted). FX: "input_value='gateway'" (42.0 s wasted).
+   Root cause: app/schemas/process_model.py ProcessElement.kind = Literal["start","end","activity","decision"].
+   The model naturally emits input/output/gateway/fork/join for flowcharts. The planner example in
+   app/prompts/process_plan.py also shows "Place Order & Pay" as one activity, which teaches merged labels.
+   Fix: accept the kinds and map them with a pydantic field validator before the Literal check:
+   input/output/io/display/document → activity; gateway/xor/fork/join/parallel → decision (or a new
+   "parallel" kind that coverage ignores). Change the example label to "Place Order".
+   Acceptance: FS and FX logs show process_plan_ready (no process_plan_skip) and the inventory counts match
+   the brief.
+
+3. Speed. QuickBite took 62.7 s chat + 266.7 s generation, and attempt 1 timed out at the 540 s abort.
+   Evidence: timing table above; 60% of QC's time is the 3 pointless revisions from #1.
+   Contributing causes:
+     - Revision loop driven by an unsatisfiable deterministic gap (#1). It always burns max_qc_revisions=3.
+     - Every revision regenerates the FULL diagram JSON with coordinates (~45–66 s each on gemini-4-argon)
+       instead of a patch.
+     - The planner runs SERIALLY before the generator (21–42 s), even though its inventory is only needed
+       for the coverage check. The analyst brief already lists every step.
+     - app/services/gemini_client.py:31-41 _thinking_config only sets thinking_level when the model name
+       contains "gemini-3"/"*-latest". gemini-4-argon (the live generator, planner and analyst) gets NO
+       thinking config, so the model default applies and the "low" levels for analyst/planner are ignored.
+       Likely a big share of the 30–66 s calls and of the 62.7 s chat; confirm via the logged
+       thoughts_tokens.
+     - ai.timeout_seconds is a soft timeout only (gemini_client.py:86 only logs after the call returns).
+       There is no real per-call or pipeline deadline.
+   Timeout chain (attempt 1, about 10 min end to end, null result, empty canvas): the frontend abort
+   static/js/designer/app.js:1388 `const timeoutMs = 540000` fired first. nginx proxy_read_timeout is 600 s
+   (deploy/nginx-dd-root.conf:18), but the NDJSON trace lines reset it between events, so nginx rarely fires.
+   uvicorn (deploy/genai.service ExecStart) has no request timeout. The worker thread in app/main.py:260-270
+   keeps running after the client aborts, so Gemini calls are wasted and load stacks up for the next request.
+   sendRequirementsMessage (app.js ~705) has no timeout at all.
+   Fix:
+     a) Fixes 1–2 (removes ~160 s on QC and ~125 s on FM).
+     b) Treat every gemini-* model as thinking-capable. Map role to thinking_level for any family that
+        supports it, and fall back gracefully if the SDK rejects it. Log the latency per call in the trace
+        (add "took Xs, model, thoughts_tokens" to each agent trace detail).
+     c) Run the planner concurrently with the first generator draft (ThreadPoolExecutor). For flowchart, do
+        not inject the inventory into the generator prompt. Use it only for coverage. Optionally run the
+        planner on the fallback flash model.
+     d) Server-side pipeline budget (e.g. 240 s). Skip further revisions when the budget is spent and return
+        the best draft with a "partial" note. Pass a real http timeout to the genai client
+        (HttpOptions(timeout=...)) = ai.timeout_seconds.
+     e) Stop the worker on client disconnect: check `await request.is_disconnected()` in the stream loop and
+        set a cancel flag that the pipeline checks between steps.
+     f) Revisions for flowchart: send the issues plus the current JSON and ask for a minimal patch (or at
+        least a "keep all unchanged nodes" instruction), at revision_temperature.
+   Speed targets (live, this exact set of prompts):
+     QuickBite 4_flowchart.txt: generation <= 90 s (stretch 60 s), chat <= 20 s, never a timeout in 5 runs
+     fc_simple <= 40 s | fc_medium <= 60 s | fc_complex <= 120 s | edit <= 40 s
+     Revisions: 0–1 on all four; never the same gap twice.
+
+4. Edit-mode merge restores old positions, so new shapes overlap.
+   Evidence: QCe canvas JSON: the server moved d15 "Cash on Delivery?" to y=2310 and a15_no to 2338 to make room,
+   but on the canvas they are back at y=2200/2228, overlapping the new d_gc "Gift Card selected?" (2150–2260)
+   and a_gc_val (2173). Programmatic overlap check: 2 overlaps (screenshot ours_4_flowchart_edit.png).
+   Root cause: static/js/designer/app.js:1512-1538 mergeEditPreserveLayout. Lines 1522-1535 restore
+   old.x/old.y whenever the size didn't change by more than 8 px and the prompt has no geometry verb. They ignore
+   that the server deliberately shifted the node.
+   Fix: keep old positions only if the server position equals the old one (|dx|,|dy| <= 8), or if the node would not
+   overlap any NEW node. Otherwise accept the server position. After merging, run an overlap pass (same as
+   _layout_flowchart_space) on the client, or skip the client merge entirely when the server reports
+   edit_mode layout. Optional: the server returns meta.moved=true on shifted nodes.
+   Acceptance: rerun the edit → 0 bounding-box overlaps; all 37 original ids kept; labels unchanged except
+   a14; nodes above the insertion point keep exact x/y.
+
+5. Thinking-log window auto-opens over the canvas in edit mode.
+   Evidence: ours/4_flowchart_edit_full.png (modal covers the canvas; the Fit click is blocked until it is closed).
+   Root cause: static/js/designer/app.js:1400 `if (editRequest) openThinkingLog();`
+   Fix: delete that line (keep the Log button enabled), or show a non-modal progress toast. Never open a
+   modal automatically.
+   Acceptance: Edit → no modal; the canvas updates and Fit works; the Log button still opens the log.
+
+6. Flowchart layout and routing: hook loops, LLM coordinates, label placement, Fit clipping.
+   6a Hook-shaped "loops" on forward edges. Evidence: the small loops left of "Any item unavailable?",
+      "Create order record", "Calculate subtotal" (QC); "Underwriter approves? Yes → Calculate…" and
+      "Pull credit score → Join" (FX); both failure exits in FS. Root cause:
+      static/js/designer/canvas.js:1209-1271 _routedEdgePath, line ~1218:
+      `isLoop = y2 + 8 < y1 || (x2 + 40 < x1 && Math.abs(y2 - y1) > 20)`. Any edge whose target is
+      slightly higher (d5 → a5_yes: target y 660 vs decision 680) or anywhere down-LEFT (d16 → a19) is treated
+      as a loop-back. It then goes out the bottom, around a left gutter and back in from the left, sometimes through
+      its own source. Fix: decide loop-ness from the GRAPH, not from geometry. Do a DFS from the start terminator,
+      flag back-edges (server sets edge.meta.back_edge=true in the normalizer, the client falls back to its own
+      DFS), and use the gutter route only for real back-edges. Forward down-left edges use a simple
+      vertical→horizontal elbow.
+   6b Coordinates come from the LLM and nobody lays them out. Evidence: FM flows upward and across 4 columns
+      (d3 above Submit; "Manager/HR approves?" above both). QC is 3614 px tall with ~140 px row steps.
+      edge.meta.waypoints that the generator spends tokens on are IGNORED by canvas.js (no reference to
+      "waypoints" anywhere in static/js). diagram_normalizer.py:697-728 _layout_flowchart_space only nudges
+      overlaps. Fix: add a deterministic layered layout for flowchart in the normalizer (Sugiyama-lite:
+      ranks by longest path over forward edges; the main spine follows the Yes / unlabeled successor; No
+      branches and side activities go in the column to the right; End terminators of failure branches sit
+      to the right of their decision; back-edges use the left gutter; row gap ~100 px, column gap ~260 px).
+      Then drop the coordinate and waypoint instructions from the flowchart generator prompt
+      (app/prompts/diagrams.py:159-167 and :222). Fewer output tokens also means faster generation.
+      Also remove "y:40–1200" (diagrams.py:167): the QC LLM turned it into a BLOCKING issue in FM rev 2
+      ("coordinates exceed y: 40–1200").
+   6c Branch labels far from the decision. Root cause: canvas.js:1075-1108 _labelAnchor puts the label on the
+      LONGEST segment (FX "Yes" mid-way to Fork, QC "Yes" halfway down the COD spine). Fix: for edges from a
+      decision, anchor the label on the first segment, ~16 px from the exit point.
+   6d Fit View clips tall flowcharts. Evidence: ours_4_flowchart.png cuts "Start" at the top and "End: Order
+      placed" at the bottom. Root cause: canvas.js:39 MIN_ZOOM 0.25, applied in fitToContent (:647). 3614 px ×
+      0.25 = 903 px is taller than the ~760 px usable canvas. Fix: let fitToContent go below MIN_ZOOM (fit-only floor,
+      e.g. 0.1). The compact layout from 6b mostly removes the need.
+   6e Fork/Join drawn as 40 px "connector_node" dots with the words Fork/Join (FX). Fix: add a flat
+      "parallel bar" render for connector_node when it is labelled Fork/Join, or teach the generator to use
+      preparation/bar.
+   6f FS merged both failure exits ("If this email exists…" and "Link expired") into the success End "Password
+      reset complete". Fix: a generator flowchart rule plus a coverage check: a branch that "→ End" after an
+      error gets its own End terminator unless the brief names the same end.
+   Acceptance for 6: on all 4 prompts, 0 hook loops on forward edges, every back-edge drawn in the gutter, no
+   edge segment through a non-endpoint node, every Yes/No label within 40 px of its decision, Fit shows
+   Start and every End fully, main spine top-to-bottom (no node ranked above its predecessor except on
+   back-edges), height for QuickBite <= ~2600 px.
+
+MINOR
+7. Stale cache-bust. Live index serves app.js?v=2.7.8 and version.js says 2.7.8, but app.js:2-4,
+   canvas.js:1 and normalize.js:1 still import "?v=2.7.5". A browser that cached 2.7.5 canvas.js / normalize.js
+   / diagram-types.js keeps them after a release. That doesn't bite today (those files are unchanged), but it
+   WILL bite 2.7.9 because this list changes canvas.js. Fix: generate the import query from APP_VERSION (import
+   map in index.html, or a build-time replace in deploy.sh) and add a test that fails if any "?v=" ≠
+   APP_VERSION. Also check that app/version.py is bumped together with static/js/version.js. Acceptance: grep
+   "v=2.7.9" in all designer imports; hard-reload not needed after deploy.
+8. QC "approved" text vs the verdict. The QC LLM summary says "approved" while the pipeline forces a revision and
+   the final toast says "QC revision applied" with qc_approved=false. After #1 this mostly disappears. Also
+   make the trace message say "Coverage gap (deterministic)" so the source is clear.
+9. Duplicate-label guard (cheap safety net): in the flowchart normalizer, if two consecutive process/input
+   nodes have the same normalized label, merge them and rewire the edges, then trace it as advisory.
+
+
+10. NO INTERNAL QC / ERROR MESSAGES SHOWN TO THE USER DURING GENERATION (Abbas: hard requirement).
+   Problem: while generating, the canvas loading overlay shows raw pipeline text such as
+     "The checkout logic is missing required steps near the end of the flow ('Create order record, clear cart'
+      and 'Send confirmation SMS and email') due to corrupted or duplicated node labels. Revision is required..."
+   Root cause: static/js/designer/app.js readGenerateResponse() ~line 1500:
+     els.canvasLoadingSub.textContent = msg.data.message
+   copies every streamed trace message (QC findings, coverage gaps, revision reasons, errors) straight into the
+   overlay. Also: app.js:1400 auto-opens the thinking log in edit mode; the success toast (~1440-1445) appends
+   "(QC revision applied)" / "N optional QC suggestion(s)"; the canvas badge says "AI · QC revised"; the abort
+   message says "turn QC revisions down in Configurations".
+   Fix:
+   - Overlay shows ONLY friendly, fixed stage labels mapped from trace phase/agent, never msg.data.message, e.g.
+     "Understanding your requirements…" -> "Planning the flow…" -> "Drawing the diagram…" -> "Checking quality…"
+     -> "Polishing layout…" -> "Done". A revision round shows as "Polishing the diagram…" (no reasons, no counts).
+   - Never open the thinking log automatically (remove app.js:1400). The full trace stays available only when the
+     user clicks the AI thinking log button.
+   - Success toast: "Flowchart ready - 37 shapes". No QC/revision wording. Canvas badge: "AI generated" / "AI edited".
+   - Recommendations panel: do not auto-show; keep behind the existing button/log.
+   - Errors: one plain message only, e.g. "Couldn't finish this diagram. Please try again." No stack text, no QC
+     wording, no "Configurations" hint. If a valid diagram exists from an earlier round, show it instead of erroring.
+   - Backend: trace "message" stays for the log, but add a short user-safe "stage" field per trace event so the
+     frontend never needs to display raw text.
+   Acceptance test: run the QuickBite flowchart, the 3 fc_* prompts and one edit; record every string shown in the
+   overlay, toasts, badge and chat during generation. None may contain: QC, revision, missing, corrupted, coverage,
+   gap, error, failed, required, duplicated. Thinking log must not open by itself.
+
+================================================================================
+HOW TO IMPROVE (prioritized, expected impact)
+================================================================================
+P0 Fix #10 (no QC/revision/error text shown to the user during generation; friendly fixed stage labels only).
+   Abbas's hard requirement - ship together with P1. Effort: small (app.js + a 'stage' field in trace events).
+P1 Fix #1 (splitter off for flowchart, gaps advisory, no-progress stop). Quality: removes all duplicate and wrong
+   steps seen (QC, FM). Time: QC 266 → ~95 s, FM 158 → ~55 s. Effort: small.
+P2 Fix #2 (planner schema). Planner no longer crashes, so coverage is real on I/O-heavy briefs. Time: saves
+   the wasted 12–42 s on failures. Combined with P4 it adds nothing to wall time.
+P3 Fix #6a/6c/6d + #5 (frontend routing, labels, Fit, no modal). Quality: biggest visible improvement,
+   no hooks, readable labels, full Fit. Time: none. Effort: small–medium (canvas.js only, flowchart branch).
+P4 Fix #3b-c (thinking config for gemini-4-argon, planner in parallel). Time: −20–40 s per run, likely a
+   large cut in per-call latency and the 62.7 s chat outlier. Effort: small.
+P5 Fix #6b (deterministic layered layout; drop coordinates and waypoints from the prompt). Quality: consistent
+   top-to-bottom layout like DrillDown. Time: −15–30% generator output tokens. Effort: medium.
+P6 Fix #3d-f (budget, real timeouts, cancel on disconnect, patch revisions). Reliability: no more 540 s
+   aborts; caps the worst case at ~4 min. Effort: medium.
+P7 Fix #4 (edit merge) and #7 (cache-bust) and #8-9. Effort: small.
+
+================================================================================
+REGRESSION TEST PLAN (run on live after deploy, UI-driven, headless 1600x1000, no saves)
+================================================================================
+Prompts: test_prompts/4_flowchart.txt (QuickBite), fc_simple.txt, fc_medium.txt,
+fc_complex.txt. Run each 3 times (to catch variance). Then run the QuickBite edit "Add a 'Gift card' payment
+option before Cash on Delivery." with the Edit toggle on.
+For every run, record: chat s, generation s, revision count, coverage gaps, final qc_approved, nodes/edges.
+Automated checks on the result JSON + canvas JSON:
+  - no node id n_split_*; no duplicate normalized labels; every decision has ≥2 labelled outgoing edges
+    (Yes/No); every node reachable from Start; every path reaches an End terminator; 0 bbox overlaps;
+    back-edges only where the brief has a loop (QuickBite: login, address, retry; FM: 2 form loops; FX:
+    form, re-upload, reminder).
+  - Edit: all previous ids kept, 3 gift-card nodes added between a14 and d15, 0 overlaps.
+Visual checks (hi-res screenshot after Fit): Start and all Ends visible; no hook loops; labels near
+decisions; no line through a box.
+Targets: see #3. Plus "no timeout in 15 runs", revisions <= 1, qc_approved=true on all 4 prompts.
+Unit tests: process_coverage (merged-gap false positives for "Send confirmation SMS and email", "Submit request
+and notify line manager", "Show order confirmation & est. delivery time" → no gap); ProcessModel accepts
+input/gateway/fork; pipeline stops on an identical gap set; canvas back-edge detection (DFS) for the 4 prompts;
+mergeEditPreserveLayout keeps moved server positions.
+Also smoke-test the other 7 types once each (one sample prompt each) to prove nothing changed.
+
+================================================================================
+DO NOT CHANGE
+================================================================================
+- Other diagram types (use_case, erd, swim_lane, sequence, class_diagram, network, architecture): no change
+  in behaviour. Gate every new code path on diagram_type == "flowchart". In particular, keep
+  repair_merged_process_nodes / coverage behaviour for swim_lane exactly as it is in this release (swim lane
+  gets its own pass later).
+- /config and the live settings values (models, temperatures, max_qc_revisions, prompts). Fix the code, not
+  the live config. Keep the registry defaults.
+- Keep the site open with no sign-in, as now (Abbas's call).
+- Keep the poem/off-topic refusal, the requirements chat flow, confirms, beforeunload, projects, export.
+- Don't change nginx/uvicorn deploy files except to document. The 540 s client abort stays under nginx 600 s.
+Bump to 2.7.9 (app/version.py, static/js/version.js, and ALL ?v= imports). Reply under FROM_CURSOR with the
+changes and the retest steps.
+
+--- END FROM_JARVIS ---

@@ -1,0 +1,220 @@
+GenAI Diagram Studio — Improvement Report
+========================================
+Date: 4 Oct 2026
+Tested live: https://foodnpals.com/genAI/
+Method: desktop browser (1440x900), sample load, AI generate, project save,
+        diagram-type switch, plus code review of canvas, API, and prompts.
+
+This is an honest MVP. The core loop works. It is not yet something you can
+hand to paying teams without the gaps below.
+
+
+WHAT ALREADY WORKS
+------------------
+- Designer UI loads under /genAI/ with toolbox, canvas, AI panel, projects.
+- Health: Gemini ready and DB connected.
+- Load sample (use case) draws actors, boundary, use cases, and connectors.
+- Generate with AI (food-delivery use case) returned a diagram in ~45s,
+  badge "AI · QC APPROVED", 12 shapes, QC suggestions shown.
+- Save created project "Test Food Delivery Use Case"
+  id d3797636-deaa-489e-bb44-35440f52f59c and listed it in Open project.
+- Fit-to-content does put all nodes on screen (verified in the DOM).
+- Sequence toolbox swaps correctly (Actor, Lifeline, Object, Activation,
+  Fragment, Sync/Async/Return) after the type change finishes loading.
+
+
+BUGS FOUND (fix these before adding features)
+---------------------------------------------
+
+1. Changing diagram type wipes the canvas and can overwrite a saved project
+   Live: switched left dropdown from Use Case to Sequence while a saved
+   project was open. Canvas title became "Untitled Diagram" (empty).
+   Project status still said "Saved · d3797636…" and the dropdown still
+   selected that project.
+   Cause: onDiagramTypeChange() calls clearCanvasOnChange when nodes exist,
+   with no confirm, and does not clear currentProjectId or mark dirty.
+   Next Save would replace the food-delivery use case with an empty sequence.
+   Fix: confirm before discard; if they continue, start a new unsaved project
+   (clear currentProjectId) so Save cannot clobber the previous diagram.
+
+2. QC says "approved" while admitting the diagram is wrong
+   Live QC suggestions after a successful generate:
+   - "Ensure all use cases are properly positioned inside the system boundary"
+   - "Verify that include and extend relationship directions match UML"
+   The badge still said AI · QC APPROVED. QC treats layout/UML problems as
+   optional notes, so bad diagrams ship as approved.
+   Fix: make boundary containment and relationship direction blocking checks
+   in code (not only in the LLM). Do not show "approved" if those fail.
+   Run one revision when they fail. Cap "approved" to diagrams that pass
+   deterministic rules.
+
+3. AI layout is not presentation-ready
+   On the generated use case (before and after Fit):
+   - "Customer" label sits on the stick figure
+   - connectors are straight lines that cross the actor and each other
+   - system boundary does not contain Manage Menu / Accept Order / Deliver Order
+   - long title is clipped in the header field
+     ("Food Delivery App Use Case Diagr")
+   The model is asked to invent x/y. That will stay unreliable.
+   Fix: stop trusting LLM coordinates. LLM should return structure only
+   (nodes, edges, parent/lane). A layout engine places them
+   (ELK, dagre, or a small per-type packer).
+
+4. Samples missing for 3 of 7 types
+   Live toast on Sequence: "No sample for this diagram type yet."
+   SAMPLE_DIAGRAMS only has use_case, erd, swim_lane, flowchart.
+   Missing: sequence, class_diagram, network.
+   Users of those types have no offline way to learn the canvas.
+
+5. Flowchart sample draws End as a Start
+   In static/js/designer/diagram-types.js the "End" node is type "start"
+   with label "End". Renderer paints start/terminator green and only "end"
+   is the red pill. The sample end node looks like another start.
+
+6. Stale QC suggestions after a type change
+   After switching to Sequence, the AI panel still listed the use-case QC
+   notes ("use cases inside the system boundary"). Clear recommendations
+   when the diagram or type changes.
+
+7. Anyone on the internet can read, change, and delete every project
+   CORS is allow_origins=["*"]. There is no login.
+   The UI itself says: "Public read APIs — no API key."
+   GET/POST/PUT/DELETE /api/projects and POST /api/generate-diagram are open.
+   That means:
+   - any visitor can list and delete customer diagrams
+   - any visitor can burn the Gemini key (generate is the expensive call)
+   This was fine for a LeadPilot demo. It is not fine on a public domain.
+   Fix before real users: auth (even a single shared password or API key
+   on write + generate), then per-user projects. Keep a separate public
+   read token only for diagrams you explicitly publish.
+
+8. Docs still describe the dead LeadPilot deploy
+   README production URL is leadpilotai.spiralloopstechnologies.com/genAI/
+   and DB defaults still say database "leadpilot". Live host is
+   foodnpals.com/genAI/ with database "genai". Follow deployInstructions.txt.
+   Update README so the next person does not deploy to the wrong place.
+
+
+LIMITATIONS (not one-off bugs — product ceiling)
+-------------------------------------------------
+
+Canvas
+- No undo/redo. Delete and Clear are permanent. Keyboard: Delete and Escape only.
+- No resize handles, no rotate, no multi-select marquee, no align/distribute.
+- No snap-to-grid while dragging (grid is visual only).
+- Connectors are straight point-to-point. No orthogonal routing, no waypoints,
+  no arrowhead styles beyond a few edge types, no line labels that avoid nodes.
+- Properties panel edits the label only. No color, font, size, or notes.
+- Containers (boundary, lane, package) do not own children. Moving a boundary
+  does not move the use cases inside it.
+- Sequence diagrams are free-floating boxes, not real lifelines with time order.
+  Class diagrams have no attribute/method compartments. ERD attributes are
+  separate ovals, not a table with PK/FK columns.
+- Duplicate copies the shape but not its edges.
+- Two diagram-type dropdowns (left toolbox and right AI panel) stay in sync,
+  but it is easy to change the wrong one and wipe the canvas (bug 1).
+
+AI
+- One model: gemini-flash-lite-latest. Fast and cheap, weak at layout and UML.
+- Pipeline is two blocking HTTP calls (generate, then QC, maybe one revision).
+  No streaming, no cancel, no timeout shown to the user. ~30–60s with a
+  frozen Generate button.
+- QC is another LLM call, not a rule engine, so it can approve its own mistakes.
+- Existing canvas is sent back only when dirty. Regenerating replaces the
+  whole diagram; there is no "add these three use cases" that preserves layout.
+- No prompt library, no diagram templates, no "improve this diagram" that
+  keeps node ids stable.
+
+Data and product
+- One shared MySQL database. No users, teams, roles, or sharing links with
+  permissions. Transfer copies JSON between projects; it is not collaboration.
+- No version history. Save overwrites diagram_json. No audit log.
+- No autosave. A refresh loses unsaved work. Dirty state is easy to lose
+  (type change sets isDirty false via clearCanvas).
+- Export is SVG and JSON only. static/js/app.js and html2pdf exist from an
+  older page and are not wired into the designer. No PNG, PDF, or draw.io.
+- POST /api/validate-diagram only counts nodes and edges. It does not check
+  that edge endpoints exist or that shapes match the diagram type.
+- No rate limit, no request logging, no backup job documented for the genai DB.
+- No tests in the repo for canvas behavior or the generate pipeline.
+
+
+HOW TO GO FROM MVP TO A PROFESSIONAL TOOL
+------------------------------------------
+Do this in order. Each phase is usable on its own.
+
+Phase 0 — Stop data loss and public writes (1–2 days)
+- Confirm (or auto-fork) before diagram-type change clears the canvas.
+- Unlink currentProjectId when the canvas is cleared by a type change.
+- Auth on POST/PUT/DELETE /api/projects and POST /api/generate-diagram.
+- Rate-limit generate (e.g. 20/hour/IP until real accounts exist).
+- Add the 3 missing samples. Fix flowchart End node type to "end".
+- Clear QC suggestions when type or diagram changes.
+- Point README at foodnpals.com/genAI/ and DB name genai.
+
+Phase 1 — Diagrams that look correct (1–2 weeks)
+This is the difference between a demo and something a BA will paste into a doc.
+- LLM outputs structure only: id, type, label, edges, optional parentId.
+- Deterministic layout per type:
+  use case: actors left, boundary sized to fit ellipses, include/extend
+  routed inside the boundary.
+  flowchart / swim lane: layered top-to-bottom, lanes as rows.
+  sequence: participants in a row, messages stacked in time.
+  ERD / class: tables with columns, not loose ovals, unless the user asks.
+- Orthogonal connectors with arrowheads and non-overlapping labels.
+- Rule-based QC (code): dangling edges, shapes outside boundary, missing
+  start/end on flowcharts, unknown shape types. LLM QC becomes optional polish.
+- "Approved" only when rules pass.
+- Undo/redo stack (at least 50 steps) and Ctrl+Z / Ctrl+Y.
+- Resize handles and snap to grid.
+- Moving a container moves its children.
+
+Phase 2 — A tool people can rely on daily (2–4 weeks)
+- Autosave with "Saved / Saving / Unsaved" and restore after refresh.
+- Version history: keep last N diagram_json snapshots per project, restore any.
+- Export PNG and PDF from the fitted SVG (wire up a real exporter; do not
+  revive the old html2pdf page).
+- Multi-select, align, distribute, copy with edges.
+- Keyboard: Ctrl+D duplicate, Ctrl+A, arrow-nudge.
+- Cancel generation. Show step progress from the trace you already store
+  (Generator / QC) instead of one static "drafting" line.
+- Stable node ids on "revise": user prompt "add courier cancel" edits the
+  current graph instead of redrawing everything.
+- Per-user accounts. Projects belong to a user. Optional share link
+  (view or edit) instead of world-readable GET /api/projects.
+- Backups: nightly mysqldump of database genai.
+
+Phase 3 — Professional product
+- Teams and roles (owner, editor, viewer).
+- Templates ("checkout flow", "CRUD ERD", "login sequence") as starting points.
+- Comments on shapes, not only a label.
+- Real UML/BPMN fidelity where you claim it: class compartments, sequence
+  activations on lifelines, BPMN gateways with labeled exits.
+- Import: paste Mermaid or draw.io XML and convert into toolbox shapes.
+- Stronger model option in settings (flash-lite for drafts, a larger Gemini
+  model for final). Keep flash-lite as the default to control cost.
+- Observability: log generate latency, token use, QC fail rate. Alert if
+  Gemini errors spike.
+- Automated tests: sample JSON renders, type-change does not clobber a saved
+  id, QC rules reject a use case outside its boundary, auth rejects anonymous
+  delete.
+
+
+WHAT NOT TO BUILD YET
+---------------------
+- Real-time multiplayer cursors. Version history and share links matter more.
+- More diagram types. Seven types with weak layout is already too many.
+  Make use case, flowchart, and ERD excellent first.
+- A new visual redesign. The shell is fine. The diagrams and the data safety
+  are what feel unfinished.
+
+
+SUGGESTED NEXT BUILD (if we start coding immediately)
+-----------------------------------------------------
+1. Fix bug 1 (type change must not overwrite the open project).
+2. Fix bug 4 and 5 (samples + flowchart End).
+3. Put a shared secret or login on write/generate endpoints.
+4. Add a small layout pass for use-case diagrams so AI output fits inside
+   the system boundary with non-overlapping labels.
+
+That set turns today's demo into something you can trust with real projects.
