@@ -525,6 +525,12 @@ input {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
+.diagram-edge.is-drop-target polyline:not(.edge-hit) {
+  stroke: #2563eb !important;
+  stroke-width: 4.5 !important;
+  filter: drop-shadow(0 0 5px rgba(37, 99, 235, 0.65));
+}
+
 .toolbox-drag-ghost {
   position: fixed;
   top: 0;

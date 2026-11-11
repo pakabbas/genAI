@@ -1,6 +1,6 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
 import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.9";
-import { DiagramCanvas } from "./canvas.js?v=2.7.9";
+import { DiagramCanvas } from "./canvas.js?v=2.7.9-insert";
 import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
 
 (() => {
@@ -980,15 +980,42 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
   }
 
+  function clearShapeDragChrome() {
+    canvas.viewport.classList.remove("is-shape-drag-over");
+    if (typeof canvas.clearDropTargetEdge === "function") canvas.clearDropTargetEdge();
+  }
+
+  function updateConnectorDropHighlight(clientX, clientY) {
+    if (typeof canvas.hitTestEdgeAtScreen !== "function" || typeof canvas.setDropTargetEdge !== "function") {
+      return;
+    }
+    const edge = canvas.hitTestEdgeAtScreen(clientX, clientY, 12);
+    canvas.setDropTargetEdge(edge ? edge.id : null);
+  }
+
   function addToolboxNodeAtClient(item, clientX, clientY) {
     if (!item || item.kind !== "node") return;
     canvas.setMode("select");
     setActiveTool("select");
+    if (typeof canvas.clearDropTargetEdge === "function") canvas.clearDropTargetEdge();
     const world = canvas._screenToWorld(clientX, clientY);
     const dw = Number(item.default_width) || 120;
     const dh = Number(item.default_height) || 60;
+    const x = world.x - dw / 2;
+    const y = world.y - dh / 2;
+    const hit =
+      typeof canvas.hitTestEdgeAtScreen === "function"
+        ? canvas.hitTestEdgeAtScreen(clientX, clientY, 12)
+        : null;
+    if (hit && typeof canvas.insertNodeOnEdge === "function") {
+      const node = canvas.insertNodeOnEdge(hit.id, item.shape, x, y, { width: dw, height: dh });
+      if (node) {
+        showToast(`Inserted ${item.label}`, "success");
+        return;
+      }
+    }
     // exact: land on the drop point (grid-snapped by addNode); skip palette overlap-stepping.
-    canvas.addNode(item.shape, "", world.x - dw / 2, world.y - dh / 2, { exact: true });
+    canvas.addNode(item.shape, "", x, y, { exact: true });
     showToast(`Added ${item.label}`, "success");
   }
 
@@ -1013,7 +1040,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
 
   function onToolboxDragEnd() {
     toolboxDragItem = null;
-    canvas.viewport.classList.remove("is-shape-drag-over");
+    clearShapeDragChrome();
     setTimeout(() => {
       suppressToolboxClick = false;
     }, 0);
@@ -1024,17 +1051,18 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
     canvas.viewport.classList.add("is-shape-drag-over");
+    updateConnectorDropHighlight(e.clientX, e.clientY);
   }
 
   function onCanvasDragLeave(e) {
     const next = e.relatedTarget;
     if (next && canvas.viewport.contains(next)) return;
-    canvas.viewport.classList.remove("is-shape-drag-over");
+    clearShapeDragChrome();
   }
 
   function onCanvasDrop(e) {
     const item = itemFromDragEvent(e);
-    canvas.viewport.classList.remove("is-shape-drag-over");
+    clearShapeDragChrome();
     if (!item) return;
     e.preventDefault();
     addToolboxNodeAtClient(item, e.clientX, e.clientY);
@@ -1044,7 +1072,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
   function clearToolboxTouch() {
     if (toolboxTouchDrag?.ghost) toolboxTouchDrag.ghost.remove();
     document.body.classList.remove("is-toolbox-touch-drag");
-    canvas.viewport.classList.remove("is-shape-drag-over");
+    clearShapeDragChrome();
     toolboxTouchDrag = null;
   }
 
@@ -1080,7 +1108,10 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     }
     e.preventDefault();
     toolboxTouchDrag.ghost.style.transform = `translate(${t.clientX + 12}px, ${t.clientY + 12}px)`;
-    canvas.viewport.classList.toggle("is-shape-drag-over", isPointInCanvas(t.clientX, t.clientY));
+    const overCanvas = isPointInCanvas(t.clientX, t.clientY);
+    canvas.viewport.classList.toggle("is-shape-drag-over", overCanvas);
+    if (overCanvas) updateConnectorDropHighlight(t.clientX, t.clientY);
+    else if (typeof canvas.clearDropTargetEdge === "function") canvas.clearDropTargetEdge();
   }
 
   function onToolboxTouchEnd(e) {

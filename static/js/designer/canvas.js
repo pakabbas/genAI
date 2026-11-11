@@ -24,6 +24,7 @@ export class DiagramCanvas {
     this.connectFrom = null;
     this.pendingEdgeType = "association";
     this.dragState = null;
+    this._dropTargetEdgeId = null;
     this.panState = null;
     this._spacePanActive = false;
     this._history = [];
@@ -523,6 +524,212 @@ export class DiagramCanvas {
     this.render();
     this.onChange(this.getDiagram());
     return edge;
+  }
+
+  _distPointToSegment(px, py, ax, ay, bx, by) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1e-9) return Math.hypot(px - ax, py - ay);
+    let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  }
+
+  _computeEdgeRoute(edge) {
+    const from = this.diagram.nodes.find((n) => n.id === edge.from);
+    const to = this.diagram.nodes.find((n) => n.id === edge.to);
+    if (!from || !to) return null;
+    if (this.diagram.diagram_type === "sequence") {
+      const isMsg =
+        SEQUENCE_MESSAGE_TYPES.has(edge.type) ||
+        (this._isSequenceParticipant(from) && this._isSequenceParticipant(to));
+      if (isMsg) {
+        const y = Number(edge.meta?.message_y);
+        const msgY = Number.isFinite(y) ? y : this.SEQUENCE_START_Y || 88;
+        return this._sequenceMessageRoute(from, to, msgY);
+      }
+    }
+    const ends = this._edgePoints(from, to, edge);
+    return this._routedEdgePath(from, to, edge, ends.x1, ends.y1, ends.x2, ends.y2);
+  }
+
+  _nodeContainsWorld(x, y) {
+    const skip = new Set(["system_boundary", "pool", "lane", "package", "fragment"]);
+    return this.diagram.nodes.some((n) => {
+      if (skip.has(n.type)) return false;
+      const w = Number(n.width) || 80;
+      const h = Number(n.height) || 40;
+      return x >= n.x && x <= n.x + w && y >= n.y && y <= n.y + h;
+    });
+  }
+
+  hitTestEdgeAtScreen(clientX, clientY, tolerancePx = 12) {
+    const world = this._screenToWorld(clientX, clientY);
+    if (this._nodeContainsWorld(world.x, world.y)) return null;
+    const scale = this.view.scale || 1;
+    const tol = Math.max(8, Number(tolerancePx) || 12) / scale;
+    let best = null;
+    let bestDist = tol;
+    for (const edge of this.diagram.edges) {
+      const route = this._computeEdgeRoute(edge);
+      if (!route || route.length < 2) continue;
+      for (let i = 0; i < route.length - 1; i += 1) {
+        const d = this._distPointToSegment(
+          world.x,
+          world.y,
+          route[i].x,
+          route[i].y,
+          route[i + 1].x,
+          route[i + 1].y,
+        );
+        if (d <= bestDist) {
+          bestDist = d;
+          best = edge;
+        }
+      }
+    }
+    return best;
+  }
+
+  clearDropTargetEdge() {
+    this.setDropTargetEdge(null);
+  }
+
+  setDropTargetEdge(edgeId) {
+    const nextIdValue = edgeId || null;
+    if (this._dropTargetEdgeId === nextIdValue) {
+      // Re-apply the class if a render wiped it but the target is unchanged.
+      if (!nextIdValue || this.edgesLayer?.querySelector(".diagram-edge.is-drop-target")) return;
+    }
+    this._dropTargetEdgeId = nextIdValue;
+    if (!this.edgesLayer) return;
+    for (const el of this.edgesLayer.querySelectorAll(".diagram-edge.is-drop-target")) {
+      el.classList.remove("is-drop-target");
+    }
+    if (!nextIdValue) return;
+    const safe = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(nextIdValue) : nextIdValue;
+    const g = this.edgesLayer.querySelector(`[data-kind="edge"][data-id="${safe}"]`);
+    g?.classList.add("is-drop-target");
+  }
+
+  _cloneEdgeBetween(edge, fromId, toId, label) {
+    return {
+      id: nextId("e", this.diagram.edges),
+      from: fromId,
+      to: toId,
+      label: label || "",
+      type: edge.type || "connector",
+      meta: JSON.parse(JSON.stringify(edge.meta || {})),
+    };
+  }
+
+  _flowAxis(from, to) {
+    const dx = to.x + to.width / 2 - (from.x + from.width / 2);
+    const dy = to.y + to.height / 2 - (from.y + from.height / 2);
+    if (Math.abs(dx) >= Math.abs(dy)) return { axis: "x", dir: dx >= 0 ? 1 : -1 };
+    return { axis: "y", dir: dy >= 0 ? 1 : -1 };
+  }
+
+  _downstreamIds(startId, excludeIds) {
+    const exclude = new Set(excludeIds || []);
+    const outs = new Map();
+    for (const e of this.diagram.edges) {
+      if (!outs.has(e.from)) outs.set(e.from, []);
+      outs.get(e.from).push(e.to);
+    }
+    const seen = new Set();
+    const stack = [startId];
+    while (stack.length) {
+      const id = stack.pop();
+      if (!id || seen.has(id) || exclude.has(id)) continue;
+      seen.add(id);
+      for (const nxt of outs.get(id) || []) stack.push(nxt);
+    }
+    return seen;
+  }
+
+  _shiftDownstreamForInsert(from, to, node) {
+    if (!from || !to || !node || from.id === to.id) return;
+    const gap = Math.max((this.GRID || 20) * 2, 40);
+    const { axis, dir } = this._flowAxis(from, to);
+    const start = (n) => (axis === "x" ? n.x : n.y);
+    const size = (n) => (axis === "x" ? Number(n.width) || 80 : Number(n.height) || 40);
+    const end = (n) => start(n) + size(n);
+
+    // Nudge the new node just enough to clear A plus a normal gap.
+    if (dir > 0) {
+      const minStart = end(from) + gap;
+      if (start(node) < minStart) {
+        const snapped = Math.round(minStart / this.GRID) * this.GRID;
+        if (axis === "x") node.x = snapped;
+        else node.y = snapped;
+      }
+    } else {
+      const maxEnd = start(from) - gap;
+      if (end(node) > maxEnd) {
+        const snapped = Math.round((maxEnd - size(node)) / this.GRID) * this.GRID;
+        if (axis === "x") node.x = snapped;
+        else node.y = snapped;
+      }
+    }
+
+    let shift = 0;
+    if (dir > 0) {
+      shift = Math.max(0, end(node) + gap - start(to));
+    } else {
+      shift = Math.min(0, start(node) - gap - end(to));
+    }
+    if (shift === 0) return;
+    const snappedShift = Math.round(shift / this.GRID) * this.GRID;
+    shift = snappedShift === 0 ? (dir > 0 ? this.GRID : -this.GRID) : snappedShift;
+
+    const moveIds = this._downstreamIds(to.id, [from.id, node.id]);
+    for (const n of this.diagram.nodes) {
+      if (!moveIds.has(n.id)) continue;
+      if (axis === "x") n.x += shift;
+      else n.y += shift;
+    }
+  }
+
+  insertNodeOnEdge(edgeId, type, x, y, opts = {}) {
+    const edge = this.diagram.edges.find((e) => e.id === edgeId);
+    if (!edge || !type) return null;
+    const from = this.diagram.nodes.find((n) => n.id === edge.from);
+    const to = this.diagram.nodes.find((n) => n.id === edge.to);
+    if (!from || !to) return null;
+
+    this._saveUndoPoint();
+    this._dropTargetEdgeId = null;
+
+    let [w, h] = defaultNodeSize(type);
+    if (Number(opts.width) > 0) w = Number(opts.width);
+    if (Number(opts.height) > 0) h = Number(opts.height);
+    const nx = Math.round((Number.isFinite(x) ? x : from.x) / this.GRID) * this.GRID;
+    const ny = Math.round((Number.isFinite(y) ? y : from.y) / this.GRID) * this.GRID;
+    const label =
+      opts.label || type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    const node = {
+      id: nextId("n", this.diagram.nodes),
+      type,
+      label,
+      x: nx,
+      y: ny,
+      width: w,
+      height: h,
+      meta: {},
+    };
+    this.diagram.nodes.push(node);
+    this._shiftDownstreamForInsert(from, to, node);
+
+    this.diagram.edges = this.diagram.edges.filter((e) => e.id !== edge.id);
+    this.diagram.edges.push(this._cloneEdgeBetween(edge, from.id, node.id, edge.label || ""));
+    this.diagram.edges.push(this._cloneEdgeBetween(edge, node.id, to.id, ""));
+
+    this.selectOnly(node.id);
+    this.render();
+    this.onChange(this.getDiagram());
+    return node;
   }
 
   /** Resolve click target — use attributes (SVG dataset is unreliable in some engines). */
