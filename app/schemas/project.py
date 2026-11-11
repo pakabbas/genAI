@@ -9,7 +9,7 @@ from app.schemas.diagram import DiagramDocument, DiagramType
 class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=4000)
-    diagram_type: DiagramType = "use_case"
+    diagram_type: DiagramType = "flowchart"
     title: str = Field(default="Untitled Diagram", max_length=255)
     diagram: DiagramDocument
     external_project_id: str | None = Field(default=None, max_length=255)

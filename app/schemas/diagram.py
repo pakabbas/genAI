@@ -4,10 +4,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 DiagramType = Literal[
+    "flowchart",
     "use_case",
     "erd",
     "swim_lane",
-    "flowchart",
     "sequence",
     "class_diagram",
     "network",
@@ -49,7 +49,7 @@ class DiagramDocument(BaseModel):
 class GenerateDiagramRequest(BaseModel):
     # Ceiling matches settings_registry max; runtime enforces limits.* via /api handlers.
     prompt: str = Field(..., min_length=3, max_length=64000)
-    diagram_type: DiagramType = "use_case"
+    diagram_type: DiagramType = "flowchart"
     existing: DiagramDocument | None = None
     # When true with `existing`, Generator must modify the canvas (not recreate).
     edit_mode: bool = False

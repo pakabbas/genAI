@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 ALL_DIAGRAM_TYPES = [
+    "flowchart",
     "use_case",
     "erd",
     "swim_lane",
-    "flowchart",
     "sequence",
     "class_diagram",
     "network",
@@ -16,10 +16,10 @@ ALL_DIAGRAM_TYPES = [
 ]
 
 DEFAULT_TYPE_LABELS = {
+    "flowchart": "Flowchart",
     "use_case": "Use Case Diagram",
     "erd": "Entity Relationship (ERD)",
     "swim_lane": "Swim Lane / BPMN",
-    "flowchart": "Flowchart",
     "sequence": "Sequence Diagram",
     "class_diagram": "Class Diagram",
     "network": "Network Diagram",
@@ -275,7 +275,7 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
         label="Enabled diagram types", help="Types shown in the UI and accepted by the API.", scope="public",
     ),
     "diagrams.default_type": _s(
-        "diagrams.default_type", type="string", default="use_case", group="diagrams",
+        "diagrams.default_type", type="string", default="flowchart", group="diagrams",
         label="Default diagram type", help="Initial type on a fresh designer load.",
         allowed=ALL_DIAGRAM_TYPES, scope="public",
     ),

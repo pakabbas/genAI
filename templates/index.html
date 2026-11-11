@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-insert" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-insert2" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -64,7 +64,7 @@
           <label class="field-label" for="diagramTypeSelectLeft">Diagram type</label>
           <select id="diagramTypeSelectLeft" class="select-input select-input-tight" aria-label="Diagram type">
             {% for key, label in diagram_types.items() %}
-            <option value="{{ key }}"{% if key == 'use_case' %} selected{% endif %}>{{ label }}</option>
+            <option value="{{ key }}"{% if key == 'flowchart' %} selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </section>
@@ -148,7 +148,7 @@
                 <span class="visually-hidden">Diagram type</span>
                 <select id="diagramTypeSelect" class="select-input select-input-chat" aria-label="Diagram type">
                   {% for key, label in diagram_types.items() %}
-                  <option value="{{ key }}"{% if key == 'use_case' %} selected{% endif %}>{{ label }}</option>
+                  <option value="{{ key }}"{% if key == 'flowchart' %} selected{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
               </label>
@@ -476,6 +476,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}-insert"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}-insert2"></script>
 </body>
 </html>

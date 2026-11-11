@@ -1,6 +1,6 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.9";
-import { DiagramCanvas } from "./canvas.js?v=2.7.9-insert";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.9-insert2";
+import { DiagramCanvas } from "./canvas.js?v=2.7.9-insert2";
 import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
 
 (() => {
@@ -33,7 +33,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     "Tell me what diagram you need. I will ask questions if something important is unclear — then I'll shape a clear brief for your generation.";
 
   const state = {
-    diagramType: "use_case",
+    diagramType: "flowchart",
     toolbox: [],
     lastPrompt: "",
     originalPrompt: "",
@@ -528,7 +528,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     if (typeof cfg["ux.welcome_message"] === "string" && cfg["ux.welcome_message"].trim()) {
       WELCOME_MESSAGE = cfg["ux.welcome_message"].trim();
     }
-    const defaultType = cfg["diagrams.default_type"] || "use_case";
+    const defaultType = cfg["diagrams.default_type"] || "flowchart";
     if (defaultType) state.diagramType = defaultType;
 
     if (els.promptInput) els.promptInput.maxLength = state.chatMessageChars;
@@ -1488,6 +1488,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     state.externalProjectId = null;
     els.projectNameInput.value = "Untitled Project";
     els.projectSelect.value = "";
+    selectDiagramType(state.publicConfig?.["diagrams.default_type"] || "flowchart");
     clearCanvas({ skipConfirm: true });
     resetRequirementsChat({ quiet: true });
     state.editedSinceAiLoad = false;
@@ -2171,7 +2172,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
 
   loadPublicConfig().finally(() => {
     checkHealth();
-    selectDiagramType(state.diagramType || "use_case");
+    selectDiagramType(state.diagramType || "flowchart");
     canvas.resetView();
     if (welcomeShouldShow()) {
       requestAnimationFrame(() => openWelcomeModal());

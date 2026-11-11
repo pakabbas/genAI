@@ -1,8 +1,8 @@
 export const DIAGRAM_TYPE_LABELS = {
+  flowchart: "Flowchart",
   use_case: "Use Case Diagram",
   erd: "Entity Relationship (ERD)",
   swim_lane: "Swim Lane / BPMN",
-  flowchart: "Flowchart",
   sequence: "Sequence Diagram",
   class_diagram: "Class Diagram",
   network: "Network Diagram",

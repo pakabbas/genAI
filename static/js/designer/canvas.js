@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.9";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.9-insert2";
 
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
 
@@ -12,7 +12,7 @@ export class DiagramCanvas {
     this.applyPublicConfig(options.publicConfig || {});
 
     this.diagram = {
-      diagram_type: "use_case",
+      diagram_type: "flowchart",
       title: "Untitled Diagram",
       nodes: [],
       edges: [],

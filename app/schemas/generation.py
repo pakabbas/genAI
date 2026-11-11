@@ -38,7 +38,7 @@ class ChatMessage(BaseModel):
 
 
 class RequirementsChatRequest(BaseModel):
-    diagram_type: DiagramType = "use_case"
+    diagram_type: DiagramType = "flowchart"
     messages: list[ChatMessage] = Field(..., min_length=1, max_length=200)
     force_ready: bool = False
 
