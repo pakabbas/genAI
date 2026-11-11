@@ -136,6 +136,9 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     exportSvgBtn: document.getElementById("exportSvgBtn"),
     exportPngBtn: document.getElementById("exportPngBtn"),
     copyDiagramBtn: document.getElementById("copyDiagramBtn"),
+    copyDiagramMenu: document.getElementById("copyDiagramMenu"),
+    copyDiagramImageBtn: document.getElementById("copyDiagramImageBtn"),
+    copyDiagramJsonBtn: document.getElementById("copyDiagramJsonBtn"),
     exportJsonBtn: document.getElementById("exportJsonBtn"),
     canvasBadge: document.getElementById("canvasBadge"),
     canvasLoading: document.getElementById("canvasLoading"),
@@ -271,6 +274,19 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     contextMenuTargetId = null;
   }
 
+  function hideCopyDiagramMenu() {
+    if (els.copyDiagramMenu) els.copyDiagramMenu.hidden = true;
+    if (els.copyDiagramBtn) els.copyDiagramBtn.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleCopyDiagramMenu() {
+    if (!els.copyDiagramMenu || !els.copyDiagramBtn) return;
+    const willOpen = els.copyDiagramMenu.hidden;
+    hideContextMenu();
+    els.copyDiagramMenu.hidden = !willOpen;
+    els.copyDiagramBtn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+  }
+
   function hideInlineEditor() {
     if (els.canvasInlineEditor) els.canvasInlineEditor.hidden = true;
     if (els.canvasInlineInput) els.canvasInlineInput.dataset.itemId = "";
@@ -336,6 +352,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     },
     onContextMenu: ({ id, clientX, clientY }) => {
       contextMenuTargetId = id;
+      hideCopyDiagramMenu();
       const menu = els.canvasContextMenu;
       if (!menu) return;
       menu.style.left = `${clientX}px`;
@@ -1959,7 +1976,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
             new ClipboardItem({ "image/png": canvas.exportPngBlob(2) }),
           ]);
         }
-        showToast("Copied", "success");
+        showToast("Image copied", "success");
         return;
       } catch {
         /* fall through to SVG text */
@@ -1967,7 +1984,20 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     }
     try {
       await copySvgText();
-      showToast("Copied", "success");
+      showToast("Image copied", "success");
+    } catch {
+      showToast("Copy is not available in this browser.", "error");
+    }
+  }
+
+  async function copyDiagramJson() {
+    try {
+      const diagram = buildDiagramPayload();
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("clipboard unavailable");
+      }
+      await navigator.clipboard.writeText(JSON.stringify(diagram, null, 2));
+      showToast("JSON copied", "success");
     } catch {
       showToast("Copy is not available in this browser.", "error");
     }
@@ -2110,6 +2140,9 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
 
   document.addEventListener("click", (e) => {
     if (!els.canvasContextMenu?.contains(e.target)) hideContextMenu();
+    const inCopyMenu =
+      els.copyDiagramMenu?.contains(e.target) || els.copyDiagramBtn?.contains(e.target);
+    if (!inCopyMenu) hideCopyDiagramMenu();
   });
 
   els.welcomeCloseBtn?.addEventListener("click", closeWelcomeModal);
@@ -2123,6 +2156,11 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+      if (els.copyDiagramMenu && !els.copyDiagramMenu.hidden) {
+        e.preventDefault();
+        hideCopyDiagramMenu();
+        return;
+      }
       if (els.welcomeModal && !els.welcomeModal.hidden) {
         e.preventDefault();
         closeWelcomeModal();
@@ -2186,7 +2224,20 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
   els.fitBtn.addEventListener("click", () => canvas.fitToContent());
   els.exportSvgBtn.addEventListener("click", exportSvg);
   els.exportPngBtn?.addEventListener("click", exportPng);
-  els.copyDiagramBtn?.addEventListener("click", copyDiagram);
+  els.copyDiagramBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleCopyDiagramMenu();
+  });
+  els.copyDiagramImageBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    hideCopyDiagramMenu();
+    copyDiagram();
+  });
+  els.copyDiagramJsonBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    hideCopyDiagramMenu();
+    copyDiagramJson();
+  });
   els.exportJsonBtn.addEventListener("click", exportJson);
 
   els.panelToggleLeft?.addEventListener("click", () => togglePanel("left"));

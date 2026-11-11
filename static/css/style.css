@@ -1096,6 +1096,12 @@ body.is-toolbox-touch-drag {
   gap: 0.35rem;
 }
 
+.copy-diagram-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
 .canvas-actions .btn-copy-diagram {
   display: inline-flex;
   align-items: center;
@@ -1109,6 +1115,7 @@ body.is-toolbox-touch-drag {
   width: 15px;
   height: 15px;
 }
+
 
 .canvas-badge {
   padding: 0.22rem 0.5rem;
@@ -1242,6 +1249,15 @@ body.is-toolbox-touch-drag {
   border: 1px solid var(--border);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
+}
+
+.copy-diagram-menu.canvas-context-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: auto;
+  min-width: 132px;
+  z-index: 220;
 }
 
 .context-menu-item {

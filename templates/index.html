@@ -119,12 +119,18 @@
           <button type="button" class="btn btn-ghost btn-sm" id="zoomInBtn" title="Zoom in">+</button>
           <button type="button" class="btn btn-ghost btn-sm" id="exportSvgBtn">SVG</button>
           <button type="button" class="btn btn-ghost btn-sm" id="exportPngBtn" title="PNG at 2x">PNG</button>
-          <button type="button" class="btn btn-ghost btn-sm btn-copy-diagram" id="copyDiagramBtn" title="Copy diagram" aria-label="Copy diagram">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="8" y="3" width="8" height="4" rx="1"/>
-              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
-            </svg>
-          </button>
+          <div class="copy-diagram-wrap">
+            <button type="button" class="btn btn-ghost btn-sm btn-copy-diagram" id="copyDiagramBtn" title="Copy" aria-label="Copy" aria-haspopup="menu" aria-expanded="false" aria-controls="copyDiagramMenu">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="8" y="3" width="8" height="4" rx="1"/>
+                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+              </svg>
+            </button>
+            <div id="copyDiagramMenu" class="copy-diagram-menu canvas-context-menu" hidden role="menu" aria-label="Copy options">
+              <button type="button" class="context-menu-item" id="copyDiagramImageBtn" role="menuitem">Copy image</button>
+              <button type="button" class="context-menu-item" id="copyDiagramJsonBtn" role="menuitem">Copy JSON</button>
+            </div>
+          </div>
           <button type="button" class="btn btn-ghost btn-sm" id="exportJsonBtn">JSON</button>
           <button type="button" class="btn btn-ghost btn-sm" id="clearBtn">Clear</button>
         </div>
