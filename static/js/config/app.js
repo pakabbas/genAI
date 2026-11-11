@@ -6,6 +6,13 @@ const els = {
   nav: document.getElementById("configNav"),
   panels: document.getElementById("configPanels"),
   promptsPanel: document.getElementById("promptsPanel"),
+  knowledgePanel: document.getElementById("knowledgePanel"),
+  kbSearchInput: document.getElementById("kbSearchInput"),
+  kbFilterType: document.getElementById("kbFilterType"),
+  kbTableBody: document.getElementById("kbTableBody"),
+  kbEmpty: document.getElementById("kbEmpty"),
+  kbUploadBtn: document.getElementById("kbUploadBtn"),
+  kbRefreshBtn: document.getElementById("kbRefreshBtn"),
   geminiKeyPanel: document.getElementById("geminiKeyPanel"),
   geminiKeyStatus: document.getElementById("geminiKeyStatus"),
   geminiKeyInput: document.getElementById("geminiKeyInput"),
@@ -196,6 +203,7 @@ function renderNav() {
     { id: "gemini_key", label: "Gemini API key" },
     ...state.groups.map((g) => ({ id: g.id, label: g.label })),
     { id: "prompts", label: "Agent Prompts" },
+    { id: "knowledge_base", label: "Diagram Knowledge Base" },
   ];
   els.nav.innerHTML = items
     .map(
@@ -214,20 +222,42 @@ function renderNav() {
   });
 }
 
+function filterKnowledgeBase() {
+  const rows = els.kbTableBody?.querySelectorAll("tr") || [];
+  const query = (els.kbSearchInput?.value || "").trim().toLowerCase();
+  const type = els.kbFilterType?.value || "";
+  let visible = 0;
+  rows.forEach((row) => {
+    const matchesType = !type || row.dataset.type === type;
+    const haystack = `${row.dataset.search || ""} ${row.textContent || ""}`.toLowerCase();
+    const matchesQuery = !query || haystack.includes(query);
+    const show = matchesType && matchesQuery;
+    row.hidden = !show;
+    if (show) visible += 1;
+  });
+  if (els.kbEmpty) els.kbEmpty.hidden = visible > 0;
+}
+
 function showGroup(groupId) {
   state.activeGroup = groupId;
   renderNav();
   const isPrompts = groupId === "prompts";
   const isGeminiKey = groupId === "gemini_key";
+  const isKnowledge = groupId === "knowledge_base";
   if (els.promptsPanel) els.promptsPanel.hidden = !isPrompts;
   if (els.geminiKeyPanel) els.geminiKeyPanel.hidden = !isGeminiKey;
-  els.panels.hidden = isPrompts || isGeminiKey;
+  if (els.knowledgePanel) els.knowledgePanel.hidden = !isKnowledge;
+  els.panels.hidden = isPrompts || isGeminiKey || isKnowledge;
   if (isPrompts) {
     loadPromptList();
     return;
   }
   if (isGeminiKey) {
     loadGeminiKeyStatus();
+    return;
+  }
+  if (isKnowledge) {
+    filterKnowledgeBase();
     return;
   }
   const group = state.groups.find((g) => g.id === groupId);
@@ -562,6 +592,16 @@ els.geminiKeyInput?.addEventListener("keydown", (e) => {
     e.preventDefault();
     saveGeminiKey();
   }
+});
+
+els.kbSearchInput?.addEventListener("input", filterKnowledgeBase);
+els.kbFilterType?.addEventListener("change", filterKnowledgeBase);
+els.kbUploadBtn?.addEventListener("click", () => {
+  showToast("Upload will be available in a later release.", "info");
+});
+els.kbRefreshBtn?.addEventListener("click", () => {
+  filterKnowledgeBase();
+  showToast("Knowledge base index is current.", "success");
 });
 
 loadConfig().catch((err) => {

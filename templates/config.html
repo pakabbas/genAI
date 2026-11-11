@@ -54,6 +54,140 @@
         </div>
       </div>
       <div id="configPanels"></div>
+      <div class="config-knowledge" id="knowledgePanel" hidden>
+        <div class="config-card">
+          <h2>Diagram Knowledge Base</h2>
+          <p class="config-help">Reference diagrams available to the generator for style, structure, and domain patterns. Upload SVG or JSON diagrams to expand coverage across diagram types.</p>
+          <div class="kb-toolbar">
+            <div class="kb-search">
+              <label class="visually-hidden" for="kbSearchInput">Search knowledge base</label>
+              <input type="search" id="kbSearchInput" placeholder="Search by name, tag, or category" autocomplete="off" />
+            </div>
+            <div class="kb-toolbar-actions">
+              <select id="kbFilterType" class="select-input" aria-label="Filter by diagram type">
+                <option value="">All types</option>
+                <option value="flowchart">Flowchart</option>
+                <option value="erd">ERD</option>
+                <option value="swimlane">Swim Lane</option>
+                <option value="usecase">Use Case</option>
+              </select>
+              <button type="button" class="btn btn-secondary btn-sm" id="kbUploadBtn">Upload diagram</button>
+            </div>
+          </div>
+          <div class="kb-summary status-ro" id="kbSummary">
+            <div><strong>Library:</strong> 8 diagrams · 456 KB total</div>
+            <div><strong>Indexed for generation:</strong> 7 active · 1 reviewing</div>
+          </div>
+          <div class="kb-table-wrap">
+            <table class="kb-table" id="kbTable">
+              <thead>
+                <tr>
+                  <th scope="col">Diagram</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Tags</th>
+                  <th scope="col">Uploaded</th>
+                  <th scope="col">Size</th>
+                  <th scope="col">Status</th>
+                </tr>
+              </thead>
+              <tbody id="kbTableBody">
+                <tr data-type="swimlane" data-search="order fulfillment swimlane logistics warehouse shipping">
+                  <td>
+                    <div class="kb-name">Order Fulfillment Swimlane</div>
+                    <div class="kb-file">order-fulfillment-swimlane.svg</div>
+                  </td>
+                  <td><span class="kb-type">Swim Lane</span></td>
+                  <td><span class="kb-tag">Logistics</span><span class="kb-tag">Warehouse</span></td>
+                  <td>Nov 2, 2026</td>
+                  <td>84 KB</td>
+                  <td><span class="kb-status is-active">Indexed</span></td>
+                </tr>
+                <tr data-type="erd" data-search="customer onboarding erd crm accounts contacts">
+                  <td>
+                    <div class="kb-name">Customer Onboarding ERD</div>
+                    <div class="kb-file">customer-onboarding-erd.json</div>
+                  </td>
+                  <td><span class="kb-type">ERD</span></td>
+                  <td><span class="kb-tag">CRM</span><span class="kb-tag">Accounts</span></td>
+                  <td>Oct 28, 2026</td>
+                  <td>62 KB</td>
+                  <td><span class="kb-status is-active">Indexed</span></td>
+                </tr>
+                <tr data-type="flowchart" data-search="payment authorization flowchart payments fraud gateway">
+                  <td>
+                    <div class="kb-name">Payment Authorization Flow</div>
+                    <div class="kb-file">payment-authorization-flow.svg</div>
+                  </td>
+                  <td><span class="kb-type">Flowchart</span></td>
+                  <td><span class="kb-tag">Payments</span><span class="kb-tag">Fraud</span></td>
+                  <td>Oct 21, 2026</td>
+                  <td>41 KB</td>
+                  <td><span class="kb-status is-active">Indexed</span></td>
+                </tr>
+                <tr data-type="usecase" data-search="inventory reservation use case warehouse stock">
+                  <td>
+                    <div class="kb-name">Inventory Reservation Use Cases</div>
+                    <div class="kb-file">inventory-reservation-usecase.json</div>
+                  </td>
+                  <td><span class="kb-type">Use Case</span></td>
+                  <td><span class="kb-tag">Warehouse</span><span class="kb-tag">Stock</span></td>
+                  <td>Oct 14, 2026</td>
+                  <td>37 KB</td>
+                  <td><span class="kb-status is-active">Indexed</span></td>
+                </tr>
+                <tr data-type="swimlane" data-search="claims adjudication swimlane insurance medical">
+                  <td>
+                    <div class="kb-name">Claims Adjudication Swimlane</div>
+                    <div class="kb-file">claims-adjudication-swimlane.svg</div>
+                  </td>
+                  <td><span class="kb-type">Swim Lane</span></td>
+                  <td><span class="kb-tag">Insurance</span><span class="kb-tag">Medical</span></td>
+                  <td>Sep 30, 2026</td>
+                  <td>96 KB</td>
+                  <td><span class="kb-status is-review">Reviewing</span></td>
+                </tr>
+                <tr data-type="erd" data-search="vendor master data erd procurement suppliers">
+                  <td>
+                    <div class="kb-name">Vendor Master Data ERD</div>
+                    <div class="kb-file">vendor-master-data-erd.json</div>
+                  </td>
+                  <td><span class="kb-type">ERD</span></td>
+                  <td><span class="kb-tag">Procurement</span><span class="kb-tag">Suppliers</span></td>
+                  <td>Sep 18, 2026</td>
+                  <td>55 KB</td>
+                  <td><span class="kb-status is-active">Indexed</span></td>
+                </tr>
+                <tr data-type="flowchart" data-search="mobile checkout sequence flow ecommerce cart">
+                  <td>
+                    <div class="kb-name">Mobile Checkout Sequence</div>
+                    <div class="kb-file">mobile-checkout-sequence.svg</div>
+                  </td>
+                  <td><span class="kb-type">Flowchart</span></td>
+                  <td><span class="kb-tag">eCommerce</span><span class="kb-tag">Checkout</span></td>
+                  <td>Sep 9, 2026</td>
+                  <td>48 KB</td>
+                  <td><span class="kb-status is-active">Indexed</span></td>
+                </tr>
+                <tr data-type="usecase" data-search="support ticket lifecycle use case support helpdesk">
+                  <td>
+                    <div class="kb-name">Support Ticket Lifecycle</div>
+                    <div class="kb-file">support-ticket-lifecycle.json</div>
+                  </td>
+                  <td><span class="kb-type">Use Case</span></td>
+                  <td><span class="kb-tag">Support</span><span class="kb-tag">Helpdesk</span></td>
+                  <td>Aug 27, 2026</td>
+                  <td>33 KB</td>
+                  <td><span class="kb-status is-active">Indexed</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="kb-empty" id="kbEmpty" hidden>No diagrams match the current filters.</p>
+          <div class="config-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="kbRefreshBtn">Refresh index</button>
+          </div>
+        </div>
+      </div>
       <div class="config-prompts" id="promptsPanel" hidden>
         <div class="config-card">
           <h2>Agent Prompts</h2>
