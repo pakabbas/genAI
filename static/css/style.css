@@ -1108,8 +1108,23 @@ body.is-toolbox-touch-drag {
 
 .canvas-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 0.35rem;
+}
+
+.canvas-actions .btn-copy-diagram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 0.3rem 0.4rem;
+}
+
+.canvas-actions .btn-copy-diagram svg {
+  display: block;
+  width: 15px;
+  height: 15px;
 }
 
 .canvas-badge {
@@ -1511,15 +1526,17 @@ body.is-toolbox-touch-drag {
   }
 
   .canvas-actions {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 0.3rem;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
+    overflow-x: auto;
   }
 
   .canvas-actions .btn-sm {
-    min-height: 36px;
-    padding: 0.25rem 0.2rem;
-    font-size: 0.72rem;
+    min-height: 32px;
+    padding: 0.2rem 0.28rem;
+    font-size: 0.7rem;
+    flex: 0 0 auto;
   }
 
   .canvas-stage {

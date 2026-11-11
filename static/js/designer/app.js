@@ -136,6 +136,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     fitBtn: document.getElementById("fitBtn"),
     exportSvgBtn: document.getElementById("exportSvgBtn"),
     exportPngBtn: document.getElementById("exportPngBtn"),
+    copyDiagramBtn: document.getElementById("copyDiagramBtn"),
     exportJsonBtn: document.getElementById("exportJsonBtn"),
     canvasBadge: document.getElementById("canvasBadge"),
     canvasLoading: document.getElementById("canvasLoading"),
@@ -1931,6 +1932,50 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     }
   }
 
+  async function copySvgText() {
+    const svg = canvas.exportSvg();
+    if (!navigator.clipboard?.writeText) {
+      throw new Error("clipboard unavailable");
+    }
+    await navigator.clipboard.writeText(svg);
+  }
+
+  async function copyDiagram() {
+    const canWriteImage =
+      typeof navigator.clipboard?.write === "function" && typeof window.ClipboardItem === "function";
+    if (canWriteImage) {
+      try {
+        const pngPromise = canvas.exportPngBlob(2);
+        const svgTextPromise = Promise.resolve().then(() => {
+          const svg = canvas.exportSvg();
+          return new Blob([svg], { type: "text/plain" });
+        });
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              "image/png": pngPromise,
+              "text/plain": svgTextPromise,
+            }),
+          ]);
+        } catch {
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/png": canvas.exportPngBlob(2) }),
+          ]);
+        }
+        showToast("Copied", "success");
+        return;
+      } catch {
+        /* fall through to SVG text */
+      }
+    }
+    try {
+      await copySvgText();
+      showToast("Copied", "success");
+    } catch {
+      showToast("Copy is not available in this browser.", "error");
+    }
+  }
+
   function exportJson() {
     const diagram = canvas.getDiagram();
     diagram.title = els.diagramTitle.value.trim() || diagram.title;
@@ -2144,6 +2189,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
   els.fitBtn.addEventListener("click", () => canvas.fitToContent());
   els.exportSvgBtn.addEventListener("click", exportSvg);
   els.exportPngBtn?.addEventListener("click", exportPng);
+  els.copyDiagramBtn?.addEventListener("click", copyDiagram);
   els.exportJsonBtn.addEventListener("click", exportJson);
 
   els.panelToggleLeft?.addEventListener("click", () => togglePanel("left"));
