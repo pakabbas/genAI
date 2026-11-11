@@ -10,6 +10,8 @@ from typing import Any
 from app.config import get_settings as get_env_settings
 from app.db.connection import check_connection, get_connection
 from app.services.settings_registry import (
+    ALL_DIAGRAM_TYPES,
+    DEFAULT_TYPE_LABELS,
     GROUP_META,
     PROMPT_KEYS,
     SETTINGS_REGISTRY,
@@ -327,7 +329,17 @@ def get_grouped() -> dict[str, Any]:
         "provider": get_value("ai.provider"),
     }
     ordered = sorted(groups.values(), key=lambda g: g["order"])
-    return {"groups": ordered, "status": status, "prompt_keys": PROMPT_KEYS}
+    custom_labels = get_value("diagrams.type_labels")
+    labels = {**DEFAULT_TYPE_LABELS, **(custom_labels if isinstance(custom_labels, dict) else {})}
+    return {
+        "groups": ordered,
+        "status": status,
+        "prompt_keys": PROMPT_KEYS,
+        "prompt_contexts": [
+            {"diagram_type": t, "label": labels[t], "prompt_key": f"generator.context.{t}"}
+            for t in ALL_DIAGRAM_TYPES
+        ],
+    }
 
 
 def _app_version() -> str:
@@ -384,6 +396,9 @@ def _code_prompt_default(prompt_key: str) -> str:
             "Do not omit activities, lanes, decisions, or branches that appear in the brief/inventory.\n"
             "Do not invent unrelated flows (refunds, retries, etc.) unless they were requested.\n"
         )
+    if prompt_key.startswith("generator.context."):
+        dtype = prompt_key.split(".", 2)[2]
+        return diagrams_mod.default_type_context(dtype)
     if prompt_key.startswith("generator.guidance."):
         dtype = prompt_key.split(".", 2)[2]
         return diagrams_mod.DIAGRAM_TYPE_GUIDANCE.get(dtype, "")

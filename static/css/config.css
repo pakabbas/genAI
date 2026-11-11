@@ -214,3 +214,30 @@ body.config-page {
 .config-gemini-key .status-ro code {
   font-family: var(--mono);
 }
+
+.config-prompt-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.75rem 0;
+}
+
+.config-prompt-tabs button {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.65rem;
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.config-prompt-tabs button[aria-selected="true"],
+.config-prompt-tabs button:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.config-main { min-width: 0; }

@@ -1,6 +1,6 @@
 """Requirements Analyst (Agent 0) — clarify important gaps, then enhance the prompt."""
 
-from app.prompts.diagrams import DIAGRAM_TYPE_GUIDANCE, DIAGRAM_TYPE_LABELS, toolbox_catalog
+from app.prompts.diagrams import effective_type_context, type_label
 from app.schemas.diagram import DiagramType
 
 REQUIREMENTS_SYSTEM_INSTRUCTION = """You are the Requirements Analyst for an AI diagram studio.
@@ -119,14 +119,8 @@ def build_requirements_user_prompt(
     max_clarify_rounds: int = 3,
     clarify_mode: str = "strict",
 ) -> str:
-    label = DIAGRAM_TYPE_LABELS[diagram_type]
-    try:
-        from app.services import settings_service as cfg
-
-        guidance = cfg.active_prompt_body(f"generator.guidance.{diagram_type}") or DIAGRAM_TYPE_GUIDANCE[diagram_type]
-    except Exception:
-        guidance = DIAGRAM_TYPE_GUIDANCE[diagram_type]
-    catalog = toolbox_catalog(diagram_type)
+    label = type_label(diagram_type)
+    context = effective_type_context(diagram_type)
     clarify_hint = _TYPE_CLARIFY_HINTS.get(diagram_type, "")
 
     history_lines: list[str] = []
@@ -173,14 +167,11 @@ def build_requirements_user_prompt(
 
     return f"""Diagram type selected: {label} ({diagram_type})
 
-Type guidance:
-{guidance}
+Selected type context (guidance and toolbox):
+{context}
 
 Clarification focus for this type:
 {clarify_hint}
-
-Available toolbox shapes:
-{catalog}
 
 {force_note}
 {round_note}

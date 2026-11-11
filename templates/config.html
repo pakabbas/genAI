@@ -7,8 +7,8 @@
   <meta name="app-root" content="{{ root_path }}" />
   <link rel="icon" href="{{ root_path }}/static/favicon.svg" type="image/svg+xml" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-key" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/config.css?v={{ app_version }}-key" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-typecontexts" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/config.css?v={{ app_version }}-typecontexts" />
 </head>
 <body class="config-page">
   <div class="ambient ambient-a"></div>
@@ -57,12 +57,16 @@
       <div class="config-prompts" id="promptsPanel" hidden>
         <div class="config-card">
           <h2>Agent Prompts</h2>
-          <p class="config-help">Edit versioned prompt overrides. Reset restores the code default.</p>
-          <label class="field-label" for="promptKeySelect">Prompt</label>
-          <select id="promptKeySelect" class="select-input"></select>
+          <p class="config-help">The generator receives Shared Base plus only the selected diagram type's context. Each type tab contains its rules and toolbox catalog with default sizes. Save creates and activates a DB override; Reset restores the file-backed default. Full context overrides take precedence over legacy guidance and toolbox defaults. To change the actual canvas toolbox sizes/availability, use Diagram Types &amp; Toolbox.</p>
+          <div id="promptTabs" class="config-prompt-tabs" role="tablist" aria-label="Prompt contexts"></div>
+          <p id="promptContextHelp" class="config-help"></p>
+          <div id="promptKeyField">
+            <label class="field-label" for="promptKeySelect">Prompt</label>
+            <select id="promptKeySelect" class="select-input"></select>
+          </div>
           <label class="field-label" for="promptVersionSelect">Version</label>
           <select id="promptVersionSelect" class="select-input"></select>
-          <textarea id="promptBody" class="prompt-editor" rows="18" spellcheck="false"></textarea>
+          <textarea id="promptBody" class="prompt-editor" rows="18" spellcheck="false" aria-label="Prompt context" role="tabpanel"></textarea>
           <div class="config-prompt-meta">
             <span id="promptCharCount">0</span>
             <span id="promptVersionLabel"></span>
@@ -78,6 +82,6 @@
   </main>
 
   <div class="toast-container" id="toastContainer" aria-live="polite"></div>
-  <script type="module" src="{{ root_path }}/static/js/config/app.js?v={{ app_version }}-key"></script>
+  <script type="module" src="{{ root_path }}/static/js/config/app.js?v={{ app_version }}-typecontexts"></script>
 </body>
 </html>

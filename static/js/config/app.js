@@ -13,6 +13,9 @@ const els = {
   geminiKeySave: document.getElementById("geminiKeySaveBtn"),
   status: document.getElementById("configStatus"),
   toast: document.getElementById("toastContainer"),
+  promptTabs: document.getElementById("promptTabs"),
+  promptKeyField: document.getElementById("promptKeyField"),
+  promptContextHelp: document.getElementById("promptContextHelp"),
   promptKey: document.getElementById("promptKeySelect"),
   promptVersion: document.getElementById("promptVersionSelect"),
   promptBody: document.getElementById("promptBody"),
@@ -23,7 +26,10 @@ const els = {
   promptReset: document.getElementById("promptResetBtn"),
 };
 
-let state = { groups: [], status: {}, dirty: false, activeGroup: null, draft: {} };
+let state = { groups: [], status: {}, dirty: false, promptDirty: false, activeGroup: null, draft: {}, promptKeys: [], promptContexts: [], promptTab: "shared" };
+let promptLoadId = 0;
+let loadedPromptKey = null;
+let previewPromptVersion = "0";
 
 function showToast(msg, type = "info") {
   const el = document.createElement("div");
@@ -199,8 +205,9 @@ function renderNav() {
     .join("");
   els.nav.querySelectorAll("button").forEach((btn) => {
     btn.addEventListener("click", () => {
-      if (state.dirty && !confirm("Discard unsaved changes in this group?")) return;
+      if ((state.dirty || state.promptDirty) && !confirm("Discard unsaved changes in this group?")) return;
       state.dirty = false;
+      state.promptDirty = false;
       state.draft = {};
       showGroup(btn.dataset.group);
     });
@@ -303,11 +310,10 @@ async function loadConfig() {
   renderStatus();
   renderGeminiKeyStatus();
   if (!state.activeGroup) state.activeGroup = "gemini_key";
+  state.promptKeys = data.prompt_keys || [];
+  state.promptContexts = data.prompt_contexts || [];
   renderNav();
   showGroup(state.activeGroup);
-  // Populate prompt keys from API list
-  const keys = data.prompt_keys || [];
-  els.promptKey.innerHTML = keys.map((k) => `<option value="${escapeAttr(k)}">${escapeHtml(k)}</option>`).join("");
 }
 
 // 2.7.6: read every field at save time instead of relying only on input/change
@@ -396,33 +402,101 @@ async function resetGroup(group) {
   showToast("Group reset.", "success");
 }
 
-async function loadPromptList() {
-  await loadPrompt(els.promptKey.value || els.promptKey.options[0]?.value);
+function promptTabItems() {
+  return [
+    { id: "shared", label: "Shared Base", keys: ["generator.system"] },
+    ...state.promptContexts.map((c) => ({ id: c.diagram_type, label: c.label, keys: [c.prompt_key] })),
+    { id: "other", label: "Other Agent Prompts", keys: state.promptKeys.filter((key) => key !== "generator.system" && !key.startsWith("generator.context.")) },
+  ];
 }
 
-async function loadPrompt(key) {
-  if (!key) return;
-  const res = await fetch(withRoot(`/api/config/prompts/${encodeURIComponent(key)}`));
-  const data = await res.json();
-  if (!res.ok) {
-    showToast(data.detail || "Failed to load prompt", "error");
+async function loadPromptList() {
+  const tabs = promptTabItems();
+  const tab = tabs.find((item) => item.id === state.promptTab) || tabs[0];
+  state.promptTab = tab.id;
+  const previousKey = els.promptKey.value;
+  els.promptTabs.innerHTML = tabs.map((item) =>
+    `<button type="button" role="tab" id="prompt-tab-${escapeAttr(item.id)}" aria-controls="promptBody" aria-selected="${item.id === tab.id}" data-prompt-tab="${escapeAttr(item.id)}">${escapeHtml(item.label)}</button>`
+  ).join("");
+  els.promptTabs.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.dataset.promptTab === state.promptTab && loadedPromptKey) return;
+      if (state.promptDirty && !confirm("Discard unsaved prompt changes?")) return;
+      state.promptDirty = false;
+      state.promptTab = button.dataset.promptTab;
+      loadPromptList();
+    });
+  });
+  els.promptKey.innerHTML = tab.keys.map((key) => `<option value="${escapeAttr(key)}">${escapeHtml(key)}</option>`).join("");
+  if (tab.keys.includes(previousKey)) els.promptKey.value = previousKey;
+  els.promptKeyField.hidden = tab.keys.length === 1;
+  els.promptBody.setAttribute("aria-labelledby", `prompt-tab-${tab.id}`);
+  els.promptContextHelp.textContent = tab.id === "shared"
+    ? "Shared, type-neutral JSON schema, completeness, edit stability and layout rules. Always included."
+    : tab.id === "other"
+      ? "Analyst, planner, QC and legacy guidance prompts. Legacy guidance seeds each type's default context; a saved full context takes precedence."
+      : `${tab.label}: this context alone is combined with Shared Base. Key: ${tab.keys[0]}`;
+  await loadPrompt(els.promptKey.value);
+}
+
+function setPromptLoading(loading) {
+  els.promptBody.disabled = loading;
+  els.promptVersion.disabled = loading;
+  els.promptSave.disabled = loading;
+  els.promptActivate.disabled = loading;
+  els.promptReset.disabled = loading;
+}
+
+async function loadPrompt(key, version = null) {
+  if (!key || key !== els.promptKey.value) return;
+  const loadId = ++promptLoadId;
+  loadedPromptKey = null;
+  setPromptLoading(true);
+  els.promptBody.value = "";
+  els.promptChars.textContent = "0 chars";
+  els.promptVersionLabel.textContent = "Loading…";
+  try {
+    const query = version === null ? "" : `?version=${version}`;
+    const res = await fetch(withRoot(`/api/config/prompts/${encodeURIComponent(key)}${query}`));
+    const data = await res.json();
+    if (loadId !== promptLoadId || key !== els.promptKey.value) return;
+    if (!res.ok) throw new Error(data.detail || "Failed to load prompt");
+    state.promptDirty = false;
+    loadedPromptKey = key;
+    els.promptBody.value = data.body || "";
+    els.promptChars.textContent = `${(data.body || "").length} chars`;
+    els.promptVersionLabel.textContent = version !== null
+      ? (version === 0 ? "preview: code default" : `preview: v${version}`)
+      : (data.is_default ? "using code default" : `active v${data.version}`);
+    const versions = data.versions || [];
+    els.promptVersion.innerHTML = `<option value="0">Code default</option>` +
+      versions.map((v) => `<option value="${v.version}">v${v.version} (${v.chars} chars)</option>`).join("");
+    previewPromptVersion = String(version ?? data.version ?? 0);
+    els.promptVersion.value = previewPromptVersion;
+    setPromptLoading(false);
+  } catch (err) {
+    if (loadId !== promptLoadId || key !== els.promptKey.value) return;
+    els.promptVersionLabel.textContent = "Prompt load failed — select the tab again to retry.";
+    showToast(err.message || "Failed to load prompt", "error");
+  }
+}
+
+els.promptKey?.addEventListener("change", () => {
+  if (state.promptDirty && !confirm("Discard unsaved prompt changes?")) {
+    els.promptKey.value = loadedPromptKey;
     return;
   }
-  els.promptBody.value = data.body || "";
-  els.promptChars.textContent = `${(data.body || "").length} chars`;
-  els.promptVersionLabel.textContent = data.is_default ? "using code default" : `active v${data.version}`;
-  const versions = data.versions || [];
-  els.promptVersion.innerHTML =
-    `<option value="0">Code default</option>` +
-    versions.map((v) => `<option value="${v.version}" ${v.is_active ? "selected" : ""}>v${v.version} (${v.chars} chars)</option>`).join("");
-}
+  state.promptDirty = false;
+  loadPrompt(els.promptKey.value);
+});
 
-els.promptKey?.addEventListener("change", () => loadPrompt(els.promptKey.value));
 els.promptBody?.addEventListener("input", () => {
+  state.promptDirty = true;
   els.promptChars.textContent = `${els.promptBody.value.length} chars`;
 });
 els.promptSave?.addEventListener("click", async () => {
   const key = els.promptKey.value;
+  if (!loadedPromptKey || loadedPromptKey !== key) return;
   const res = await fetch(withRoot(`/api/config/prompts/${encodeURIComponent(key)}`), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -438,6 +512,7 @@ els.promptSave?.addEventListener("click", async () => {
 });
 els.promptActivate?.addEventListener("click", async () => {
   const key = els.promptKey.value;
+  if (!loadedPromptKey || loadedPromptKey !== key) return;
   const version = parseInt(els.promptVersion.value, 10);
   if (!version) {
     await fetch(withRoot(`/api/config/prompts/${encodeURIComponent(key)}/reset`), { method: "POST" });
@@ -459,30 +534,23 @@ els.promptActivate?.addEventListener("click", async () => {
 });
 els.promptReset?.addEventListener("click", async () => {
   const key = els.promptKey.value;
+  if (!loadedPromptKey || loadedPromptKey !== key) return;
   if (!confirm("Deactivate overrides and use the code default?")) return;
   await fetch(withRoot(`/api/config/prompts/${encodeURIComponent(key)}/reset`), { method: "POST" });
   showToast("Prompt reset to default.", "success");
   await loadPrompt(key);
 });
-els.promptVersion?.addEventListener("change", async () => {
-  const key = els.promptKey.value;
-  const version = parseInt(els.promptVersion.value, 10) || 0;
-  const res = await fetch(
-    withRoot(`/api/config/prompts/${encodeURIComponent(key)}?version=${version}`),
-  );
-  const data = await res.json();
-  if (!res.ok) {
-    showToast(data.detail || "Preview failed", "error");
+els.promptVersion?.addEventListener("change", () => {
+  if (state.promptDirty && !confirm("Discard unsaved prompt changes?")) {
+    els.promptVersion.value = previewPromptVersion;
     return;
   }
-  els.promptBody.value = data.body || "";
-  els.promptChars.textContent = `${els.promptBody.value.length} chars`;
-  els.promptVersionLabel.textContent =
-    version === 0 ? "preview: code default" : `preview: v${version}`;
+  state.promptDirty = false;
+  loadPrompt(els.promptKey.value, parseInt(els.promptVersion.value, 10) || 0);
 });
 
 window.addEventListener("beforeunload", (e) => {
-  if (state.dirty) {
+  if (state.dirty || state.promptDirty) {
     e.preventDefault();
     e.returnValue = "";
   }

@@ -1,6 +1,6 @@
 """QC auditor prompt builders — type-specific system instructions live under app/prompts/qc/."""
 
-from app.prompts.diagrams import DIAGRAM_TYPE_GUIDANCE, DIAGRAM_TYPE_LABELS, toolbox_catalog
+from app.prompts.diagrams import effective_type_context
 from app.prompts.qc import QC_SYSTEM_INSTRUCTION, qc_system_for
 from app.schemas.diagram import DiagramDocument, DiagramType
 
@@ -17,19 +17,7 @@ def build_qc_audit_prompt(
     user_prompt: str,
     diagram: DiagramDocument,
 ) -> str:
-    try:
-        from app.prompts.diagrams import type_label
-        from app.services import settings_service as cfg
-
-        label = type_label(diagram_type)
-        guidance = (
-            cfg.active_prompt_body(f"generator.guidance.{diagram_type}")
-            or DIAGRAM_TYPE_GUIDANCE[diagram_type]
-        )
-    except Exception:
-        label = DIAGRAM_TYPE_LABELS[diagram_type]
-        guidance = DIAGRAM_TYPE_GUIDANCE[diagram_type]
-    catalog = toolbox_catalog(diagram_type)
+    context = effective_type_context(diagram_type)
     diagram_json = diagram.model_dump_json(by_alias=True, indent=2)
 
     node_ids = {n.id for n in diagram.nodes}
@@ -72,11 +60,7 @@ def build_qc_audit_prompt(
 
     return "\n".join(
         [
-            f"Diagram type: {label}",
-            f"Design guidance: {guidance}",
-            "",
-            "TOOLBOX CATALOG (valid node/edge types):",
-            catalog,
+            context,
             "",
             f"User request:\n{user_prompt.strip()}",
             "",

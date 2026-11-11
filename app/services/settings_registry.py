@@ -404,6 +404,8 @@ PROMPT_KEYS = [
     "qc.base.preamble",
     "qc.base.response_format",
     "qc.revision",
+    *[f"generator.context.{t}" for t in ALL_DIAGRAM_TYPES],
+    # Legacy guidance overrides still seed contexts and remain addressable.
     *[f"generator.guidance.{t}" for t in ALL_DIAGRAM_TYPES],
     *[f"qc.type.{t}" for t in ALL_DIAGRAM_TYPES],
 ]
