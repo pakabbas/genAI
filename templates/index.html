@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-copy" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-autoedit" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -182,10 +182,6 @@
           </div>
 
           <div class="panel-actions panel-actions-chat">
-            <label class="edit-current-toggle" title="Modify the shapes already on the canvas instead of starting fresh">
-              <input type="checkbox" id="editCurrentToggle" />
-              Edit current diagram
-            </label>
             <div class="panel-actions-primary">
               <button type="button" class="btn btn-secondary btn-sm" id="viewBriefBtn" disabled title="View and edit the generation brief">
                 View Brief
@@ -399,7 +395,7 @@
             <article class="welcome-slide is-active" data-slide="0">
               <p class="welcome-kicker">Welcome</p>
               <h2 class="welcome-title" id="welcomeSlideTitle">Welcome to Drill Down Project</h2>
-              <p class="welcome-copy">
+              <p class="welcome-autoedit">
                 An AI-powered diagram studio for turning ideas into professional visuals —
                 ERDs, sequence diagrams, use cases, flowcharts, swim lanes, and more —
                 on an interactive canvas you can edit, connect, and export.
@@ -414,7 +410,7 @@
             <article class="welcome-slide" data-slide="1" hidden>
               <p class="welcome-kicker">Getting started</p>
               <h2 class="welcome-title">How it works</h2>
-              <p class="welcome-copy">
+              <p class="welcome-autoedit">
                 Two paths, one canvas. Use AI when you want speed, or build by hand when you want full authorship.
               </p>
               <ul class="welcome-points">
@@ -427,7 +423,7 @@
             <article class="welcome-slide" data-slide="2" hidden>
               <p class="welcome-kicker">Agent 0 · Requirements Analyst</p>
               <h2 class="welcome-title">How briefs are created</h2>
-              <p class="welcome-copy">
+              <p class="welcome-autoedit">
                 Agent 0 chats with you first. When your prompt is sparse, it asks clarifying questions —
                 actors, scope, constraints — until the generation brief is solid enough to build from.
               </p>
@@ -441,7 +437,7 @@
             <article class="welcome-slide" data-slide="3" hidden>
               <p class="welcome-kicker">Generator agent</p>
               <h2 class="welcome-title">How diagrams are generated</h2>
-              <p class="welcome-copy">
+              <p class="welcome-autoedit">
                 The main Generator agent turns your approved brief into a structured diagram —
                 nodes, relationships, layout — drawn live on the canvas.
               </p>
@@ -455,7 +451,7 @@
             <article class="welcome-slide" data-slide="4" hidden>
               <p class="welcome-kicker">QC Auditor</p>
               <h2 class="welcome-title">How quality control works</h2>
-              <p class="welcome-copy">
+              <p class="welcome-autoedit">
                 After generation, the QC agent reviews structure and clarity for the diagram type —
                 then surfaces optional suggestions you can act on manually.
               </p>
@@ -482,6 +478,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}-copy"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}-autoedit"></script>
 </body>
 </html>

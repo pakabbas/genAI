@@ -101,7 +101,6 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     reqChatMessages: document.getElementById("reqChatMessages"),
     viewBriefBtn: document.getElementById("viewBriefBtn"),
     generateBtn: document.getElementById("generateBtn"),
-    editCurrentToggle: document.getElementById("editCurrentToggle"),
     aiThinkingLogBtn: document.getElementById("aiThinkingLogBtn"),
     aiThinkingModal: document.getElementById("aiThinkingModal"),
     aiThinkingBody: document.getElementById("aiThinkingBody"),
@@ -883,7 +882,6 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
       if (els.diagramTitle) els.diagramTitle.value = normalized.title;
       clearDirty();
       state.editedSinceAiLoad = false;
-      if (els.editCurrentToggle) els.editCurrentToggle.checked = false;
       canvas.scheduleFitToContent();
       // 2.7.9: the toolbar status badge was removed (it wrapped the toolbar).
       if (els.canvasBadge) {
@@ -1504,7 +1502,6 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     clearCanvas({ skipConfirm: true });
     resetRequirementsChat({ quiet: true });
     state.editedSinceAiLoad = false;
-    if (els.editCurrentToggle) els.editCurrentToggle.checked = false;
     setProjectStatus("Not saved yet");
     updateApiDemoLink(null);
     setProjectUrl(null);
@@ -1656,8 +1653,8 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
       prompt_enhanced: true,
       original_prompt: state.originalPrompt || prompt,
     };
-    // Edit mode ONLY when the toggle is checked (no auto-detect from brief verbs).
-    const editRequest = Boolean(els.editCurrentToggle?.checked) && canvas.diagram.nodes.length > 0;
+    // Edit mode is always on once the canvas has a diagram (one project = one ongoing diagram).
+    const editRequest = canvas.diagram.nodes.length > 0;
     const previousDiagram = editRequest ? canvas.getDiagram() : null;
     if (editRequest) {
       payload.existing = previousDiagram;
