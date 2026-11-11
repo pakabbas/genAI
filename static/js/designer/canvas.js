@@ -536,6 +536,43 @@ export class DiagramCanvas {
     return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
   }
 
+  _segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+    const cross = (ox, oy, px, py, qx, qy) => (px - ox) * (qy - oy) - (py - oy) * (qx - ox);
+    const d1 = cross(cx, cy, dx, dy, ax, ay);
+    const d2 = cross(cx, cy, dx, dy, bx, by);
+    const d3 = cross(ax, ay, bx, by, cx, cy);
+    const d4 = cross(ax, ay, bx, by, dx, dy);
+    if ((d1 > 0 && d2 > 0) || (d1 < 0 && d2 < 0) || (d3 > 0 && d4 > 0) || (d3 < 0 && d4 < 0)) return false;
+    if (d1 === 0 && d2 === 0 && d3 === 0 && d4 === 0) {
+      const overlap = (a, b, c, d) => Math.max(Math.min(a, b), Math.min(c, d)) <= Math.min(Math.max(a, b), Math.max(c, d));
+      return overlap(ax, bx, cx, dx) && overlap(ay, by, cy, dy);
+    }
+    return true;
+  }
+
+  _distSegmentToRect(ax, ay, bx, by, rx, ry, rw, rh) {
+    const inR = (x, y) => x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
+    if (inR(ax, ay) || inR(bx, by)) return 0;
+    const sides = [
+      [rx, ry, rx + rw, ry],
+      [rx + rw, ry, rx + rw, ry + rh],
+      [rx + rw, ry + rh, rx, ry + rh],
+      [rx, ry + rh, rx, ry],
+    ];
+    let best = Infinity;
+    for (const [x1, y1, x2, y2] of sides) {
+      if (this._segmentsIntersect(ax, ay, bx, by, x1, y1, x2, y2)) return 0;
+      best = Math.min(
+        best,
+        this._distPointToSegment(ax, ay, x1, y1, x2, y2),
+        this._distPointToSegment(bx, by, x1, y1, x2, y2),
+        this._distPointToSegment(x1, y1, ax, ay, bx, by),
+        this._distPointToSegment(x2, y2, ax, ay, bx, by),
+      );
+    }
+    return best;
+  }
+
   _computeEdgeRoute(edge) {
     const from = this.diagram.nodes.find((n) => n.id === edge.from);
     const to = this.diagram.nodes.find((n) => n.id === edge.to);
@@ -554,6 +591,27 @@ export class DiagramCanvas {
     return this._routedEdgePath(from, to, edge, ends.x1, ends.y1, ends.x2, ends.y2);
   }
 
+  _renderedEdgeRoute(edge) {
+    if (!this.edgesLayer || !edge?.id) return null;
+    const safe = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(edge.id) : edge.id;
+    const g = this.edgesLayer.querySelector(`[data-kind="edge"][data-id="${safe}"]`);
+    if (!g) return null;
+    const line =
+      g.querySelector("polyline:not(.edge-hit):not(.edge-glow)") ||
+      g.querySelector("polyline.edge-hit") ||
+      g.querySelector("polyline");
+    const raw = line?.getAttribute("points") || "";
+    const nums = raw.trim().split(/[\s,]+/).map(Number).filter((n) => Number.isFinite(n));
+    if (nums.length < 4) return null;
+    const route = [];
+    for (let i = 0; i + 1 < nums.length; i += 2) route.push({ x: nums[i], y: nums[i + 1] });
+    return route.length >= 2 ? route : null;
+  }
+
+  _edgeRouteForHit(edge) {
+    return this._renderedEdgeRoute(edge) || this._computeEdgeRoute(edge);
+  }
+
   _nodeContainsWorld(x, y) {
     const skip = new Set(["system_boundary", "pool", "lane", "package", "fragment"]);
     return this.diagram.nodes.some((n) => {
@@ -564,29 +622,42 @@ export class DiagramCanvas {
     });
   }
 
-  hitTestEdgeAtScreen(clientX, clientY, tolerancePx = 12) {
+  _routeHitDistance(route, world, box, tol) {
+    if (!route || route.length < 2) return Infinity;
+    let best = Infinity;
+    for (let i = 0; i < route.length - 1; i += 1) {
+      const a = route[i];
+      const b = route[i + 1];
+      let d = this._distPointToSegment(world.x, world.y, a.x, a.y, b.x, b.y);
+      if (box) {
+        const boxDist = this._distSegmentToRect(a.x, a.y, b.x, b.y, box.x, box.y, box.width, box.height);
+        d = Math.min(d, boxDist);
+      }
+      if (d < best) best = d;
+      if (best <= tol) return best;
+    }
+    return best;
+  }
+
+  /**
+   * Hit-test a drop against connectors. Uses the rendered polyline when present
+   * so elbow/orthogonal routes match what the user sees. Pointer test plus
+   * optional would-be node box. Does not add or mutate nodes.
+   */
+  hitTestEdgeAtScreen(clientX, clientY, tolerancePx = 16, opts = {}) {
     const world = this._screenToWorld(clientX, clientY);
     if (this._nodeContainsWorld(world.x, world.y)) return null;
     const scale = this.view.scale || 1;
-    const tol = Math.max(8, Number(tolerancePx) || 12) / scale;
+    const tol = Math.max(8, Number(tolerancePx) || 16) / scale;
+    const box = opts.box && Number(opts.box.width) > 0 && Number(opts.box.height) > 0 ? opts.box : null;
     let best = null;
-    let bestDist = tol;
+    let bestDist = Infinity;
     for (const edge of this.diagram.edges) {
-      const route = this._computeEdgeRoute(edge);
-      if (!route || route.length < 2) continue;
-      for (let i = 0; i < route.length - 1; i += 1) {
-        const d = this._distPointToSegment(
-          world.x,
-          world.y,
-          route[i].x,
-          route[i].y,
-          route[i + 1].x,
-          route[i + 1].y,
-        );
-        if (d <= bestDist) {
-          bestDist = d;
-          best = edge;
-        }
+      const route = this._edgeRouteForHit(edge);
+      const d = this._routeHitDistance(route, world, box, tol);
+      if (d <= tol && d < bestDist) {
+        bestDist = d;
+        best = edge;
       }
     }
     return best;
@@ -631,12 +702,14 @@ export class DiagramCanvas {
     return { axis: "y", dir: dy >= 0 ? 1 : -1 };
   }
 
-  _downstreamIds(startId, excludeIds) {
+  _walkEdgeIds(startId, excludeIds, towardTo) {
     const exclude = new Set(excludeIds || []);
-    const outs = new Map();
+    const adj = new Map();
     for (const e of this.diagram.edges) {
-      if (!outs.has(e.from)) outs.set(e.from, []);
-      outs.get(e.from).push(e.to);
+      const a = towardTo ? e.from : e.to;
+      const b = towardTo ? e.to : e.from;
+      if (!adj.has(a)) adj.set(a, []);
+      adj.get(a).push(b);
     }
     const seen = new Set();
     const stack = [startId];
@@ -644,52 +717,80 @@ export class DiagramCanvas {
       const id = stack.pop();
       if (!id || seen.has(id) || exclude.has(id)) continue;
       seen.add(id);
-      for (const nxt of outs.get(id) || []) stack.push(nxt);
+      for (const nxt of adj.get(id) || []) stack.push(nxt);
     }
     return seen;
   }
 
-  _shiftDownstreamForInsert(from, to, node) {
-    if (!from || !to || !node || from.id === to.id) return;
+  _downstreamIds(startId, excludeIds) {
+    return this._walkEdgeIds(startId, excludeIds, true);
+  }
+
+  _upstreamIds(startId, excludeIds) {
+    return this._walkEdgeIds(startId, excludeIds, false);
+  }
+
+  _shiftAlongAxis(ids, axis, delta) {
+    if (!delta) return;
+    for (const n of this.diagram.nodes) {
+      if (!ids.has(n.id)) continue;
+      if (axis === "x") n.x += delta;
+      else n.y += delta;
+    }
+  }
+
+  _spaceNodesForInsert(from, to, node) {
+    if (!from || !to || !node || from.id === to.id) {
+      return;
+    }
     const gap = Math.max((this.GRID || 20) * 2, 40);
+    const grid = this.GRID || 20;
     const { axis, dir } = this._flowAxis(from, to);
     const start = (n) => (axis === "x" ? n.x : n.y);
     const size = (n) => (axis === "x" ? Number(n.width) || 80 : Number(n.height) || 40);
     const end = (n) => start(n) + size(n);
+    const center = (n) => start(n) + size(n) / 2;
+    const crossStart = (n) => (axis === "x" ? n.y : n.x);
+    const crossSize = (n) => (axis === "x" ? Number(n.height) || 40 : Number(n.width) || 80);
 
-    // Nudge the new node just enough to clear A plus a normal gap.
-    if (dir > 0) {
-      const minStart = end(from) + gap;
-      if (start(node) < minStart) {
-        const snapped = Math.round(minStart / this.GRID) * this.GRID;
-        if (axis === "x") node.x = snapped;
-        else node.y = snapped;
+    const needed = gap + size(node) + gap;
+    const current = dir > 0 ? start(to) - end(from) : start(from) - end(to);
+    let deficit = Math.max(0, needed - current);
+    let half = deficit / 2;
+    let back = Math.round(half / grid) * grid;
+    let forward = Math.round((deficit - back) / grid) * grid;
+    while (back + forward < deficit) {
+      if (back <= forward) back += grid;
+      else forward += grid;
+    }
+
+    const upIds = this._upstreamIds(from.id, [to.id, node.id]);
+    const downIds = this._downstreamIds(to.id, [from.id, node.id]);
+    // Apply the from/to shifts even if the walk missed them.
+    upIds.add(from.id);
+    downIds.add(to.id);
+    upIds.delete(node.id);
+    downIds.delete(node.id);
+    // If a node is in both sets (a cycle), leave it unmoved so halves don't fight.
+    for (const id of [...upIds]) {
+      if (downIds.has(id) && id !== from.id && id !== to.id) {
+        upIds.delete(id);
+        downIds.delete(id);
       }
-    } else {
-      const maxEnd = start(from) - gap;
-      if (end(node) > maxEnd) {
-        const snapped = Math.round((maxEnd - size(node)) / this.GRID) * this.GRID;
-        if (axis === "x") node.x = snapped;
-        else node.y = snapped;
-      }
     }
 
-    let shift = 0;
-    if (dir > 0) {
-      shift = Math.max(0, end(node) + gap - start(to));
-    } else {
-      shift = Math.min(0, start(node) - gap - end(to));
-    }
-    if (shift === 0) return;
-    const snappedShift = Math.round(shift / this.GRID) * this.GRID;
-    shift = snappedShift === 0 ? (dir > 0 ? this.GRID : -this.GRID) : snappedShift;
+    this._shiftAlongAxis(upIds, axis, -dir * back);
+    this._shiftAlongAxis(downIds, axis, dir * forward);
 
-    const moveIds = this._downstreamIds(to.id, [from.id, node.id]);
-    for (const n of this.diagram.nodes) {
-      if (!moveIds.has(n.id)) continue;
-      if (axis === "x") n.x += shift;
-      else n.y += shift;
-    }
+    const mid = (center(from) + center(to)) / 2;
+    const snappedMid = Math.round((mid - size(node) / 2) / grid) * grid;
+    if (axis === "x") node.x = snappedMid;
+    else node.y = snappedMid;
+
+    const crossMid = (crossStart(from) + crossSize(from) / 2 + crossStart(to) + crossSize(to) / 2) / 2;
+    const snappedCross = Math.round((crossMid - crossSize(node) / 2) / grid) * grid;
+    if (axis === "x") node.y = snappedCross;
+    else node.x = snappedCross;
   }
 
   insertNodeOnEdge(edgeId, type, x, y, opts = {}) {
@@ -720,7 +821,7 @@ export class DiagramCanvas {
       meta: {},
     };
     this.diagram.nodes.push(node);
-    this._shiftDownstreamForInsert(from, to, node);
+    this._spaceNodesForInsert(from, to, node);
 
     this.diagram.edges = this.diagram.edges.filter((e) => e.id !== edge.id);
     this.diagram.edges.push(this._cloneEdgeBetween(edge, from.id, node.id, edge.label || ""));

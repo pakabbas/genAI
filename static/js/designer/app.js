@@ -1,6 +1,6 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
 import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.9-insert2";
-import { DiagramCanvas } from "./canvas.js?v=2.7.9-insert2";
+import { DiagramCanvas } from "./canvas.js?v=2.7.9-split";
 import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
 
 (() => {
@@ -985,11 +985,20 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     if (typeof canvas.clearDropTargetEdge === "function") canvas.clearDropTargetEdge();
   }
 
-  function updateConnectorDropHighlight(clientX, clientY) {
+  function dropHitBox(item, clientX, clientY) {
+    const world = canvas._screenToWorld(clientX, clientY);
+    const dw = Number(item?.default_width) || 120;
+    const dh = Number(item?.default_height) || 60;
+    return { x: world.x - dw / 2, y: world.y - dh / 2, width: dw, height: dh };
+  }
+
+  function updateConnectorDropHighlight(clientX, clientY, item) {
     if (typeof canvas.hitTestEdgeAtScreen !== "function" || typeof canvas.setDropTargetEdge !== "function") {
       return;
     }
-    const edge = canvas.hitTestEdgeAtScreen(clientX, clientY, 12);
+    const src = item || toolboxDragItem || toolboxTouchDrag?.item;
+    const box = src ? dropHitBox(src, clientX, clientY) : null;
+    const edge = canvas.hitTestEdgeAtScreen(clientX, clientY, 16, box ? { box } : {});
     canvas.setDropTargetEdge(edge ? edge.id : null);
   }
 
@@ -997,16 +1006,18 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     if (!item || item.kind !== "node") return;
     canvas.setMode("select");
     setActiveTool("select");
-    if (typeof canvas.clearDropTargetEdge === "function") canvas.clearDropTargetEdge();
     const world = canvas._screenToWorld(clientX, clientY);
     const dw = Number(item.default_width) || 120;
     const dh = Number(item.default_height) || 60;
     const x = world.x - dw / 2;
     const y = world.y - dh / 2;
+    // Hit-test the connector against the pointer and the would-be node box
+    // BEFORE adding the node, so the new shape cannot block or reroute the edge.
     const hit =
       typeof canvas.hitTestEdgeAtScreen === "function"
-        ? canvas.hitTestEdgeAtScreen(clientX, clientY, 12)
+        ? canvas.hitTestEdgeAtScreen(clientX, clientY, 16, { box: { x, y, width: dw, height: dh } })
         : null;
+    if (typeof canvas.clearDropTargetEdge === "function") canvas.clearDropTargetEdge();
     if (hit && typeof canvas.insertNodeOnEdge === "function") {
       const node = canvas.insertNodeOnEdge(hit.id, item.shape, x, y, { width: dw, height: dh });
       if (node) {
