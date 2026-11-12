@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-panel-layout" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-right-tabs" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -157,11 +157,8 @@
     <div class="panel-resizer panel-resizer-right" id="rightResizer" role="separator" aria-orientation="vertical" aria-label="Resize right panel" tabindex="0"></div>
 
     <aside class="designer-panel right-panel" id="rightPanel">
-      <div class="panel-chrome panel-chrome-right">
-        <button type="button" class="btn btn-ghost btn-icon-only panel-collapse-btn" id="collapseRightBtn" title="Collapse right panel" aria-label="Collapse right panel">›</button>
-        <span class="panel-chrome-label">Workspace</span>
-      </div>
       <div class="sidebar-tabs" role="tablist" aria-label="Sidebar sections">
+        <button type="button" class="btn btn-ghost btn-icon-only panel-collapse-btn sidebar-collapse-btn" id="collapseRightBtn" title="Collapse right panel" aria-label="Collapse right panel">›</button>
         <button type="button" class="sidebar-tab is-active" id="tabAi" role="tab" aria-selected="true" aria-controls="panelAi">AI Generation</button>
         <button type="button" class="sidebar-tab" id="tabDrilldowns" role="tab" aria-selected="false" aria-controls="panelDrilldowns">Drill Downs</button>
         <button type="button" class="sidebar-tab" id="tabProject" role="tab" aria-selected="false" aria-controls="panelProject">Projects</button>
@@ -546,6 +543,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}-panel-layout"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}-right-tabs"></script>
 </body>
 </html>
