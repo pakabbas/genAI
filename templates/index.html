@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-right-tabs" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-expand-rail" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -113,7 +113,10 @@
     </aside>
 
     <div class="panel-resizer panel-resizer-left" id="leftResizer" role="separator" aria-orientation="vertical" aria-label="Resize left panel" tabindex="0"></div>
-    <button type="button" class="panel-expand-rail panel-expand-left" id="expandLeftBtn" hidden title="Expand left panel" aria-label="Expand left panel">›</button>
+    <button type="button" class="panel-expand-rail panel-expand-left" id="expandLeftBtn" hidden title="Expand shapes panel" aria-label="Expand shapes panel">
+      <span class="panel-expand-icon" aria-hidden="true">›</span>
+      <span class="panel-expand-text">Shapes</span>
+    </button>
 
     <section class="designer-canvas-area">
       <div class="canvas-toolbar">
@@ -153,7 +156,10 @@
       </div>
     </section>
 
-    <button type="button" class="panel-expand-rail panel-expand-right" id="expandRightBtn" hidden title="Expand right panel" aria-label="Expand right panel">‹</button>
+    <button type="button" class="panel-expand-rail panel-expand-right" id="expandRightBtn" hidden title="Expand workspace panel" aria-label="Expand workspace panel">
+      <span class="panel-expand-icon" aria-hidden="true">‹</span>
+      <span class="panel-expand-text">Panel</span>
+    </button>
     <div class="panel-resizer panel-resizer-right" id="rightResizer" role="separator" aria-orientation="vertical" aria-label="Resize right panel" tabindex="0"></div>
 
     <aside class="designer-panel right-panel" id="rightPanel">
@@ -543,6 +549,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}-right-tabs"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}-expand-rail"></script>
 </body>
 </html>
