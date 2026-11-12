@@ -183,6 +183,34 @@ function layoutSequenceMessages(diagram) {
   return { ...diagram, nodes, edges };
 }
 
+function normalizeDrilldowns(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((item, index) => {
+      if (!item || typeof item !== "object") return null;
+      const nodeIds = Array.isArray(item.nodeIds)
+        ? item.nodeIds
+        : Array.isArray(item.node_ids)
+          ? item.node_ids
+          : [];
+      const edgeIds = Array.isArray(item.edgeIds)
+        ? item.edgeIds
+        : Array.isArray(item.edge_ids)
+          ? item.edge_ids
+          : [];
+      return {
+        id: String(item.id || `dd${index + 1}`),
+        name: String(item.name || "").trim() || `Drill Down ${index + 1}`,
+        color: String(item.color || "#2563eb").trim() || "#2563eb",
+        category: String(item.category || "").trim(),
+        description: String(item.description || ""),
+        nodeIds: nodeIds.map(String).filter(Boolean),
+        edgeIds: edgeIds.map(String).filter(Boolean),
+      };
+    })
+    .filter(Boolean);
+}
+
 export function normalizeDiagram(diagram, toolboxItems = []) {
   const nodesById = {};
   const edgesById = {};
@@ -213,6 +241,7 @@ export function normalizeDiagram(diagram, toolboxItems = []) {
     title: diagram.title || "Untitled Diagram",
     nodes: [],
     edges: [],
+    drilldowns: normalizeDrilldowns(diagram.drilldowns),
   };
 
   const seen = new Set();

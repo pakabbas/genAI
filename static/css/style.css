@@ -1205,6 +1205,32 @@ body.is-toolbox-touch-drag {
   filter: drop-shadow(0 0 10px rgba(37, 99, 235, 0.35));
 }
 
+.diagram-node.is-dd-highlight:not(.is-selected) {
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--dd-color, #2563eb) 45%, transparent));
+}
+
+.diagram-node.is-dd-highlight:not(.is-selected) rect,
+.diagram-node.is-dd-highlight:not(.is-selected) ellipse,
+.diagram-node.is-dd-highlight:not(.is-selected) polygon,
+.diagram-node.is-dd-highlight:not(.is-selected) path:not(.actor-legs),
+.diagram-node.is-dd-highlight:not(.is-selected) circle,
+.diagram-node.is-dd-highlight:not(.is-selected) line {
+  stroke: var(--dd-color, #2563eb) !important;
+  stroke-width: 3 !important;
+}
+
+.diagram-edge.is-dd-highlight:not(.is-selected) line:not(.edge-hit):not(.edge-glow) {
+  stroke: var(--dd-color, #2563eb) !important;
+  stroke-width: 3.5 !important;
+}
+
+.marquee-rect {
+  fill: rgba(37, 99, 235, 0.08);
+  stroke: #2563eb;
+  stroke-width: 1.25;
+  stroke-dasharray: 4 3;
+}
+
 .diagram-node.is-connect-from {
   filter: drop-shadow(0 0 12px rgba(16, 185, 129, 0.55));
 }
@@ -1281,6 +1307,216 @@ body.is-toolbox-touch-drag {
 .context-menu-item-danger:hover {
   background: #fef2f2;
   color: var(--danger);
+}
+
+.dd-hint {
+  margin: 0.55rem 0 0.75rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.dd-empty {
+  margin: 0.75rem 0;
+  padding: 0.85rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  text-align: center;
+}
+
+.dd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.dd-category-group {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.dd-category-label {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.dd-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.dd-item:hover,
+.dd-item.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.dd-item-swatch {
+  width: 12px;
+  height: 12px;
+  margin-top: 0.25rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+.dd-item-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.dd-item-name {
+  display: block;
+  font-weight: 600;
+  font-size: 0.86rem;
+}
+
+.dd-item-meta {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.dd-detail {
+  margin-top: 0.35rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.dd-detail-meta {
+  margin: 0 0 0.45rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.dd-detail-desc {
+  margin: 0 0 0.75rem;
+  white-space: pre-wrap;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.dd-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 320;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.dd-modal[hidden] {
+  display: none !important;
+}
+
+.dd-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.dd-modal-panel {
+  position: relative;
+  z-index: 1;
+  width: min(440px, 100%);
+  max-height: min(90vh, 720px);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 1rem 1.1rem 1.15rem;
+}
+
+.dd-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.dd-modal-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.dd-form {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.dd-form .field-label {
+  margin-top: 0.35rem;
+}
+
+.dd-color-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.25rem;
+}
+
+.dd-color-row input[type="color"] {
+  width: 42px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+}
+
+.dd-color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.dd-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.dd-swatch.is-active,
+.dd-swatch:hover {
+  border-color: #0f172a;
+}
+
+.dd-description {
+  resize: vertical;
+  min-height: 96px;
+}
+
+.dd-form-error {
+  margin: 0.35rem 0 0;
+  color: var(--danger);
+  font-size: 0.78rem;
+}
+
+.dd-form-actions {
+  margin-top: 0.65rem;
 }
 
 .canvas-inline-editor {

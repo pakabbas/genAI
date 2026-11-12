@@ -16,14 +16,19 @@ export class DiagramCanvas {
       title: "Untitled Diagram",
       nodes: [],
       edges: [],
+      drilldowns: [],
     };
 
     this.view = { x: 0, y: 0, scale: 1 };
     this.selectedIds = new Set();
+    this.highlightIds = new Set();
+    this.highlightColor = null;
+    this.activeDrillDownId = null;
     this.mode = "select"; // select | connect | pan
     this.connectFrom = null;
     this.pendingEdgeType = "association";
     this.dragState = null;
+    this.marqueeState = null;
     this._dropTargetEdgeId = null;
     this.panState = null;
     this._spacePanActive = false;
@@ -323,7 +328,9 @@ export class DiagramCanvas {
 
   setDiagram(diagram) {
     this.diagram = JSON.parse(JSON.stringify(diagram));
+    if (!Array.isArray(this.diagram.drilldowns)) this.diagram.drilldowns = [];
     this.selectedIds.clear();
+    this.clearDrillDownHighlight();
     this.connectFrom = null;
     this._resetHistory();
     this.render();
@@ -337,6 +344,7 @@ export class DiagramCanvas {
   }
 
   getDiagram() {
+    if (!Array.isArray(this.diagram.drilldowns)) this.diagram.drilldowns = [];
     return JSON.parse(JSON.stringify(this.diagram));
   }
 
@@ -345,6 +353,95 @@ export class DiagramCanvas {
       nodes: this.diagram.nodes.filter((n) => this.selectedIds.has(n.id)),
       edges: this.diagram.edges.filter((e) => this.selectedIds.has(e.id)),
     };
+  }
+
+  getDrilldowns() {
+    if (!Array.isArray(this.diagram.drilldowns)) this.diagram.drilldowns = [];
+    return this.diagram.drilldowns;
+  }
+
+  clearDrillDownHighlight() {
+    this.highlightIds = new Set();
+    this.highlightColor = null;
+    this.activeDrillDownId = null;
+  }
+
+  setDrillDownHighlight(dd) {
+    if (!dd) {
+      this.clearDrillDownHighlight();
+      this.render();
+      return;
+    }
+    this.activeDrillDownId = dd.id;
+    this.highlightColor = dd.color || "#2563eb";
+    this.highlightIds = new Set([...(dd.nodeIds || []), ...(dd.edgeIds || [])]);
+    this.render();
+  }
+
+  addDrillDown({ name, color, category, description, nodeIds, edgeIds }) {
+    if (!Array.isArray(this.diagram.drilldowns)) this.diagram.drilldowns = [];
+    this._saveUndoPoint();
+    const dd = {
+      id: nextId("dd", this.diagram.drilldowns),
+      name: String(name || "").trim() || "Untitled Drill Down",
+      color: String(color || "#2563eb").trim() || "#2563eb",
+      category: String(category || "").trim(),
+      description: String(description || ""),
+      nodeIds: [...new Set((nodeIds || []).map(String))],
+      edgeIds: [...new Set((edgeIds || []).map(String))],
+    };
+    this.diagram.drilldowns.push(dd);
+    this.onChange(this.getDiagram());
+    return dd;
+  }
+
+  updateDrillDown(id, patch = {}) {
+    if (!Array.isArray(this.diagram.drilldowns)) return null;
+    const dd = this.diagram.drilldowns.find((item) => item.id === id);
+    if (!dd) return null;
+    this._saveUndoPoint();
+    if (patch.name != null) dd.name = String(patch.name).trim() || dd.name;
+    if (patch.color != null) dd.color = String(patch.color).trim() || dd.color;
+    if (patch.category != null) dd.category = String(patch.category).trim();
+    if (patch.description != null) dd.description = String(patch.description);
+    if (this.activeDrillDownId === id) this.setDrillDownHighlight(dd);
+    else this.render();
+    this.onChange(this.getDiagram());
+    return dd;
+  }
+
+  deleteDrillDown(id) {
+    if (!Array.isArray(this.diagram.drilldowns)) return false;
+    const next = this.diagram.drilldowns.filter((item) => item.id !== id);
+    if (next.length === this.diagram.drilldowns.length) return false;
+    this._saveUndoPoint();
+    this.diagram.drilldowns = next;
+    if (this.activeDrillDownId === id) this.clearDrillDownHighlight();
+    this.render();
+    this.onChange(this.getDiagram());
+    return true;
+  }
+
+  _pruneDrilldowns() {
+    if (!Array.isArray(this.diagram.drilldowns) || !this.diagram.drilldowns.length) return;
+    const nodeIds = new Set(this.diagram.nodes.map((n) => n.id));
+    const edgeIds = new Set(this.diagram.edges.map((e) => e.id));
+    this.diagram.drilldowns = this.diagram.drilldowns
+      .map((dd) => ({
+        ...dd,
+        nodeIds: (dd.nodeIds || []).filter((id) => nodeIds.has(id)),
+        edgeIds: (dd.edgeIds || []).filter((id) => edgeIds.has(id)),
+      }))
+      .filter((dd) => (dd.nodeIds && dd.nodeIds.length) || (dd.edgeIds && dd.edgeIds.length));
+    if (this.activeDrillDownId && !this.diagram.drilldowns.some((d) => d.id === this.activeDrillDownId)) {
+      this.clearDrillDownHighlight();
+    } else if (this.activeDrillDownId) {
+      const active = this.diagram.drilldowns.find((d) => d.id === this.activeDrillDownId);
+      if (active) {
+        this.highlightIds = new Set([...(active.nodeIds || []), ...(active.edgeIds || [])]);
+        this.highlightColor = active.color || this.highlightColor;
+      }
+    }
   }
 
   setMode(mode, edgeType = null) {
@@ -892,6 +989,7 @@ export class DiagramCanvas {
       this.diagram.edges = this.diagram.edges.filter((e) => !this.selectedIds.has(e.id));
     }
     this.selectedIds.clear();
+    this._pruneDrilldowns();
     this.render();
     this.onChange(this.getDiagram());
     this.onSelectionChange(this.getSelection());
@@ -1165,10 +1263,24 @@ export class DiagramCanvas {
 
     const hit = this._hitFromEvent(e);
     if (!hit) {
-      if (this.mode === "select") this.clearSelection();
       if (this.mode === "connect") {
         this.connectFrom = null;
         this.render();
+        return;
+      }
+      if (this.mode === "select") {
+        const world = this._screenToWorld(e.clientX, e.clientY);
+        const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+        if (!additive) this.clearSelection();
+        this.marqueeState = {
+          startX: world.x,
+          startY: world.y,
+          currentX: world.x,
+          currentY: world.y,
+          additive,
+          moved: false,
+        };
+        e.preventDefault();
       }
       return;
     }
@@ -1193,7 +1305,8 @@ export class DiagramCanvas {
       return;
     }
 
-    if (!e.shiftKey) {
+    const multi = e.shiftKey || e.ctrlKey || e.metaKey;
+    if (!multi) {
       if (!this.selectedIds.has(id)) this.selectOnly(id);
       else this.onSelectionChange(this.getSelection());
     } else {
@@ -1228,6 +1341,17 @@ export class DiagramCanvas {
       return;
     }
 
+    if (this.marqueeState) {
+      const world = this._screenToWorld(e.clientX, e.clientY);
+      const dx = world.x - this.marqueeState.startX;
+      const dy = world.y - this.marqueeState.startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this.marqueeState.moved = true;
+      this.marqueeState.currentX = world.x;
+      this.marqueeState.currentY = world.y;
+      this.render();
+      return;
+    }
+
     if (!this.dragState) return;
     const world = this._screenToWorld(e.clientX, e.clientY);
     const rawDx = world.x - this.dragState.startWorldX;
@@ -1247,7 +1371,40 @@ export class DiagramCanvas {
     this.render();
   }
 
+  _finishMarquee() {
+    if (!this.marqueeState) return;
+    const m = this.marqueeState;
+    this.marqueeState = null;
+    if (!m.moved) {
+      this.render();
+      return;
+    }
+    const x1 = Math.min(m.startX, m.currentX);
+    const y1 = Math.min(m.startY, m.currentY);
+    const x2 = Math.max(m.startX, m.currentX);
+    const y2 = Math.max(m.startY, m.currentY);
+    if (!m.additive) this.selectedIds.clear();
+    for (const node of this.diagram.nodes) {
+      const nx1 = node.x;
+      const ny1 = node.y;
+      const nx2 = node.x + (node.width || 0);
+      const ny2 = node.y + (node.height || 0);
+      if (nx1 < x2 && nx2 > x1 && ny1 < y2 && ny2 > y1) this.selectedIds.add(node.id);
+    }
+    for (const edge of this.diagram.edges) {
+      const from = this.diagram.nodes.find((n) => n.id === edge.from);
+      const to = this.diagram.nodes.find((n) => n.id === edge.to);
+      if (!from || !to) continue;
+      const mx = (from.x + from.width / 2 + to.x + to.width / 2) / 2;
+      const my = (from.y + from.height / 2 + to.y + to.height / 2) / 2;
+      if (mx >= x1 && mx <= x2 && my >= y1 && my <= y2) this.selectedIds.add(edge.id);
+    }
+    this.onSelectionChange(this.getSelection());
+    this.render();
+  }
+
   _onMouseUp(e) {
+    if (this.marqueeState) this._finishMarquee();
     if (this.dragState) {
       const moved = this.dragState.moved;
       this.dragState = null;
@@ -1307,7 +1464,31 @@ export class DiagramCanvas {
     this._drawGrid();
     this._drawEdges();
     this._drawNodes();
+    this._drawMarquee();
     this._applyViewTransform();
+  }
+
+  _drawMarquee() {
+    const existing = this.overlayLayer.querySelector(".marquee-rect");
+    if (existing) existing.remove();
+    if (!this.marqueeState?.moved) return;
+    const m = this.marqueeState;
+    const x = Math.min(m.startX, m.currentX);
+    const y = Math.min(m.startY, m.currentY);
+    const w = Math.abs(m.currentX - m.startX);
+    const h = Math.abs(m.currentY - m.startY);
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute("class", "marquee-rect");
+    rect.setAttribute("x", String(x));
+    rect.setAttribute("y", String(y));
+    rect.setAttribute("width", String(w));
+    rect.setAttribute("height", String(h));
+    rect.setAttribute("pointer-events", "none");
+    this.overlayLayer.appendChild(rect);
+  }
+
+  _ddClass(id) {
+    return this.highlightIds?.has(id) ? " is-dd-highlight" : "";
   }
 
   _isSequenceParticipant(node) {
@@ -1381,7 +1562,13 @@ export class DiagramCanvas {
       const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
       g.setAttribute("data-id", edge.id);
       g.setAttribute("data-kind", "edge");
-      g.setAttribute("class", `diagram-edge${this.selectedIds.has(edge.id) ? " is-selected" : ""}`);
+      g.setAttribute(
+        "class",
+        `diagram-edge${this.selectedIds.has(edge.id) ? " is-selected" : ""}${this._ddClass(edge.id)}`,
+      );
+      if (this.highlightIds?.has(edge.id) && this.highlightColor) {
+        g.style.setProperty("--dd-color", this.highlightColor);
+      }
 
       let route;
       if (this.diagram.diagram_type === "sequence") {
@@ -2215,8 +2402,11 @@ export class DiagramCanvas {
         "class",
         `diagram-node node-${node.type}${this.selectedIds.has(node.id) ? " is-selected" : ""}${
           this.connectFrom === node.id ? " is-connect-from" : ""
-        }`,
+        }${this._ddClass(node.id)}`,
       );
+      if (this.highlightIds?.has(node.id) && this.highlightColor) {
+        g.style.setProperty("--dd-color", this.highlightColor);
+      }
       g.setAttribute("transform", `translate(${node.x}, ${node.y})`);
 
       this._maybeGrowNodeForLabel(node);

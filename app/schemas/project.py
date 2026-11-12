@@ -67,6 +67,7 @@ class CanvasExportV1(BaseModel):
     title: str
     nodes: list[dict[str, Any]]
     edges: list[dict[str, Any]]
+    drilldowns: list[dict[str, Any]] = Field(default_factory=list)
     exported_at: datetime
     source: str = "genai-diagram-studio"
 

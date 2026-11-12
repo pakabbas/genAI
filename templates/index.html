@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-typecontexts" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-drilldowns" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -149,6 +149,7 @@
     <aside class="designer-panel right-panel" id="rightPanel">
       <div class="sidebar-tabs" role="tablist" aria-label="Sidebar sections">
         <button type="button" class="sidebar-tab is-active" id="tabAi" role="tab" aria-selected="true" aria-controls="panelAi">AI Generation</button>
+        <button type="button" class="sidebar-tab" id="tabDrilldowns" role="tab" aria-selected="false" aria-controls="panelDrilldowns">Drill Downs</button>
         <button type="button" class="sidebar-tab" id="tabProject" role="tab" aria-selected="false" aria-controls="panelProject">Projects</button>
       </div>
 
@@ -217,6 +218,26 @@
           </div>
         </div>
 
+        <div class="tab-panel" id="panelDrilldowns" role="tabpanel" aria-labelledby="tabDrilldowns" hidden>
+          <p class="block-subtitle tab-intro">Group shapes and lines into named, colored Drill Downs. Select on the canvas, then create.</p>
+          <div class="panel-actions panel-actions-inline">
+            <button type="button" class="btn btn-primary btn-compact" id="createDrillDownBtn" title="Select shapes or lines first">Create Drill Down</button>
+            <button type="button" class="btn btn-ghost btn-compact" id="clearDrillDownHighlightBtn">Clear highlight</button>
+          </div>
+          <p class="dd-hint" id="ddSelectionHint">Select one or more shapes or lines (Ctrl/Shift+click, or drag a box).</p>
+          <div class="dd-list" id="ddList" aria-live="polite"></div>
+          <p class="dd-empty" id="ddEmpty">No Drill Downs created</p>
+          <div class="dd-detail" id="ddDetail" hidden>
+            <h3 class="block-title" id="ddDetailTitle">Details</h3>
+            <p class="dd-detail-meta" id="ddDetailMeta"></p>
+            <p class="dd-detail-desc" id="ddDetailDesc"></p>
+            <div class="panel-actions panel-actions-inline">
+              <button type="button" class="btn btn-secondary btn-compact" id="editDrillDownBtn">Edit</button>
+              <button type="button" class="btn btn-secondary btn-compact" id="deleteDrillDownBtn">Delete</button>
+            </div>
+          </div>
+        </div>
+
         <div class="tab-panel" id="panelProject" role="tabpanel" aria-labelledby="tabProject" hidden>
           <p class="block-subtitle tab-intro">Save, open, and share diagram projects.</p>
 
@@ -282,7 +303,41 @@
 
   <div id="canvasContextMenu" class="canvas-context-menu" hidden role="menu" aria-label="Canvas actions">
     <button type="button" class="context-menu-item" id="ctxRename" role="menuitem">Rename</button>
+    <button type="button" class="context-menu-item" id="ctxCreateDrillDown" role="menuitem">Create Drill Down</button>
     <button type="button" class="context-menu-item context-menu-item-danger" id="ctxDelete" role="menuitem">Delete</button>
+  </div>
+
+  <div id="drillDownModal" class="dd-modal" hidden role="dialog" aria-modal="true" aria-labelledby="ddModalTitle">
+    <div class="dd-modal-backdrop" id="ddModalBackdrop"></div>
+    <div class="dd-modal-panel">
+      <header class="dd-modal-header">
+        <h2 id="ddModalTitle">Create Drill Down</h2>
+        <button type="button" class="btn btn-ghost btn-icon-only" id="ddModalCloseBtn" aria-label="Close">✕</button>
+      </header>
+      <form id="ddForm" class="dd-form">
+        <label class="field-label" for="ddNameInput">Name</label>
+        <input type="text" id="ddNameInput" class="text-input" maxlength="120" required autocomplete="off" />
+
+        <label class="field-label" for="ddCategoryInput">Category</label>
+        <input type="text" id="ddCategoryInput" class="text-input" list="ddCategorySuggestions" maxlength="80" autocomplete="off" placeholder="e.g. Process, Risk, Owner" />
+        <datalist id="ddCategorySuggestions"></datalist>
+
+        <label class="field-label" for="ddColorInput">Color</label>
+        <div class="dd-color-row">
+          <input type="color" id="ddColorInput" value="#2563eb" aria-label="Drill Down color" />
+          <div class="dd-color-swatches" id="ddColorSwatches" role="group" aria-label="Suggested colors"></div>
+        </div>
+
+        <label class="field-label" for="ddDescriptionInput">Description</label>
+        <textarea id="ddDescriptionInput" class="text-input dd-description" rows="5" maxlength="4000" placeholder="Notes for this Drill Down"></textarea>
+
+        <p class="dd-form-error" id="ddFormError" hidden></p>
+        <div class="panel-actions panel-actions-inline dd-form-actions">
+          <button type="submit" class="btn btn-primary" id="ddFormSaveBtn">Add Drill Down</button>
+          <button type="button" class="btn btn-ghost" id="ddFormCancelBtn">Cancel</button>
+        </div>
+      </form>
+    </div>
   </div>
   <div id="canvasInlineEditor" class="canvas-inline-editor" hidden>
     <input type="text" id="canvasInlineInput" class="canvas-inline-input" aria-label="Rename shape label" />
@@ -484,6 +539,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}-typecontexts"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}-drilldowns"></script>
 </body>
 </html>

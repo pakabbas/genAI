@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.9-insert2";
-import { DiagramCanvas } from "./canvas.js?v=2.7.9-split";
-import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.9-drilldowns";
+import { DiagramCanvas } from "./canvas.js?v=2.7.9-drilldowns";
+import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-drilldowns";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -153,9 +153,37 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
     mobileDockCanvas: document.getElementById("mobileDockCanvas"),
     mobileDockRight: document.getElementById("mobileDockRight"),
     tabAi: document.getElementById("tabAi"),
+    tabDrilldowns: document.getElementById("tabDrilldowns"),
     tabProject: document.getElementById("tabProject"),
     panelAi: document.getElementById("panelAi"),
+    panelDrilldowns: document.getElementById("panelDrilldowns"),
     panelProject: document.getElementById("panelProject"),
+    createDrillDownBtn: document.getElementById("createDrillDownBtn"),
+    clearDrillDownHighlightBtn: document.getElementById("clearDrillDownHighlightBtn"),
+    ddSelectionHint: document.getElementById("ddSelectionHint"),
+    ddList: document.getElementById("ddList"),
+    ddEmpty: document.getElementById("ddEmpty"),
+    ddDetail: document.getElementById("ddDetail"),
+    ddDetailTitle: document.getElementById("ddDetailTitle"),
+    ddDetailMeta: document.getElementById("ddDetailMeta"),
+    ddDetailDesc: document.getElementById("ddDetailDesc"),
+    editDrillDownBtn: document.getElementById("editDrillDownBtn"),
+    deleteDrillDownBtn: document.getElementById("deleteDrillDownBtn"),
+    ctxCreateDrillDown: document.getElementById("ctxCreateDrillDown"),
+    drillDownModal: document.getElementById("drillDownModal"),
+    ddModalBackdrop: document.getElementById("ddModalBackdrop"),
+    ddModalCloseBtn: document.getElementById("ddModalCloseBtn"),
+    ddModalTitle: document.getElementById("ddModalTitle"),
+    ddForm: document.getElementById("ddForm"),
+    ddNameInput: document.getElementById("ddNameInput"),
+    ddCategoryInput: document.getElementById("ddCategoryInput"),
+    ddCategorySuggestions: document.getElementById("ddCategorySuggestions"),
+    ddColorInput: document.getElementById("ddColorInput"),
+    ddColorSwatches: document.getElementById("ddColorSwatches"),
+    ddDescriptionInput: document.getElementById("ddDescriptionInput"),
+    ddFormError: document.getElementById("ddFormError"),
+    ddFormSaveBtn: document.getElementById("ddFormSaveBtn"),
+    ddFormCancelBtn: document.getElementById("ddFormCancelBtn"),
     projectSelect: document.getElementById("projectSelect"),
     projectNameInput: document.getElementById("projectNameInput"),
     newProjectBtn: document.getElementById("newProjectBtn"),
@@ -186,6 +214,10 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
   };
 
   let contextMenuTargetId = null;
+  let ddFormMode = "create";
+  let ddEditingId = null;
+  const DD_PREF_KEY = "genai-drilldown-prefs-v1";
+  const DD_DEFAULT_COLORS = ["#2563eb", "#16a34a", "#dc2626", "#ca8a04", "#9333ea", "#0891b2", "#ea580c", "#db2777"];
   const mobileMq = window.matchMedia("(max-width: 768px)");
   const WELCOME_STORAGE_KEY = "genai-drilldown-welcome-v1";
   const WELCOME_CAPTIONS = [
@@ -346,9 +378,11 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
       if (els.diagramTitle && els.diagramTitle.value !== canvas.diagram.title) {
         els.diagramTitle.value = canvas.diagram.title;
       }
+      renderDrillDownSidebar();
     },
     onSelectionChange: (selection) => {
       updatePropertiesPanel(selection);
+      updateDdSelectionHint();
     },
     onContextMenu: ({ id, clientX, clientY }) => {
       contextMenuTargetId = id;
@@ -365,16 +399,243 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
   });
 
   function switchSidebarTab(tab) {
-    const isAi = tab === "ai";
-    els.tabAi?.classList.toggle("is-active", isAi);
-    els.tabProject?.classList.toggle("is-active", !isAi);
-    els.tabAi?.setAttribute("aria-selected", isAi ? "true" : "false");
-    els.tabProject?.setAttribute("aria-selected", !isAi ? "true" : "false");
-    els.panelAi?.classList.toggle("is-active", isAi);
-    els.panelProject?.classList.toggle("is-active", !isAi);
-    if (els.panelAi) els.panelAi.hidden = !isAi;
-    if (els.panelProject) els.panelProject.hidden = isAi;
+    const panels = [
+      { tab: els.tabAi, panel: els.panelAi, id: "ai" },
+      { tab: els.tabDrilldowns, panel: els.panelDrilldowns, id: "drilldowns" },
+      { tab: els.tabProject, panel: els.panelProject, id: "project" },
+    ];
+    for (const item of panels) {
+      const active = item.id === tab;
+      item.tab?.classList.toggle("is-active", active);
+      item.tab?.setAttribute("aria-selected", active ? "true" : "false");
+      item.panel?.classList.toggle("is-active", active);
+      if (item.panel) item.panel.hidden = !active;
+    }
+    if (tab === "drilldowns") renderDrillDownSidebar();
   }
+
+  function loadDdPrefs() {
+    try {
+      const raw = localStorage.getItem(DD_PREF_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return {
+        categories: Array.isArray(parsed.categories) ? parsed.categories.map(String) : [],
+        colors: Array.isArray(parsed.colors) ? parsed.colors.map(String) : [],
+      };
+    } catch {
+      return { categories: [], colors: [] };
+    }
+  }
+
+  function saveDdPrefs(prefs) {
+    try {
+      localStorage.setItem(
+        DD_PREF_KEY,
+        JSON.stringify({
+          categories: (prefs.categories || []).slice(0, 24),
+          colors: (prefs.colors || []).slice(0, 16),
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function rememberDdPrefs(category, color) {
+    const prefs = loadDdPrefs();
+    const cat = String(category || "").trim();
+    const col = String(color || "").trim();
+    if (cat) prefs.categories = [cat, ...prefs.categories.filter((c) => c !== cat)];
+    if (col) prefs.colors = [col, ...prefs.colors.filter((c) => c !== col)];
+    saveDdPrefs(prefs);
+  }
+
+  function updateDdSelectionHint() {
+    const sel = canvas.getSelection();
+    const count = sel.nodes.length + sel.edges.length;
+    if (els.ddSelectionHint) {
+      els.ddSelectionHint.textContent = count
+        ? `${count} item${count === 1 ? "" : "s"} selected — ready to create a Drill Down.`
+        : "Select one or more shapes or lines (Ctrl/Shift+click, or drag a box).";
+    }
+    if (els.createDrillDownBtn) els.createDrillDownBtn.disabled = count === 0;
+  }
+
+  function renderDrillDownSidebar() {
+    const list = canvas.getDrilldowns();
+    const activeId = canvas.activeDrillDownId;
+    if (els.ddEmpty) els.ddEmpty.hidden = list.length > 0;
+    if (!els.ddList) return;
+    els.ddList.innerHTML = "";
+
+    const groups = new Map();
+    for (const dd of list) {
+      const key = dd.category || "Uncategorized";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(dd);
+    }
+
+    for (const [category, items] of groups) {
+      const group = document.createElement("div");
+      group.className = "dd-category-group";
+      const label = document.createElement("p");
+      label.className = "dd-category-label";
+      label.textContent = category;
+      group.appendChild(label);
+      for (const dd of items) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `dd-item${dd.id === activeId ? " is-active" : ""}`;
+        btn.dataset.ddId = dd.id;
+        const count = (dd.nodeIds?.length || 0) + (dd.edgeIds?.length || 0);
+        btn.innerHTML = `
+          <span class="dd-item-swatch" style="background:${escapeAttr(dd.color || "#2563eb")}"></span>
+          <span class="dd-item-body">
+            <span class="dd-item-name">${escapeHtml(dd.name || "Untitled")}</span>
+            <span class="dd-item-meta">${count} linked item${count === 1 ? "" : "s"}</span>
+          </span>`;
+        btn.addEventListener("click", () => activateDrillDown(dd.id));
+        group.appendChild(btn);
+      }
+      els.ddList.appendChild(group);
+    }
+
+    const active = list.find((d) => d.id === activeId);
+    if (!active) {
+      if (els.ddDetail) els.ddDetail.hidden = true;
+      return;
+    }
+    if (els.ddDetail) els.ddDetail.hidden = false;
+    if (els.ddDetailTitle) els.ddDetailTitle.textContent = active.name || "Untitled";
+    if (els.ddDetailMeta) {
+      const count = (active.nodeIds?.length || 0) + (active.edgeIds?.length || 0);
+      els.ddDetailMeta.textContent = `${active.category || "Uncategorized"} · ${count} linked · ${active.color}`;
+    }
+    if (els.ddDetailDesc) {
+      els.ddDetailDesc.textContent = active.description || "No description.";
+    }
+  }
+
+  function activateDrillDown(id) {
+    const dd = canvas.getDrilldowns().find((item) => item.id === id);
+    if (!dd) return;
+    canvas.setDrillDownHighlight(dd);
+    renderDrillDownSidebar();
+    switchSidebarTab("drilldowns");
+  }
+
+  function openDrillDownModal(mode = "create", dd = null) {
+    ddFormMode = mode;
+    ddEditingId = dd?.id || null;
+    if (els.ddModalTitle) els.ddModalTitle.textContent = mode === "edit" ? "Edit Drill Down" : "Create Drill Down";
+    if (els.ddFormSaveBtn) els.ddFormSaveBtn.textContent = mode === "edit" ? "Save changes" : "Add Drill Down";
+    if (els.ddFormError) {
+      els.ddFormError.hidden = true;
+      els.ddFormError.textContent = "";
+    }
+    const prefs = loadDdPrefs();
+    if (els.ddCategorySuggestions) {
+      els.ddCategorySuggestions.innerHTML = prefs.categories
+        .map((c) => `<option value="${escapeAttr(c)}"></option>`)
+        .join("");
+    }
+    const colors = [...new Set([...prefs.colors, ...DD_DEFAULT_COLORS])].slice(0, 12);
+    if (els.ddColorSwatches) {
+      els.ddColorSwatches.innerHTML = colors
+        .map(
+          (c) =>
+            `<button type="button" class="dd-swatch" data-color="${escapeAttr(c)}" style="background:${escapeAttr(c)}" title="${escapeAttr(c)}" aria-label="Use ${escapeAttr(c)}"></button>`,
+        )
+        .join("");
+      els.ddColorSwatches.querySelectorAll(".dd-swatch").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (els.ddColorInput) els.ddColorInput.value = btn.dataset.color;
+          syncDdSwatchActive();
+        });
+      });
+    }
+    if (els.ddNameInput) els.ddNameInput.value = dd?.name || "";
+    if (els.ddCategoryInput) els.ddCategoryInput.value = dd?.category || prefs.categories[0] || "";
+    if (els.ddColorInput) els.ddColorInput.value = dd?.color || prefs.colors[0] || DD_DEFAULT_COLORS[0];
+    if (els.ddDescriptionInput) els.ddDescriptionInput.value = dd?.description || "";
+    syncDdSwatchActive();
+    if (els.drillDownModal) els.drillDownModal.hidden = false;
+    els.ddNameInput?.focus();
+  }
+
+  function syncDdSwatchActive() {
+    const current = els.ddColorInput?.value?.toLowerCase();
+    els.ddColorSwatches?.querySelectorAll(".dd-swatch").forEach((btn) => {
+      btn.classList.toggle("is-active", (btn.dataset.color || "").toLowerCase() === current);
+    });
+  }
+
+  function closeDrillDownModal() {
+    if (els.drillDownModal) els.drillDownModal.hidden = true;
+    ddEditingId = null;
+  }
+
+  function beginCreateDrillDown() {
+    const sel = canvas.getSelection();
+    if (!sel.nodes.length && !sel.edges.length) {
+      showToast("Select shapes or lines first.", "error");
+      return;
+    }
+    hideContextMenu();
+    openDrillDownModal("create");
+  }
+
+  function submitDrillDownForm(e) {
+    e?.preventDefault?.();
+    const name = (els.ddNameInput?.value || "").trim();
+    const category = (els.ddCategoryInput?.value || "").trim();
+    const color = (els.ddColorInput?.value || "#2563eb").trim();
+    const description = els.ddDescriptionInput?.value || "";
+    if (!name) {
+      if (els.ddFormError) {
+        els.ddFormError.hidden = false;
+        els.ddFormError.textContent = "Enter a name for this Drill Down.";
+      }
+      return;
+    }
+
+    if (ddFormMode === "edit" && ddEditingId) {
+      const updated = canvas.updateDrillDown(ddEditingId, { name, category, color, description });
+      if (!updated) {
+        showToast("Could not update Drill Down.", "error");
+        return;
+      }
+      rememberDdPrefs(category, color);
+      closeDrillDownModal();
+      renderDrillDownSidebar();
+      showToast("Drill Down updated.", "success");
+      return;
+    }
+
+    const sel = canvas.getSelection();
+    if (!sel.nodes.length && !sel.edges.length) {
+      if (els.ddFormError) {
+        els.ddFormError.hidden = false;
+        els.ddFormError.textContent = "Select shapes or lines on the canvas first.";
+      }
+      return;
+    }
+    const created = canvas.addDrillDown({
+      name,
+      category,
+      color,
+      description,
+      nodeIds: sel.nodes.map((n) => n.id),
+      edgeIds: sel.edges.map((ed) => ed.id),
+    });
+    rememberDdPrefs(category, color);
+    closeDrillDownModal();
+    canvas.setDrillDownHighlight(created);
+    switchSidebarTab("drilldowns");
+    renderDrillDownSidebar();
+    showToast("Drill Down created.", "success");
+  }
+
 
   function showToast(message, type = "info") {
     const toast = document.createElement("div");
@@ -837,6 +1098,10 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
+  }
+
+  function escapeAttr(text) {
+    return escapeHtml(text).replace(/"/g, "&quot;");
   }
 
   // 2.7.9: internal pipeline wording never reaches the user (item 10).
@@ -1907,6 +2172,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
         title: "Untitled Diagram",
         nodes: [],
         edges: [],
+        drilldowns: [],
       });
       if (els.diagramTitle) els.diagramTitle.value = "Untitled Diagram";
       clearDirty();
@@ -2156,6 +2422,11 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+      if (els.drillDownModal && !els.drillDownModal.hidden) {
+        e.preventDefault();
+        closeDrillDownModal();
+        return;
+      }
       if (els.copyDiagramMenu && !els.copyDiagramMenu.hidden) {
         e.preventDefault();
         hideCopyDiagramMenu();
@@ -2251,7 +2522,43 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
   mobileMq.addEventListener("change", initMobileLayout);
 
   els.tabAi?.addEventListener("click", () => switchSidebarTab("ai"));
+  els.tabDrilldowns?.addEventListener("click", () => switchSidebarTab("drilldowns"));
   els.tabProject?.addEventListener("click", () => switchSidebarTab("project"));
+
+  els.createDrillDownBtn?.addEventListener("click", beginCreateDrillDown);
+  els.clearDrillDownHighlightBtn?.addEventListener("click", () => {
+    canvas.clearDrillDownHighlight();
+    canvas.render();
+    renderDrillDownSidebar();
+  });
+  els.editDrillDownBtn?.addEventListener("click", () => {
+    const dd = canvas.getDrilldowns().find((item) => item.id === canvas.activeDrillDownId);
+    if (!dd) {
+      showToast("Select a Drill Down first.", "error");
+      return;
+    }
+    openDrillDownModal("edit", dd);
+  });
+  els.deleteDrillDownBtn?.addEventListener("click", () => {
+    const id = canvas.activeDrillDownId;
+    if (!id) {
+      showToast("Select a Drill Down first.", "error");
+      return;
+    }
+    if (!confirmAction("Delete this Drill Down? Shapes on the canvas are kept.")) return;
+    canvas.deleteDrillDown(id);
+    renderDrillDownSidebar();
+    showToast("Drill Down deleted.", "success");
+  });
+  els.ctxCreateDrillDown?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    beginCreateDrillDown();
+  });
+  els.ddForm?.addEventListener("submit", submitDrillDownForm);
+  els.ddFormCancelBtn?.addEventListener("click", closeDrillDownModal);
+  els.ddModalCloseBtn?.addEventListener("click", closeDrillDownModal);
+  els.ddModalBackdrop?.addEventListener("click", closeDrillDownModal);
+  els.ddColorInput?.addEventListener("input", syncDdSwatchActive);
 
   els.projectSelect?.addEventListener("change", () => {
     if (els.projectSelect.value) loadProject(els.projectSelect.value);
@@ -2271,6 +2578,8 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9";
 
   resetRequirementsChat({ quiet: true });
   updateCharCount();
+  updateDdSelectionHint();
+  renderDrillDownSidebar();
   initMobileLayout();
   updateApiDemoLink(null);
   clearDirty();

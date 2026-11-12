@@ -37,11 +37,26 @@ class DiagramEdge(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class DrillDown(BaseModel):
+    """Named, colored group of shapes/lines on the same canvas (USP)."""
+
+    id: str
+    name: str = ""
+    color: str = "#2563eb"
+    category: str = ""
+    description: str = ""
+    node_ids: list[str] = Field(default_factory=list, alias="nodeIds")
+    edge_ids: list[str] = Field(default_factory=list, alias="edgeIds")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class DiagramDocument(BaseModel):
     diagram_type: DiagramType
     title: str = "Untitled Diagram"
     nodes: list[DiagramNode] = Field(default_factory=list)
     edges: list[DiagramEdge] = Field(default_factory=list)
+    drilldowns: list[DrillDown] = Field(default_factory=list)
 
     model_config = ConfigDict(populate_by_name=True)
 

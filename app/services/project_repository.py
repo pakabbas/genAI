@@ -179,6 +179,7 @@ def build_canvas_export(project: ProjectDetail) -> CanvasExportV1:
         title=project.title,
         nodes=diagram.get("nodes", []),
         edges=diagram.get("edges", []),
+        drilldowns=diagram.get("drilldowns", []),
         exported_at=_utcnow(),
     )
 
