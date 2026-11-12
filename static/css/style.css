@@ -21,8 +21,8 @@
   --shadow-lg: 0 4px 6px rgba(15, 23, 42, 0.04), 0 16px 40px rgba(15, 23, 42, 0.08);
   --header-h: 64px;
   --panel-w: 280px;
-  /* 2.7.8: canvas 10% wider, taken from the AI Generation panel (was 400px). */
-  --right-panel-w: max(260px, calc(468px - 10vw));
+  --right-panel-w: 360px;
+  --resizer-w: 6px;
   --font: "Inter", system-ui, -apple-system, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, monospace;
   --canvas-bg: #fafbfd;
@@ -202,8 +202,120 @@ input {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: var(--panel-w) 1fr var(--right-panel-w);
+  grid-template-columns: var(--panel-w) var(--resizer-w) minmax(0, 1fr) var(--resizer-w) var(--right-panel-w);
   height: calc(100vh - var(--header-h));
+}
+
+.designer-workspace.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.designer-workspace.is-resizing iframe,
+.designer-workspace.is-resizing .designer-svg {
+  pointer-events: none;
+}
+
+.panel-resizer {
+  position: relative;
+  z-index: 5;
+  width: var(--resizer-w);
+  cursor: col-resize;
+  background: var(--border);
+  transition: background 0.15s;
+}
+
+.panel-resizer:hover,
+.panel-resizer:focus-visible,
+.panel-resizer.is-active {
+  background: var(--accent);
+  outline: none;
+}
+
+.panel-expand-rail {
+  display: none;
+  position: relative;
+  z-index: 6;
+  width: 22px;
+  border: none;
+  border-right: 1px solid var(--border);
+  background: #f8fafc;
+  color: var(--text-muted);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.panel-expand-rail:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.panel-expand-right {
+  border-right: none;
+  border-left: 1px solid var(--border);
+}
+
+.designer-workspace.left-collapsed {
+  grid-template-columns: 22px minmax(0, 1fr) var(--resizer-w) var(--right-panel-w);
+}
+
+.designer-workspace.left-collapsed .left-panel,
+.designer-workspace.left-collapsed .panel-resizer-left {
+  display: none;
+}
+
+.designer-workspace.left-collapsed .panel-expand-left {
+  display: block;
+}
+
+.designer-workspace.right-collapsed {
+  grid-template-columns: var(--panel-w) var(--resizer-w) minmax(0, 1fr) 22px;
+}
+
+.designer-workspace.right-collapsed .right-panel,
+.designer-workspace.right-collapsed .panel-resizer-right {
+  display: none;
+}
+
+.designer-workspace.right-collapsed .panel-expand-right {
+  display: block;
+}
+
+.designer-workspace.left-collapsed.right-collapsed {
+  grid-template-columns: 22px minmax(0, 1fr) 22px;
+}
+
+.panel-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+
+.panel-chrome-right {
+  flex-direction: row;
+}
+
+.panel-chrome-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.panel-collapse-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  font-size: 1.05rem;
+  line-height: 1;
 }
 
 .status-pill-link {
@@ -228,11 +340,13 @@ input {
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .sidebar-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
   padding: 0.65rem 0.65rem 0;
   background: #f8fafc;
@@ -881,6 +995,14 @@ body.is-toolbox-touch-drag {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 0.3rem;
+}
+
+.project-ai-tools {
+  margin-bottom: 0.35rem;
+}
+
+.project-ai-tools-hint {
+  margin: 0 0 0.35rem;
 }
 
 .brief-modal-panel {
@@ -1640,8 +1762,9 @@ body.is-toolbox-touch-drag {
 }
 
 @media (max-width: 1100px) {
-  .designer-workspace {
-    grid-template-columns: 240px 1fr max(220px, calc(332px - 10vw));
+  :root {
+    --panel-w: 240px;
+    --right-panel-w: 300px;
   }
 }
 
@@ -1726,12 +1849,26 @@ body.is-toolbox-touch-drag {
     height: 36px;
   }
 
-  .designer-workspace {
+  .designer-workspace,
+  .designer-workspace.left-collapsed,
+  .designer-workspace.right-collapsed,
+  .designer-workspace.left-collapsed.right-collapsed {
     flex: 1;
     grid-template-columns: 1fr;
     height: auto;
     min-height: 0;
     padding-bottom: calc(var(--mobile-dock-h) + env(safe-area-inset-bottom, 0));
+  }
+
+  .panel-resizer,
+  .panel-expand-rail,
+  .panel-chrome {
+    display: none !important;
+  }
+
+  .designer-workspace.left-collapsed .left-panel,
+  .designer-workspace.right-collapsed .right-panel {
+    display: flex;
   }
 
   .mobile-panel-backdrop:not([hidden]) {

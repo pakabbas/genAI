@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-drilldowns" />
+  <link rel="stylesheet" href="{{ root_path }}/static/css/style.css?v={{ app_version }}-panel-layout" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -57,8 +57,12 @@
     </div>
   </header>
 
-  <main class="designer-workspace">
+  <main class="designer-workspace" id="designerWorkspace">
     <aside class="designer-panel left-panel" id="leftPanel">
+      <div class="panel-chrome panel-chrome-left">
+        <span class="panel-chrome-label">Shapes</span>
+        <button type="button" class="btn btn-ghost btn-icon-only panel-collapse-btn" id="collapseLeftBtn" title="Collapse left panel" aria-label="Collapse left panel">‹</button>
+      </div>
       <div class="left-panel-scroll">
         <section class="panel-block panel-block-type">
           <label class="field-label" for="diagramTypeSelectLeft">Diagram type</label>
@@ -108,6 +112,9 @@
       </footer>
     </aside>
 
+    <div class="panel-resizer panel-resizer-left" id="leftResizer" role="separator" aria-orientation="vertical" aria-label="Resize left panel" tabindex="0"></div>
+    <button type="button" class="panel-expand-rail panel-expand-left" id="expandLeftBtn" hidden title="Expand left panel" aria-label="Expand left panel">›</button>
+
     <section class="designer-canvas-area">
       <div class="canvas-toolbar">
         <div class="canvas-meta">
@@ -146,7 +153,14 @@
       </div>
     </section>
 
+    <button type="button" class="panel-expand-rail panel-expand-right" id="expandRightBtn" hidden title="Expand right panel" aria-label="Expand right panel">‹</button>
+    <div class="panel-resizer panel-resizer-right" id="rightResizer" role="separator" aria-orientation="vertical" aria-label="Resize right panel" tabindex="0"></div>
+
     <aside class="designer-panel right-panel" id="rightPanel">
+      <div class="panel-chrome panel-chrome-right">
+        <button type="button" class="btn btn-ghost btn-icon-only panel-collapse-btn" id="collapseRightBtn" title="Collapse right panel" aria-label="Collapse right panel">›</button>
+        <span class="panel-chrome-label">Workspace</span>
+      </div>
       <div class="sidebar-tabs" role="tablist" aria-label="Sidebar sections">
         <button type="button" class="sidebar-tab is-active" id="tabAi" role="tab" aria-selected="true" aria-controls="panelAi">AI Generation</button>
         <button type="button" class="sidebar-tab" id="tabDrilldowns" role="tab" aria-selected="false" aria-controls="panelDrilldowns">Drill Downs</button>
@@ -156,17 +170,6 @@
       <div class="sidebar-tab-panels">
         <div class="tab-panel is-active chat-panel" id="panelAi" role="tabpanel" aria-labelledby="tabAi">
           <div class="req-chat req-chat-shell" id="reqChat">
-            <div class="req-chat-toolbar">
-              <label class="req-chat-type-wrap" for="diagramTypeSelect">
-                <span class="visually-hidden">Diagram type</span>
-                <select id="diagramTypeSelect" class="select-input select-input-chat" aria-label="Diagram type">
-                  {% for key, label in diagram_types.items() %}
-                  <option value="{{ key }}"{% if key == 'flowchart' %} selected{% endif %}>{{ label }}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              <button type="button" class="btn btn-ghost btn-sm" id="resetChatBtn" title="New chat — clears the brief, not the canvas">New chat</button>
-            </div>
             <div class="req-chat-messages" id="reqChatMessages" aria-live="polite"></div>
             <div class="req-chat-compose">
               <textarea
@@ -196,15 +199,6 @@
               <button type="button" class="btn btn-primary btn-generate" id="generateBtn" disabled title="Chat until the brief is ready, or use Proceed">
                 <span class="btn-label">Generate Now</span>
                 <span class="btn-spinner" hidden aria-hidden="true"></span>
-              </button>
-            </div>
-            <div class="panel-actions-row">
-              <button type="button" class="btn btn-ghost btn-sm" id="forceReadyBtn" disabled title="Skip further questions and enhance with assumptions">
-                Proceed
-              </button>
-              <button type="button" class="btn btn-secondary btn-sm" id="sampleBtn">Sample</button>
-              <button type="button" class="btn btn-ghost btn-sm ai-log-btn" id="aiThinkingLogBtn" disabled title="Run a generation first">
-                Log
               </button>
             </div>
           </div>
@@ -240,6 +234,19 @@
 
         <div class="tab-panel" id="panelProject" role="tabpanel" aria-labelledby="tabProject" hidden>
           <p class="block-subtitle tab-intro">Save, open, and share diagram projects.</p>
+
+          <div class="panel-actions panel-actions-row project-ai-tools">
+            <button type="button" class="btn btn-ghost btn-sm" id="forceReadyBtn" disabled title="Skip further questions and enhance with assumptions">
+              Proceed
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="sampleBtn">Sample</button>
+            <button type="button" class="btn btn-ghost btn-sm ai-log-btn" id="aiThinkingLogBtn" disabled title="Run a generation first">
+              Log
+            </button>
+          </div>
+          <p class="block-subtitle project-ai-tools-hint">Proceed finalizes the AI brief with assumptions. Sample loads an example diagram. Log shows the last AI thinking trace.</p>
+
+          <div class="settings-divider"></div>
 
           <label class="field-label" for="projectSelect">Open project</label>
           <select id="projectSelect" class="select-input select-input-tight" aria-label="Saved projects">
@@ -539,6 +546,6 @@
     </div>
   </div>
 
-  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}-drilldowns"></script>
+  <script type="module" src="{{ root_path }}/static/js/designer/app.js?v={{ app_version }}-panel-layout"></script>
 </body>
 </html>

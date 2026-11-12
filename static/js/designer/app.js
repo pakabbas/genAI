@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.9-drilldowns";
-import { DiagramCanvas } from "./canvas.js?v=2.7.9-drilldowns";
-import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-drilldowns";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.9-panel-layout";
+import { DiagramCanvas } from "./canvas.js?v=2.7.9-panel-layout";
+import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-panel-layout";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -85,8 +85,14 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-d
 
   const els = {
     apiStatus: document.getElementById("apiStatus"),
-    diagramTypeSelect: document.getElementById("diagramTypeSelect"),
     diagramTypeSelectLeft: document.getElementById("diagramTypeSelectLeft"),
+    designerWorkspace: document.getElementById("designerWorkspace"),
+    leftResizer: document.getElementById("leftResizer"),
+    rightResizer: document.getElementById("rightResizer"),
+    collapseLeftBtn: document.getElementById("collapseLeftBtn"),
+    collapseRightBtn: document.getElementById("collapseRightBtn"),
+    expandLeftBtn: document.getElementById("expandLeftBtn"),
+    expandRightBtn: document.getElementById("expandRightBtn"),
     activeTypeLabel: document.getElementById("activeTypeLabel"),
     toolboxNodes: document.getElementById("toolboxNodes"),
     toolboxEdges: document.getElementById("toolboxEdges"),
@@ -96,7 +102,6 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-d
     promptInput: document.getElementById("promptInput"),
     charCount: document.getElementById("charCount"),
     sendChatBtn: document.getElementById("sendChatBtn"),
-    resetChatBtn: document.getElementById("resetChatBtn"),
     forceReadyBtn: document.getElementById("forceReadyBtn"),
     reqChatMessages: document.getElementById("reqChatMessages"),
     viewBriefBtn: document.getElementById("viewBriefBtn"),
@@ -272,6 +277,61 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-d
     setMobileBackdrop(true);
   }
 
+  const PANEL_LAYOUT_KEY = "genai-panel-layout-v1";
+  const PANEL_MIN = 200;
+  const PANEL_MAX_LEFT = 480;
+  const PANEL_MAX_RIGHT = 560;
+  let panelLayout = {
+    left: 280,
+    right: 360,
+    leftCollapsed: false,
+    rightCollapsed: false,
+  };
+
+  function loadPanelLayout() {
+    try {
+      const raw = localStorage.getItem(PANEL_LAYOUT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Number.isFinite(parsed.left)) panelLayout.left = Math.min(PANEL_MAX_LEFT, Math.max(PANEL_MIN, parsed.left));
+      if (Number.isFinite(parsed.right)) panelLayout.right = Math.min(PANEL_MAX_RIGHT, Math.max(PANEL_MIN, parsed.right));
+      panelLayout.leftCollapsed = Boolean(parsed.leftCollapsed);
+      panelLayout.rightCollapsed = Boolean(parsed.rightCollapsed);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function savePanelLayout() {
+    try {
+      localStorage.setItem(PANEL_LAYOUT_KEY, JSON.stringify(panelLayout));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function applyPanelLayout() {
+    const root = document.documentElement;
+    root.style.setProperty("--panel-w", `${panelLayout.leftCollapsed ? 0 : panelLayout.left}px`);
+    root.style.setProperty("--right-panel-w", `${panelLayout.rightCollapsed ? 0 : panelLayout.right}px`);
+    els.designerWorkspace?.classList.toggle("left-collapsed", !isMobileLayout() && panelLayout.leftCollapsed);
+    els.designerWorkspace?.classList.toggle("right-collapsed", !isMobileLayout() && panelLayout.rightCollapsed);
+    els.leftPanel?.classList.toggle("is-collapsed", panelLayout.leftCollapsed);
+    els.rightPanel?.classList.toggle("is-collapsed", panelLayout.rightCollapsed);
+    if (els.expandLeftBtn) els.expandLeftBtn.hidden = isMobileLayout() || !panelLayout.leftCollapsed;
+    if (els.expandRightBtn) els.expandRightBtn.hidden = isMobileLayout() || !panelLayout.rightCollapsed;
+    if (els.leftResizer) els.leftResizer.hidden = isMobileLayout() || panelLayout.leftCollapsed;
+    if (els.rightResizer) els.rightResizer.hidden = isMobileLayout() || panelLayout.rightCollapsed;
+    canvas?.scheduleFitToContent?.();
+  }
+
+  function setPanelCollapsed(side, collapsed) {
+    if (side === "left") panelLayout.leftCollapsed = collapsed;
+    else panelLayout.rightCollapsed = collapsed;
+    savePanelLayout();
+    applyPanelLayout();
+  }
+
   function togglePanel(side) {
     if (isMobileLayout()) {
       const panel = side === "left" ? els.leftPanel : els.rightPanel;
@@ -283,19 +343,85 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-d
       }
       return;
     }
-    if (side === "left") els.leftPanel?.classList.toggle("is-collapsed");
-    else els.rightPanel?.classList.toggle("is-collapsed");
+    if (side === "left") setPanelCollapsed("left", !panelLayout.leftCollapsed);
+    else setPanelCollapsed("right", !panelLayout.rightCollapsed);
+  }
+
+  function bindPanelResizer(resizer, side) {
+    if (!resizer) return;
+    let startX = 0;
+    let startWidth = 0;
+
+    const onMove = (e) => {
+      const clientX = e.touches?.[0]?.clientX ?? e.clientX;
+      const delta = clientX - startX;
+      let next = side === "left" ? startWidth + delta : startWidth - delta;
+      const max = side === "left" ? PANEL_MAX_LEFT : PANEL_MAX_RIGHT;
+      next = Math.min(max, Math.max(PANEL_MIN, next));
+      if (side === "left") panelLayout.left = next;
+      else panelLayout.right = next;
+      applyPanelLayout();
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onUp);
+      resizer.classList.remove("is-active");
+      els.designerWorkspace?.classList.remove("is-resizing");
+      savePanelLayout();
+      canvas?.scheduleFitToContent?.();
+    };
+
+    const onDown = (e) => {
+      if (isMobileLayout()) return;
+      if (side === "left" && panelLayout.leftCollapsed) return;
+      if (side === "right" && panelLayout.rightCollapsed) return;
+      e.preventDefault();
+      startX = e.touches?.[0]?.clientX ?? e.clientX;
+      startWidth = side === "left" ? panelLayout.left : panelLayout.right;
+      resizer.classList.add("is-active");
+      els.designerWorkspace?.classList.add("is-resizing");
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+      document.addEventListener("touchmove", onMove, { passive: false });
+      document.addEventListener("touchend", onUp);
+    };
+
+    resizer.addEventListener("mousedown", onDown);
+    resizer.addEventListener("touchstart", onDown, { passive: false });
+    resizer.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      const step = e.key === "ArrowRight" ? 16 : -16;
+      const delta = side === "left" ? step : -step;
+      const max = side === "left" ? PANEL_MAX_LEFT : PANEL_MAX_RIGHT;
+      const current = side === "left" ? panelLayout.left : panelLayout.right;
+      const next = Math.min(max, Math.max(PANEL_MIN, current + delta));
+      if (side === "left") panelLayout.left = next;
+      else panelLayout.right = next;
+      savePanelLayout();
+      applyPanelLayout();
+    });
   }
 
   function initMobileLayout() {
     if (isMobileLayout()) {
       els.leftPanel?.classList.add("is-collapsed");
       els.rightPanel?.classList.add("is-collapsed");
+      panelLayout.leftCollapsed = true;
+      panelLayout.rightCollapsed = true;
       updateMobileDock("canvas");
       setMobileBackdrop(false);
+      els.designerWorkspace?.classList.remove("left-collapsed", "right-collapsed");
+      if (els.expandLeftBtn) els.expandLeftBtn.hidden = true;
+      if (els.expandRightBtn) els.expandRightBtn.hidden = true;
+      if (els.leftResizer) els.leftResizer.hidden = true;
+      if (els.rightResizer) els.rightResizer.hidden = true;
     } else {
-      els.leftPanel?.classList.remove("is-collapsed");
-      els.rightPanel?.classList.remove("is-collapsed");
+      loadPanelLayout();
+      applyPanelLayout();
       setMobileBackdrop(false);
     }
     canvas.scheduleFitToContent();
@@ -658,9 +784,7 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-d
       els.canvasLoadingSub.textContent = stageSub || "Understanding your requirements…";
     }
     // Prevent mid-generation type switches from dropping the result under the wrong type.
-    for (const sel of [els.diagramTypeSelect, els.diagramTypeSelectLeft]) {
-      if (sel) sel.disabled = Boolean(isGenerating);
-    }
+    if (els.diagramTypeSelectLeft) els.diagramTypeSelectLeft.disabled = Boolean(isGenerating);
   }
 
   function setChatting(isChatting) {
@@ -689,7 +813,6 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-d
         : "Chat until the brief is ready, or use Proceed";
     }
     if (els.promptInput) els.promptInput.disabled = busy;
-    if (els.resetChatBtn) els.resetChatBtn.disabled = busy;
   }
 
   // 2.7.9: the loading overlay only ever shows these fixed, friendly stage labels —
@@ -834,15 +957,14 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-d
 
   function filterDiagramTypeSelects(enabled) {
     const allowed = Array.isArray(enabled) && enabled.length ? new Set(enabled) : null;
-    for (const sel of [els.diagramTypeSelect, els.diagramTypeSelectLeft]) {
-      if (!sel) continue;
-      Array.from(sel.options).forEach((opt) => {
-        opt.hidden = Boolean(allowed && !allowed.has(opt.value));
-      });
-      if (allowed && !allowed.has(sel.value)) {
-        const first = Array.from(sel.options).find((o) => !o.hidden);
-        if (first) sel.value = first.value;
-      }
+    const sel = els.diagramTypeSelectLeft;
+    if (!sel) return;
+    Array.from(sel.options).forEach((opt) => {
+      opt.hidden = Boolean(allowed && !allowed.has(opt.value));
+    });
+    if (allowed && !allowed.has(sel.value)) {
+      const first = Array.from(sel.options).find((o) => !o.hidden);
+      if (first) sel.value = first.value;
     }
   }
 
@@ -1181,7 +1303,6 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-d
       return;
     }
     state.diagramType = type;
-    if (els.diagramTypeSelect) els.diagramTypeSelect.value = type;
     if (els.diagramTypeSelectLeft) els.diagramTypeSelectLeft.value = type;
     if (els.activeTypeLabel) {
       els.activeTypeLabel.textContent = DIAGRAM_TYPE_LABELS[type] || type;
@@ -1739,7 +1860,6 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-d
 
   async function loadToolboxAndSelect(type) {
     state.diagramType = type;
-    if (els.diagramTypeSelect) els.diagramTypeSelect.value = type;
     if (els.diagramTypeSelectLeft) els.diagramTypeSelectLeft.value = type;
     if (els.activeTypeLabel) {
       els.activeTypeLabel.textContent = DIAGRAM_TYPE_LABELS[type] || type;
@@ -2290,7 +2410,6 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-d
           "Change diagram type? The canvas will be cleared and the title reset to Untitled.",
         )
       ) {
-        if (els.diagramTypeSelect) els.diagramTypeSelect.value = state.diagramType;
         if (els.diagramTypeSelectLeft) els.diagramTypeSelectLeft.value = state.diagramType;
         return;
       }
@@ -2298,10 +2417,6 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-d
     selectDiagramType(value, { clearCanvasOnChange: canvas.diagram.nodes.length > 0 });
     resetRequirementsChat({ quiet: true });
   }
-
-  els.diagramTypeSelect?.addEventListener("change", () => {
-    onDiagramTypeChange(els.diagramTypeSelect.value);
-  });
 
   els.diagramTypeSelectLeft?.addEventListener("change", () => {
     onDiagramTypeChange(els.diagramTypeSelectLeft.value);
@@ -2332,7 +2447,6 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-d
     if (btn) onSendChat(e);
   });
   els.forceReadyBtn?.addEventListener("click", () => sendRequirementsMessage({ forceReady: true }));
-  els.resetChatBtn?.addEventListener("click", () => resetRequirementsChat());
   els.generateBtn.addEventListener("click", generateDiagram);
   els.viewBriefBtn?.addEventListener("click", openBriefModal);
   els.closeBriefBtn?.addEventListener("click", closeBriefModal);
@@ -2513,6 +2627,14 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-d
 
   els.panelToggleLeft?.addEventListener("click", () => togglePanel("left"));
   els.panelToggleRight?.addEventListener("click", () => togglePanel("right"));
+  els.collapseLeftBtn?.addEventListener("click", () => setPanelCollapsed("left", true));
+  els.collapseRightBtn?.addEventListener("click", () => setPanelCollapsed("right", true));
+  els.expandLeftBtn?.addEventListener("click", () => setPanelCollapsed("left", false));
+  els.expandRightBtn?.addEventListener("click", () => setPanelCollapsed("right", false));
+  bindPanelResizer(els.leftResizer, "left");
+  bindPanelResizer(els.rightResizer, "right");
+  loadPanelLayout();
+  applyPanelLayout();
 
   els.mobileDockLeft?.addEventListener("click", () => togglePanel("left"));
   els.mobileDockRight?.addEventListener("click", () => togglePanel("right"));
