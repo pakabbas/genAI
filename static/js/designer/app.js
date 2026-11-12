@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.9-panel-layout";
-import { DiagramCanvas } from "./canvas.js?v=2.7.9-panel-layout";
-import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-panel-layout";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.9-left-dd";
+import { DiagramCanvas } from "./canvas.js?v=2.7.9-left-dd";
+import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-left-dd";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";
@@ -157,11 +157,13 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-p
     mobileDockLeft: document.getElementById("mobileDockLeft"),
     mobileDockCanvas: document.getElementById("mobileDockCanvas"),
     mobileDockRight: document.getElementById("mobileDockRight"),
-    tabAi: document.getElementById("tabAi"),
+    tabShapes: document.getElementById("tabShapes"),
     tabDrilldowns: document.getElementById("tabDrilldowns"),
+    tabAi: document.getElementById("tabAi"),
     tabProject: document.getElementById("tabProject"),
-    panelAi: document.getElementById("panelAi"),
+    panelShapes: document.getElementById("panelShapes"),
     panelDrilldowns: document.getElementById("panelDrilldowns"),
+    panelAi: document.getElementById("panelAi"),
     panelProject: document.getElementById("panelProject"),
     createDrillDownBtn: document.getElementById("createDrillDownBtn"),
     clearDrillDownHighlightBtn: document.getElementById("clearDrillDownHighlightBtn"),
@@ -524,10 +526,31 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-p
     },
   });
 
+  function switchLeftTab(tab) {
+    const panels = [
+      { tab: els.tabShapes, panel: els.panelShapes, id: "shapes" },
+      { tab: els.tabDrilldowns, panel: els.panelDrilldowns, id: "drilldowns" },
+    ];
+    for (const item of panels) {
+      const active = item.id === tab;
+      item.tab?.classList.toggle("is-active", active);
+      item.tab?.setAttribute("aria-selected", active ? "true" : "false");
+      item.panel?.classList.toggle("is-active", active);
+      if (item.panel) item.panel.hidden = !active;
+    }
+    if (tab === "drilldowns") {
+      if (!isMobileLayout() && panelLayout.leftCollapsed) setPanelCollapsed("left", false);
+      renderDrillDownSidebar();
+    }
+  }
+
   function switchSidebarTab(tab) {
+    if (tab === "shapes" || tab === "drilldowns") {
+      switchLeftTab(tab);
+      return;
+    }
     const panels = [
       { tab: els.tabAi, panel: els.panelAi, id: "ai" },
-      { tab: els.tabDrilldowns, panel: els.panelDrilldowns, id: "drilldowns" },
       { tab: els.tabProject, panel: els.panelProject, id: "project" },
     ];
     for (const item of panels) {
@@ -537,7 +560,6 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-p
       item.panel?.classList.toggle("is-active", active);
       if (item.panel) item.panel.hidden = !active;
     }
-    if (tab === "drilldowns") renderDrillDownSidebar();
   }
 
   function loadDdPrefs() {
@@ -2643,8 +2665,9 @@ import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-p
 
   mobileMq.addEventListener("change", initMobileLayout);
 
+  els.tabShapes?.addEventListener("click", () => switchLeftTab("shapes"));
+  els.tabDrilldowns?.addEventListener("click", () => switchLeftTab("drilldowns"));
   els.tabAi?.addEventListener("click", () => switchSidebarTab("ai"));
-  els.tabDrilldowns?.addEventListener("click", () => switchSidebarTab("drilldowns"));
   els.tabProject?.addEventListener("click", () => switchSidebarTab("project"));
 
   els.createDrillDownBtn?.addEventListener("click", beginCreateDrillDown);
