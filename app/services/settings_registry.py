@@ -103,7 +103,7 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
     "ai.model.analyst": _s(
         "ai.model.analyst",
         type="string",
-        default="gemini-3.1-pro-preview",
+        default="gemini-4-neon",
         group="ai_models",
         label="Analyst model (Agent 0)",
         help="Model for Requirements Analyst. Falls back to GEMINI_MODEL env when empty.",
@@ -111,7 +111,7 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
     "ai.model.planner": _s(
         "ai.model.planner",
         type="string",
-        default="gemini-3.1-pro-preview",
+        default="gemini-4-neon",
         group="ai_models",
         label="Planner model",
         help="Model for process inventory extraction.",
@@ -119,15 +119,15 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
     "ai.model.generator": _s(
         "ai.model.generator",
         type="string",
-        default="gemini-4-argon",
+        default="gemini-4-carbon",
         group="ai_models",
         label="Generator model (Agent 1)",
-        help="Model for diagram JSON generation (latest Argon).",
+        help="Model for diagram JSON generation (Gemini 4 Carbon flagship).",
     ),
     "ai.model.qc": _s(
         "ai.model.qc",
         type="string",
-        default="gemini-3.1-pro-preview",
+        default="gemini-4-neon",
         group="ai_models",
         label="QC model (Agent 2)",
         help="Model for QC audit.",
