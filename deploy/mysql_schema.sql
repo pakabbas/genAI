@@ -44,3 +44,24 @@ CREATE TABLE IF NOT EXISTS genai_prompts (
   UNIQUE KEY uq_genai_prompts_key_version (prompt_key, version),
   INDEX idx_genai_prompts_active (prompt_key, is_active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS genai_generation_logs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  diagram_type VARCHAR(32) NOT NULL DEFAULT '',
+  edit_mode TINYINT(1) NOT NULL DEFAULT 0,
+  status VARCHAR(16) NOT NULL DEFAULT 'ok',
+  error_message VARCHAR(512) NULL,
+  api_key_last4 VARCHAR(8) NULL,
+  models_used VARCHAR(512) NULL,
+  call_count INT NOT NULL DEFAULT 0,
+  prompt_tokens INT NULL,
+  thoughts_tokens INT NULL,
+  output_tokens INT NULL,
+  total_tokens INT NULL,
+  duration_ms INT NULL,
+  calls_json JSON NULL,
+  INDEX idx_genai_gen_logs_created (created_at),
+  INDEX idx_genai_gen_logs_key (api_key_last4),
+  INDEX idx_genai_gen_logs_type (diagram_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

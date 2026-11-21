@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.services import gemini_key as gemini_key_svc
 from app.services import settings_service as cfg
+from app.services import usage_log
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -26,6 +27,12 @@ class PromptActivateBody(BaseModel):
 
 class GeminiKeyBody(BaseModel):
     api_key: str = Field(..., min_length=1)
+
+
+@router.get("/usage-logs")
+async def get_usage_logs(limit: int = 100, offset: int = 0) -> dict:
+    """Recent diagram generation usage (key last4, models, tokens, datetime)."""
+    return usage_log.list_logs(limit=limit, offset=offset)
 
 
 @router.get("/gemini-key")
