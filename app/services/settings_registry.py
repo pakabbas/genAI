@@ -119,10 +119,10 @@ SETTINGS_REGISTRY: dict[str, dict[str, Any]] = {
     "ai.model.generator": _s(
         "ai.model.generator",
         type="string",
-        default="gemini-3.1-pro-preview",
+        default="gemini-4-argon",
         group="ai_models",
         label="Generator model (Agent 1)",
-        help="Model for diagram JSON generation.",
+        help="Model for diagram JSON generation (latest Argon).",
     ),
     "ai.model.qc": _s(
         "ai.model.qc",

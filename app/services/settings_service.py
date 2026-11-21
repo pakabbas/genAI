@@ -201,8 +201,13 @@ def get_value(key: str) -> Any:
         except Exception:
             pass
 
-    # Per-agent model falls back to GEMINI_MODEL env when unset in DB
+    # Per-agent model: DB → agent default (Generator uses Argon) → GEMINI_MODEL env
     if key.startswith("ai.model.") and key != "ai.model.fallback":
+        code_default = str(meta.get("default") or "").strip()
+        # Generator (Agent 1) always prefers its registry default over the shared env model
+        # so switching Argon does not require a DB write when GEMINI_MODEL is still set.
+        if key == "ai.model.generator" and code_default:
+            return code_default
         env_model = str(get_env_settings().get("gemini_model") or "").strip()
         if env_model:
             return env_model
