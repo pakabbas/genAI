@@ -108,6 +108,10 @@ jobs:
             echo "==> Setting ownership to pakabbas52:www-data"
             sudo chown -R pakabbas52:www-data "${APP_DIR}"
             sudo chmod g+rwxs "${APP_DIR}"
+            # Service runs as www-data; .env is often mode 600 — grant group read after chown
+            if [[ -f "${APP_DIR}/.env" ]]; then
+              sudo chmod 640 "${APP_DIR}/.env"
+            fi
 
             echo "==> Restarting ${SERVICE_NAME}"
             sudo systemctl restart "${SERVICE_NAME}"
