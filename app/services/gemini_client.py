@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import threading
 import time
+from typing import Any
 
 from google import genai
 from google.genai import types
@@ -26,9 +28,39 @@ _THINKING_BY_ROLE = {
 # 2.7.9: per-thread info about the last call (latency, model, thinking tokens) for the trace.
 _last_call = threading.local()
 
+# Per-generation accumulator (propagates to planner worker via copy_context).
+_usage_session: contextvars.ContextVar[list[dict[str, Any]] | None] = contextvars.ContextVar(
+    "gemini_usage_session", default=None
+)
+
+
+def begin_usage_session() -> list[dict[str, Any]]:
+    """Start collecting token usage for the current generation. Returns the shared list."""
+    calls: list[dict[str, Any]] = []
+    _usage_session.set(calls)
+    return calls
+
+
+def clear_usage_session() -> None:
+    _usage_session.set(None)
+
+
+def current_usage_calls() -> list[dict[str, Any]]:
+    return list(_usage_session.get() or [])
+
+
+def _record_usage_call(info: dict[str, Any]) -> None:
+    bucket = _usage_session.get()
+    if bucket is None:
+        return
+    try:
+        bucket.append(dict(info))
+    except Exception:
+        pass
+
 
 def last_call_info() -> dict:
-    """Return {'seconds','model','thoughts_tokens','output_tokens'} for this thread's last call."""
+    """Return usage/latency dict for this thread's last call."""
     return dict(getattr(_last_call, "info", None) or {})
 
 
@@ -38,6 +70,7 @@ def format_call_info(info: dict | None = None) -> str:
         return ""
     return (
         f"took {info.get('seconds', 0):.1f}s, model {info.get('model')}, "
+        f"prompt_tokens {info.get('prompt_tokens')}, "
         f"thoughts_tokens {info.get('thoughts_tokens')}, output_tokens {info.get('output_tokens')}"
     )
 
@@ -137,20 +170,34 @@ def generate_json(
                     finish = getattr(cand, "finish_reason", None) if cand else None
                     usage = getattr(response, "usage_metadata", None)
                     thoughts = getattr(usage, "thoughts_token_count", None) if usage else None
-                    _last_call.info = {
+                    prompt_tokens = getattr(usage, "prompt_token_count", None) if usage else None
+                    output_tokens = getattr(usage, "candidates_token_count", None) if usage else None
+                    total_tokens = getattr(usage, "total_token_count", None) if usage else None
+                    cached_tokens = (
+                        getattr(usage, "cached_content_token_count", None) if usage else None
+                    )
+                    call_info = {
                         "seconds": time.monotonic() - started,
                         "model": model_name,
                         "role": role,
+                        "prompt_tokens": prompt_tokens,
                         "thoughts_tokens": thoughts,
-                        "output_tokens": getattr(usage, "candidates_token_count", None) if usage else None,
+                        "output_tokens": output_tokens,
+                        "total_tokens": total_tokens,
+                        "cached_tokens": cached_tokens,
                         "thinking_level": getattr(thinking, "thinking_level", None) if thinking else None,
+                        "finish_reason": str(finish) if finish is not None else None,
                     }
+                    _last_call.info = call_info
+                    _record_usage_call(call_info)
                     logger.info(
-                        "Gemini %s model=%s finish=%s thoughts_tokens=%s",
+                        "Gemini %s model=%s finish=%s prompt=%s thoughts=%s output=%s",
                         role,
                         model_name,
                         finish,
+                        prompt_tokens,
                         thoughts,
+                        output_tokens,
                     )
                 except Exception:
                     pass
