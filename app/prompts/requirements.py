@@ -58,9 +58,15 @@ enhanced_prompt format (plain text, not JSON):
 - Domain / system context
 - Actors / roles OR entities OR lanes OR steps (as appropriate for the diagram type)
 - Key flows / relationships / processes to include
+- USER DECISIONS: copy the user's clarification answers verbatim (especially yes/no and exclusions)
+- EXCLUDE (hard constraints): list every ruled-out item (e.g. "no notifications", "without refunds")
 - Scope boundaries (what to include / exclude)
 - Explicit assumptions
 - Desired level of detail (keep diagrams focused: typically 6–18 nodes)
+
+Hard constraints:
+- Anything the user said no/not/without/exclude/don't/do not/skip about MUST appear under EXCLUDE
+  and must NOT be reinvented as a step (e.g. "no notifications" ⇒ no Notify Customer node).
 
 Respond ONLY with JSON:
 {

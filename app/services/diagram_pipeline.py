@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextvars
 import json
+import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -24,7 +26,14 @@ from app.schemas.generation import AgentTraceEntry, GenerateDiagramResponse, QCA
 from app.schemas.process_model import ProcessModel
 from app.services.diagram_generator import _extract_json_object, _parse_diagram_json
 from app.services.diagram_normalizer import normalize_diagram
-from app.services.gemini_client import format_call_info, generate_json, last_call_info
+from app.services.gemini_client import (
+    begin_usage_session,
+    clear_usage_session,
+    current_usage_calls,
+    format_call_info,
+    generate_json,
+    last_call_info,
+)
 from app.services.process_coverage import (
     coverage_revision_issues,
     extract_process_model,
@@ -38,6 +47,9 @@ from app.services import flowchart_layout as fc_layout
 from app.services.brief_coverage import BriefGaps, validate_brief_coverage
 from app.services.prompt_guard import reject_if_non_diagram
 from app.services import settings_service as cfg
+from app.services import usage_log
+
+logger = logging.getLogger(__name__)
 
 TraceCallback = Callable[[AgentTraceEntry], None]
 
@@ -156,8 +168,11 @@ def _run_qc_audit(
     previous: DiagramDocument | None = None,
     hard_timeout: float | None = None,
     cancel_event: threading.Event | None = None,
+    analyst_brief: str | None = None,
 ) -> QCAuditResult:
-    qc_user = build_qc_audit_prompt(diagram_type, user_prompt, diagram)
+    qc_user = build_qc_audit_prompt(
+        diagram_type, user_prompt, diagram, analyst_brief=analyst_brief
+    )
     if edit_mode and previous is not None:
         prev_ids = {n.id for n in previous.nodes}
         new_ids = {n.id for n in diagram.nodes}
@@ -204,8 +219,19 @@ def _merge_coverage_into_audit(
     gaps: list[str],
     *,
     prefix: str = "Prompt coverage",
+    advisory: bool = False,
 ) -> QCAuditResult:
     if not gaps:
+        return audit
+    if advisory:
+        # When the QC LLM already approved, deterministic gaps stay advisory only —
+        # they must not override a passing audit (false "Missing Notify Customer" etc.).
+        recs = list(audit.recommendations)
+        for gap in gaps:
+            note = f"{prefix} (advisory): {gap}"
+            if note not in recs:
+                recs.append(note)
+        audit.recommendations = recs
         return audit
     blocking = list(audit.blocking_issues)
     for gap in gaps:
@@ -232,8 +258,24 @@ def generate_diagram_with_qc(
     cancel_event: threading.Event | None = None,
     edit_request: str | None = None,
 ) -> GenerateDiagramResponse:
-    if diagram_type == "flowchart":
-        return _generate_flowchart_with_qc(
+    begin_usage_session()
+    t0 = time.monotonic()
+    status = "ok"
+    error_message: str | None = None
+    try:
+        if diagram_type == "flowchart":
+            return _generate_flowchart_with_qc(
+                user_prompt,
+                existing,
+                on_trace,
+                prompt_enhanced=prompt_enhanced,
+                original_prompt=original_prompt,
+                edit_mode=edit_mode,
+                cancel_event=cancel_event,
+                edit_request=edit_request,
+            )
+        return _generate_with_qc_default(
+            diagram_type,
             user_prompt,
             existing,
             on_trace,
@@ -241,18 +283,28 @@ def generate_diagram_with_qc(
             original_prompt=original_prompt,
             edit_mode=edit_mode,
             cancel_event=cancel_event,
-            edit_request=edit_request,
         )
-    return _generate_with_qc_default(
-        diagram_type,
-        user_prompt,
-        existing,
-        on_trace,
-        prompt_enhanced=prompt_enhanced,
-        original_prompt=original_prompt,
-        edit_mode=edit_mode,
-        cancel_event=cancel_event,
-    )
+    except Exception as exc:
+        status = "cancelled" if isinstance(exc, PipelineCancelled) else "error"
+        error_message = str(exc)[:500]
+        raise
+    finally:
+        # Never let logging break generation / error propagation.
+        try:
+            usage_log.record_generation(
+                diagram_type=str(diagram_type or ""),
+                edit_mode=bool(edit_mode),
+                status=status,
+                error_message=error_message,
+                calls=current_usage_calls(),
+                duration_seconds=time.monotonic() - t0,
+            )
+        except Exception as log_exc:  # noqa: BLE001
+            logger.warning("usage log hook failed (ignored): %s", log_exc)
+        try:
+            clear_usage_session()
+        except Exception:
+            pass
 
 
 def _check_cancel(cancel_event: threading.Event | None) -> None:
@@ -533,10 +585,21 @@ def _generate_with_qc_default(
     step += 1
 
     prior_for_qc = existing if edit_mode else None
+    analyst_brief = generation_prompt if prompt_enhanced else None
     audit = _run_qc_audit(
-        diagram_type, qc_prompt, diagram, edit_mode=edit_mode, previous=prior_for_qc
+        diagram_type,
+        qc_prompt,
+        diagram,
+        edit_mode=edit_mode,
+        previous=prior_for_qc,
+        analyst_brief=analyst_brief,
     )
-    audit = _merge_coverage_into_audit(audit, coverage_gaps)
+    llm_ok = bool(audit.approved and not audit.revision_required)
+    audit = _merge_coverage_into_audit(
+        audit,
+        coverage_gaps,
+        advisory=llm_ok,
+    )
     all_recommendations = list(audit.recommendations)
 
     _append_trace(
@@ -644,9 +707,19 @@ def _generate_with_qc_default(
         step += 1
 
         audit = _run_qc_audit(
-            diagram_type, qc_prompt, diagram, edit_mode=edit_mode, previous=prior_for_qc
+            diagram_type,
+            qc_prompt,
+            diagram,
+            edit_mode=edit_mode,
+            previous=prior_for_qc,
+            analyst_brief=analyst_brief,
         )
-        audit = _merge_coverage_into_audit(audit, coverage_gaps)
+        llm_ok = bool(audit.approved and not audit.revision_required)
+        audit = _merge_coverage_into_audit(
+            audit,
+            coverage_gaps,
+            advisory=llm_ok,
+        )
         # Prefer the latest QC recommendations (drop stale notes from prior drafts).
         all_recommendations = list(audit.recommendations)
 
@@ -872,7 +945,8 @@ def _generate_flowchart_with_qc(
             info.setdefault("seconds", time.monotonic() - started)
             return model, info
 
-        planner_future = executor.submit(_plan)
+        # Preserve usage-session ContextVar so planner tokens are attributed.
+        planner_future = executor.submit(contextvars.copy_context().run, _plan)
 
     add(
         "generator",
@@ -1027,14 +1101,20 @@ def _generate_flowchart_with_qc(
             previous=prior_for_qc,
             hard_timeout=min(call_timeout, max(15.0, remaining())),
             cancel_event=cancel_event,
+            analyst_brief=generation_prompt if prompt_enhanced else None,
         )
         info = timed()
         llm_ok = bool(audit.approved and not audit.revision_required)
-        use_gaps = gaps
         if llm_ok:
-            # Only "Missing …" deterministic items may trigger a (single) revision.
+            # Passing QC: keep Missing… gaps as advisory notes only (do not force revision).
             use_gaps = [g for g in gaps if g.lower().startswith("missing")]
-        audit = _merge_coverage_into_audit(audit, use_gaps, prefix="Coverage gap (deterministic)")
+            audit = _merge_coverage_into_audit(
+                audit, use_gaps, prefix="Coverage gap (deterministic)", advisory=True
+            )
+        else:
+            audit = _merge_coverage_into_audit(
+                audit, gaps, prefix="Coverage gap (deterministic)"
+            )
         return audit, llm_ok, info
 
     add("qc_auditor", "review", f"QC Auditor is reviewing… (model: {cfg.resolve_model('qc')})")

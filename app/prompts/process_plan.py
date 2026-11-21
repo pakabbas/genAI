@@ -13,14 +13,17 @@ Rules:
 3. Every conditional ("if", "or", "accept/reject", "success/failure", "confirm/decline", "Yes/No")
    MUST become a decision element with explicit branches.
 4. Include start and end events. Failed/rejected branches that "end" need their own end elements
-   (or clearly mark ends_process on the branch) plus any notify/notify-customer activity stated.
-5. If the brief says the customer (or another actor) is notified on decline/reject, that notify
-   action is a SEPARATE activity on EACH such terminating branch — do not skip it.
+   (or clearly mark ends_process on the branch).
+5. Include a notify / notify-customer activity ONLY when the brief affirmatively requests it.
+   If the brief says no/not/without/exclude/don't/do not/skip notifications (or similar),
+   do NOT invent a notify step. When a notify IS requested, it is a SEPARATE activity on each
+   terminating branch that needs it — do not skip it.
 6. Preserve the logical order from the prompt.
 7. Do NOT invent refunds, retries, cancellations, timeouts, or extra business rules.
 8. Do NOT drop a stated handoff or actor action. Do NOT merge pick-up with deliver (or any two
    distinct verbs) into one activity.
 9. Lane names on activities/decisions must match the lane list exactly when the actor is clear.
+10. Anything the brief excludes or says no/without/exclude MUST NOT appear in the inventory.
 
 Respond ONLY with JSON:
 {
@@ -32,7 +35,7 @@ Respond ONLY with JSON:
     {"id":"d1","kind":"decision","label":"Payment Successful?","lane":"Lane B",
      "branches":[
        {"label":"Yes","outcome":"continue","next_element_id":"a2","ends_process":false},
-       {"label":"No","outcome":"notify customer and end","next_element_id":"a_notify","ends_process":false}
+       {"label":"No","outcome":"end process","next_element_id":"e_fail","ends_process":true}
      ]},
     {"id":"e1","kind":"end","label":"End","lane":"Lane A","branches":[]}
   ],
@@ -48,8 +51,6 @@ def build_process_plan_prompt(diagram_type: DiagramType, user_prompt: str) -> st
     label = DIAGRAM_TYPE_LABELS[diagram_type]
     return f"""Diagram type: {label}
 
-Extract the full process inventory from this brief. Be exhaustive for activities and decisions.
-
-User brief:
+Brief to inventory (extract EVERY stated requirement; invent nothing; honor exclusions):
 {user_prompt.strip()}
 """

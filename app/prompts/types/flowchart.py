@@ -9,6 +9,12 @@ GUIDANCE = (
     '- Every conditional = decision diamond with ≥2 labeled branches (Yes/No, 2FA, retry, etc.); each answer label appears ONCE per decision.\n'
     "- Steps that run in parallel: a connector_node labelled 'Fork' fans out to them and a connector_node labelled 'Join' merges them (never two same-label edges from a decision).\n"
     '- Preserve prompt order; do not invent extra business rules.\n'
+    "- Negation / exclusions (hard): if the brief says no/not/without/exclude/don't/do not/skip "
+    "before a notify/notification phrase (e.g. 'no notifications'), do NOT add a Notify Customer "
+    "(or any notify) node. Only add a notify step when the brief affirmatively requests it. "
+    "Never invent a notify step from a negated mention.\n"
+    "- Never add steps the brief excludes. 'Tell/inform X' maps to one step using the brief's "
+    "wording — not an extra generic notify step.\n"
     '- Loop-backs / retries are edges back to the earlier node (the canvas routes them).\n'
     "- A branch that ends after an error/failure gets its OWN End terminator (e.g. 'End: Link expired') unless the brief names the same end.\n"
     "- Shapes: terminator = Start/End, process = action, decision = question, input = Input/Output (every 'Show …' message/screen and every user entry/selection).\n"

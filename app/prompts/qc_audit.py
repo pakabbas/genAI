@@ -16,6 +16,8 @@ def build_qc_audit_prompt(
     diagram_type: DiagramType,
     user_prompt: str,
     diagram: DiagramDocument,
+    *,
+    analyst_brief: str | None = None,
 ) -> str:
     context = effective_type_context(diagram_type)
     diagram_json = diagram.model_dump_json(by_alias=True, indent=2)
@@ -41,7 +43,8 @@ def build_qc_audit_prompt(
         ),
         "flowchart": (
             "Checklist (tick each): every stated step? every conditional a decision with ≥2 "
-            "labeled branches (incl. No/2FA/retry)? start/end? loop-backs routed around nodes?"
+            "labeled branches (incl. No/2FA/retry)? start/end? loop-backs routed around nodes? "
+            "no excluded steps (e.g. Notify when user said no notifications)?"
         ),
         "sequence": (
             "Checklist (tick each): each participant? message count/order/types "
@@ -58,17 +61,26 @@ def build_qc_audit_prompt(
         "architecture": "Checklist (tick each): major services/APIs/stores? service≠api shapes?",
     }.get(diagram_type, "Checklist (tick each): all major requested elements present?")
 
+    brief = (analyst_brief or "").strip()
+    request_block = f"User request:\n{user_prompt.strip()}"
+    if brief and brief != user_prompt.strip():
+        request_block = (
+            f"User request (chat):\n{user_prompt.strip()}\n\n"
+            f"Analyst brief (authoritative for EXCLUDE / USER DECISIONS):\n{brief}"
+        )
+
     return "\n".join(
         [
             context,
             "",
-            f"User request:\n{user_prompt.strip()}",
+            request_block,
             "",
             stats,
             "",
             "REQUIREMENT-BY-REQUIREMENT AUDIT:",
-            "List each concrete requirement from the user request, mark PASS or FAIL,",
-            "and set revision_required if any FAIL.",
+            "List each concrete requirement from the user request / brief, mark PASS or FAIL,",
+            "and set revision_required if any FAIL. Also FAIL if the diagram includes an element",
+            "the user explicitly excluded (EXCLUDE / no/without/don't).",
             type_checklist,
             "",
             "Generated diagram JSON to review:",

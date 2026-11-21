@@ -1689,7 +1689,7 @@ export class DiagramCanvas {
     return Math.max(13, Number(this.BASE_FONT) || 0);
   }
 
-  /** Flowchart: branch labels sit on the FIRST segment, ~16px from the decision exit. */
+  /** Flowchart: branch labels sit next to the decision exit (first segment), not on a shared run. */
   _fcLabelAnchor(route, from, to) {
     const pts = route?.length > 1 ? route : null;
     if (!pts || !["decision", "gateway_xor"].includes(from?.type)) {
@@ -1704,11 +1704,8 @@ export class DiagramCanvas {
       const dir = dx >= 0 ? 1 : -1;
       return { x: a.x + dir * 8, y: a.y - 7, anchor: dir > 0 ? "start" : "end" };
     }
+    // Keep labels by the diamond even on short bottom drops (avoid sitting on a shared horizontal).
     const dir = dy >= 0 ? 1 : -1;
-    if (dir > 0 && Math.abs(dy) < 30 && pts.length > 2) {
-      // Short drop into a horizontal run (bottom-exit loop): sit just below that run.
-      return { x: a.x + 7, y: b.y + 16, anchor: "start" };
-    }
     return { x: a.x + 7, y: a.y + dir * 18 + (dir > 0 ? 0 : 4), anchor: "start" };
   }
 
@@ -1923,7 +1920,7 @@ export class DiagramCanvas {
     const pref = (label) => {
       const t = String(label || "").trim().toLowerCase();
       if (!t) return 1;
-      if (/\b(no|fail|failed|invalid|reject|rejected|declin|denied|false|error|cancel)\b/.test(t)) return 3;
+      if (/\b(no|fail\w*|invalid|reject\w*|declin\w*|denied|false|error|cancel\w*)\b/.test(t)) return 3;
       if (/\b(yes|ok|valid|success|approved|true|accept|continue)\b/.test(t)) return 0;
       return 2;
     };
@@ -1979,7 +1976,7 @@ export class DiagramCanvas {
     const pref = (label) => {
       const t = String(label || "").trim().toLowerCase();
       if (!t) return 1;
-      if (/\b(no|fail|failed|invalid|reject|rejected|declin|denied|false|error|cancel)\b/.test(t)) return 3;
+      if (/\b(no|fail\w*|invalid|reject\w*|declin\w*|denied|false|error|cancel\w*)\b/.test(t)) return 3;
       if (/\b(yes|ok|valid|success|approved|true|accept|continue)\b/.test(t)) return 0;
       return 2;
     };
@@ -2077,20 +2074,24 @@ export class DiagramCanvas {
       }
       return n;
     };
+    const fromLaneCount = new Map();
     for (const { e } of fwd) {
       const a = byId.get(e.from);
       const b = byId.get(e.to);
-      const cands = this._fcForwardCandidates(a, b);
+      const laneShift = fromLaneCount.get(a.id) || 0;
+      const cands = this._fcForwardCandidates(a, b, laneShift);
       const isNo = pref(e.label) === 3;
       const isDec = ["decision", "gateway_xor"].includes(a.type);
       let best = null;
       for (const c of cands) {
         let score =
           hitCount(c.pts, a, b) * 10000 + ups(c.pts) * 3000 + length(c.pts) + (c.pts.length - 2) * 30 + crossings(c.pts) * 150 +
-          overlaps(c.pts, b.id) * 400;
+          overlaps(c.pts, b.id) * 1200;
         if (isUsed(a.id, c.exit)) score += 600;
         if (c.entry !== "top" && isUsed(b.id, c.entry)) score += 600;
-        if (isDec && isNo && c.exit === "bottom") score += 40;
+        // Prefer a side exit for a decision's secondary / No branch (avoids shared bottom lane).
+        if (isDec && isNo && c.exit === "bottom") score += 280;
+        if (isDec && isNo && (c.exit === "left" || c.exit === "right")) score -= 80;
         if (!best || score < best.score) best = { ...c, score };
       }
       if (!best) continue;
@@ -2100,6 +2101,7 @@ export class DiagramCanvas {
       placed.push(pts);
       markUsed(a.id, best.exit);
       if (best.entry !== "top") markUsed(b.id, best.entry);
+      fromLaneCount.set(a.id, laneShift + 1);
     }
 
     // Back-edges: gutter on the left or right, entering beside or just above the target.
@@ -2185,7 +2187,7 @@ export class DiagramCanvas {
   }
 
   /** Orthogonal candidate routes for a forward (non-loop) flowchart edge. */
-  _fcForwardCandidates(a, b) {
+  _fcForwardCandidates(a, b, laneShift = 0) {
     const cx1 = a.x + a.width / 2;
     const cy1 = a.y + a.height / 2;
     const cx2 = b.x + b.width / 2;
@@ -2197,6 +2199,7 @@ export class DiagramCanvas {
     const sameRow = !below && b.y < a.y + a.height && b.y + b.height > a.y;
     const toward = cx2 >= cx1 ? "right" : "left";
     const away = toward === "right" ? "left" : "right";
+    const stagger = Math.max(0, Number(laneShift) || 0) * 16;
     if (sameRow) {
       const s = this._fcSidePoint(a, toward);
       const t = this._fcSidePoint(b, away);
@@ -2205,7 +2208,7 @@ export class DiagramCanvas {
         const mx = (s.x + t.x) / 2;
         out.push({ exit: toward, entry: away, pts: [s, { x: mx, y: s.y }, { x: mx, y: t.y }, t] });
       }
-      const gy = Math.min(b.y, a.y) - 18;
+      const gy = Math.min(b.y, a.y) - 18 - stagger;
       const ta = this._fcSidePoint(a, "top");
       out.push({ exit: "top", entry: "top", pts: [ta, { x: ta.x, y: gy }, { x: cx2, y: gy }, { x: cx2, y: b.y }] });
       return out;
@@ -2221,7 +2224,8 @@ export class DiagramCanvas {
         out.push({ exit: "bottom", entry: "top", pts: [bottom, { x: cx1, y: b.y }] });
       }
       if (Math.abs(cx1 - cx2) < 6) out.push({ exit: "bottom", entry: "top", pts: [bottom, { x: bottom.x, y: topB.y }] });
-      const gy = Math.max(bottom.y + 14, b.y - 20);
+      // Stagger shared horizontal lanes per source so second branches don't sit on the first.
+      const gy = Math.max(bottom.y + 14, b.y - 20) + stagger;
       if (Math.abs(cx1 - cx2) >= 6) {
         out.push({ exit: "bottom", entry: "top", pts: [bottom, { x: bottom.x, y: gy }, { x: cx2, y: gy }, topB] });
         const s = this._fcSidePoint(a, toward);

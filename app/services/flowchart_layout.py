@@ -238,7 +238,9 @@ def _label_pref(label: str) -> int:
     t = (label or "").strip().lower()
     if not t:
         return 1
-    if re.search(r"\b(no|fail|failed|invalid|reject|rejected|declin|denied|false|error|cancel)\b", t):
+    if re.search(
+        r"\b(no|fail\w*|invalid|reject\w*|declin\w*|denied|false|error|cancel\w*)\b", t
+    ):
         return 3
     if re.search(r"\b(yes|ok|valid|success|approved|true|accept|continue)\b", t):
         return 0
@@ -375,7 +377,9 @@ def layout_flowchart(document: DiagramDocument) -> DiagramDocument:
 
         def end_score(s: str) -> tuple:
             lbl = by_id[s].label or ""
-            bad = 1 if re.search(r"\b(fail|failed|error|cancel|reject|denied|empty|abort)\b", lbl, re.I) else 0
+            bad = 1 if re.search(
+                r"\b(fail\w*|error|cancel\w*|reject\w*|denied|empty|abort\w*)\b", lbl, re.I
+            ) else 0
             return (-bad, rank[s], -topo.index(s))
 
         main_end = max(reachable_sinks, key=end_score)

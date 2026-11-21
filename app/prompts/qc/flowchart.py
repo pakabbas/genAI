@@ -20,5 +20,7 @@ QC_SYSTEM = compose_qc_system(
 5. Start/end terminator missing when the brief describes a bounded process.
 6. Edges reference missing node ids, or types outside the flowchart toolbox.
 7. Wrong diagram type for the request.
+8. Diagram contains an element the user explicitly excluded (e.g. Notify Customer when
+   they said "no notifications"), or invents steps not in the brief / EXCLUDE list.
 """,
 )

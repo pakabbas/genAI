@@ -33,14 +33,14 @@ _DECISION_CUES: list[tuple[str, str, str, list[tuple[str, str]]]] = [
         r"accept\s*/\s*reject|accept(?:s|ed)?\s+or\s+reject|restaurant\s+accept",
         "Accept Order?",
         "Restaurant",
-        [("Yes", "accepted"), ("No", "rejected — notify and end")],
+        [("Yes", "accepted"), ("No", "rejected — end")],
     ),
     (
         r"success\s*/\s*failure|confirm(?:s|ed)?\s+or\s+decline|payment\s+(?:success|fail|declin)|"
         r"if\s+declined|if\s+confirmed",
         "Payment Successful?",
         "Payment Gateway",
-        [("Yes", "confirmed"), ("No", "declined — notify and end")],
+        [("Yes", "confirmed"), ("No", "declined — end")],
     ),
     (
         r"approve\s*/\s*deny|approved\s+or\s+denied|if\s+approved|if\s+denied",
@@ -154,8 +154,8 @@ def enrich_process_model_from_prompt(model: ProcessModel, user_prompt: str) -> P
         )
         existing_decision_labels.append(label)
 
-    # Notify-on-failure cues: ensure at least one notify activity when prompt says so
-    if re.search(r"notif(?:y|ied|ication)", prompt, flags=re.I):
+    # Notify-on-failure cues: only when the brief affirmatively asks (not negated).
+    if _prompt_affirmatively_requests_notify(prompt):
         activity_labels = [e.label for e in model.activities()]
         if not any("notif" in _norm(lbl) for lbl in activity_labels):
             lane = None
@@ -173,6 +173,26 @@ def enrich_process_model_from_prompt(model: ProcessModel, user_prompt: str) -> P
             )
 
     return model
+
+
+_NOTIFY_WORD = re.compile(r"notif(?:y|ied|ication|ications)", re.I)
+_NOTIFY_NEGATION = re.compile(
+    r"(?:\bno\b|\bnot\b|\bwithout\b|\bexclude(?:s|d)?\b|\bexcluding\b|"
+    r"\bdon'?t\b|\bdo\s+not\b|\bskip(?:ping)?\b|\bnever\b|"
+    r"\bno\s+need\b|\bavoid\b)\W{0,24}$",
+    re.I,
+)
+
+
+def _prompt_affirmatively_requests_notify(prompt: str) -> bool:
+    """True only when a notify/notification mention is not preceded by negation."""
+    text = prompt or ""
+    for match in _NOTIFY_WORD.finditer(text):
+        before = text[max(0, match.start() - 48) : match.start()]
+        if _NOTIFY_NEGATION.search(before):
+            continue
+        return True
+    return False
 
 
 def prompt_decision_gaps(user_prompt: str, diagram: DiagramDocument) -> list[str]:
