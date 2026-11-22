@@ -1,7 +1,7 @@
 // Cache-bust every module — app.js?v= alone is not enough; browsers cache bare imports.
-import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.9-left-dd";
-import { DiagramCanvas } from "./canvas.js?v=2.7.9-left-dd";
-import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-left-dd";
+import { DIAGRAM_TYPE_LABELS, SAMPLE_DIAGRAMS, setToolboxSizes } from "./diagram-types.js?v=2.7.9-fc-route";
+import { DiagramCanvas } from "./canvas.js?v=2.7.9-fc-route";
+import { applyNormalizeConfig, normalizeDiagram } from "./normalize.js?v=2.7.9-fc-route";
 
 (() => {
   const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || "";

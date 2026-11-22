@@ -400,12 +400,15 @@ def layout_flowchart(document: DiagramDocument) -> DiagramDocument:
         if bypass:
             main_child[nid] = max(bypass, key=lambda k: (rank[k], -kids.index(k)))
             continue
+        # Prefer happy-path / shortest remaining path to End (not the longest branch).
+        # If still tied, prefer a shared merge target (multiple inbound forward edges).
         best = max(
             outs,
             key=lambda e: (
                 1 if leads_to_main(e.to_node) else 0,
                 -_label_pref(e.label),
-                dist[e.to_node],
+                -dist[e.to_node],
+                1 if len(f_in[e.to_node]) > 1 else 0,
                 -order_index[e.id],
             ),
         )

@@ -1,4 +1,4 @@
-import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.9-insert2";
+import { defaultNodeSize, nextId } from "./diagram-types.js?v=2.7.9-fc-route";
 
 const SEQUENCE_MESSAGE_TYPES = new Set(["message", "async_message", "return_message"]);
 
@@ -1462,10 +1462,74 @@ export class DiagramCanvas {
   render() {
     this._ensureSequenceMessageLayout();
     this._drawGrid();
-    this._drawEdges();
-    this._drawNodes();
+    // Per-type render entry points isolate routing/label/shape rules (behavior identical for now).
+    const renderFn = this._renderFnForType(this.diagram.diagram_type);
+    renderFn.call(this);
     this._drawMarquee();
     this._applyViewTransform();
+  }
+
+  _renderFnForType(type) {
+    switch (type) {
+      case "flowchart":
+        return this._renderFlowchart;
+      case "use_case":
+        return this._renderUseCase;
+      case "erd":
+        return this._renderERD;
+      case "swim_lane":
+        return this._renderSwimLane;
+      case "sequence":
+        return this._renderSequence;
+      case "class_diagram":
+        return this._renderClass;
+      case "network":
+        return this._renderNetwork;
+      case "architecture":
+        return this._renderArchitecture;
+      default:
+        return this._renderFlowchart;
+    }
+  }
+
+  _renderFlowchart() {
+    this._drawEdges();
+    this._drawNodes();
+  }
+
+  _renderUseCase() {
+    this._drawEdges();
+    this._drawNodes();
+  }
+
+  _renderERD() {
+    this._drawEdges();
+    this._drawNodes();
+  }
+
+  _renderSwimLane() {
+    this._drawEdges();
+    this._drawNodes();
+  }
+
+  _renderSequence() {
+    this._drawEdges();
+    this._drawNodes();
+  }
+
+  _renderClass() {
+    this._drawEdges();
+    this._drawNodes();
+  }
+
+  _renderNetwork() {
+    this._drawEdges();
+    this._drawNodes();
+  }
+
+  _renderArchitecture() {
+    this._drawEdges();
+    this._drawNodes();
   }
 
   _drawMarquee() {
@@ -1647,7 +1711,7 @@ export class DiagramCanvas {
       const labelText = this._dedupeEdgeLabel(edge.label);
       if (labelText) {
         const isFc = this.diagram.diagram_type === "flowchart";
-        const anchor = isFc ? this._fcLabelAnchor(route, from, to) : this._labelAnchor(route, from, to);
+        const anchor = isFc ? this._fcLabelAnchor(route, from, to, edge) : this._labelAnchor(route, from, to);
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", anchor.x);
         text.setAttribute("y", anchor.y);
@@ -1689,8 +1753,10 @@ export class DiagramCanvas {
     return Math.max(13, Number(this.BASE_FONT) || 0);
   }
 
-  /** Flowchart: branch labels sit next to the decision exit (first segment), not on a shared run. */
-  _fcLabelAnchor(route, from, to) {
+  /** Flowchart: prefer precomputed per-branch anchors; else sit by the decision exit. */
+  _fcLabelAnchor(route, from, to, edge) {
+    const pre = edge?.id && this._fc?.labelAnchors?.get(edge.id);
+    if (pre) return pre;
     const pts = route?.length > 1 ? route : null;
     if (!pts || !["decision", "gateway_xor"].includes(from?.type)) {
       const a = this._labelAnchor(route, from, to);
@@ -1704,9 +1770,85 @@ export class DiagramCanvas {
       const dir = dx >= 0 ? 1 : -1;
       return { x: a.x + dir * 8, y: a.y - 7, anchor: dir > 0 ? "start" : "end" };
     }
-    // Keep labels by the diamond even on short bottom drops (avoid sitting on a shared horizontal).
     const dir = dy >= 0 ? 1 : -1;
     return { x: a.x + 7, y: a.y + dir * 18 + (dir > 0 ? 0 : 4), anchor: "start" };
+  }
+
+  /** Per-branch label spots: unique first segment + index offset, then nudge collisions. */
+  _fcBuildLabelAnchors(fwd, byId) {
+    if (!this._fc) return;
+    const anchors = new Map();
+    const byFrom = new Map();
+    for (const { e } of fwd) {
+      const route = this._fc.routes.get(e.id);
+      if (!route || !e.label) continue;
+      if (!byFrom.has(e.from)) byFrom.set(e.from, []);
+      byFrom.get(e.from).push({ e, route });
+    }
+    const baseAnchor = (route, from, branchIdx) => {
+      const pts = route;
+      if (!pts || pts.length < 2) return { x: 0, y: 0, anchor: "start" };
+      // Prefer first segment that is not collinear with a sibling's first segment.
+      let seg = 0;
+      const siblings = byFrom.get(from.id) || [];
+      for (let i = 0; i < pts.length - 1; i += 1) {
+        const p = pts[i], q = pts[i + 1];
+        const shared = siblings.some(({ e: se, route: sr }) => {
+          if (se.id === undefined) return false;
+          if (sr === pts) return false;
+          if (!sr || sr.length < 2) return false;
+          const r = sr[0], t = sr[1];
+          if (Math.abs(p.y - q.y) < 0.5 && Math.abs(r.y - t.y) < 0.5 && Math.abs(p.y - r.y) < 3) {
+            const lo = Math.max(Math.min(p.x, q.x), Math.min(r.x, t.x));
+            const hi = Math.min(Math.max(p.x, q.x), Math.max(r.x, t.x));
+            return hi - lo > 8;
+          }
+          if (Math.abs(p.x - q.x) < 0.5 && Math.abs(r.x - t.x) < 0.5 && Math.abs(p.x - r.x) < 3) {
+            const lo = Math.max(Math.min(p.y, q.y), Math.min(r.y, t.y));
+            const hi = Math.min(Math.max(p.y, q.y), Math.max(r.y, t.y));
+            return hi - lo > 8;
+          }
+          return false;
+        });
+        if (!shared) {
+          seg = i;
+          break;
+        }
+        seg = i;
+      }
+      const a = pts[seg];
+      const b = pts[seg + 1];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const off = branchIdx * 14;
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        const dir = dx >= 0 ? 1 : -1;
+        return { x: a.x + dir * (10 + off * 0.3), y: a.y - 7 - off * 0.35, anchor: dir > 0 ? "start" : "end" };
+      }
+      const dir = dy >= 0 ? 1 : -1;
+      return { x: a.x + 8 + off, y: a.y + dir * 16, anchor: "start" };
+    };
+    for (const [fromId, list] of byFrom) {
+      const from = byId.get(fromId);
+      if (!from) continue;
+      list.forEach((item, idx) => {
+        anchors.set(item.e.id, baseAnchor(item.route, from, idx));
+      });
+    }
+    // Nudge overlapping labels apart.
+    const placed = [...anchors.entries()].map(([id, a]) => ({ id, ...a }));
+    for (let i = 0; i < placed.length; i += 1) {
+      for (let j = i + 1; j < placed.length; j += 1) {
+        const A = placed[i];
+        const B = placed[j];
+        if (Math.hypot(A.x - B.x, A.y - B.y) < 16) {
+          B.y += A.y <= B.y ? 14 : -14;
+          B.x += A.x <= B.x ? 10 : -10;
+          anchors.set(B.id, { x: B.x, y: B.y, anchor: B.anchor || "start" });
+        }
+      }
+    }
+    this._fc.labelAnchors = anchors;
   }
 
   _labelAnchor(route, from, to) {
@@ -1843,15 +1985,46 @@ export class DiagramCanvas {
     return { x: cx, y: node.y - pad };
   }
 
+  _straightRoute(x1, y1, x2, y2) {
+    return [
+      { x: x1, y: y1 },
+      { x: x2, y: y2 },
+    ];
+  }
+
+  _useCaseRoute(x1, y1, x2, y2) {
+    return this._straightRoute(x1, y1, x2, y2);
+  }
+
+  _erdRoute(x1, y1, x2, y2) {
+    return this._straightRoute(x1, y1, x2, y2);
+  }
+
+  _classRoute(x1, y1, x2, y2) {
+    return this._straightRoute(x1, y1, x2, y2);
+  }
+
+  _networkRoute(x1, y1, x2, y2) {
+    return this._straightRoute(x1, y1, x2, y2);
+  }
+
+  _architectureRoute(x1, y1, x2, y2) {
+    return this._straightRoute(x1, y1, x2, y2);
+  }
+
   _routedEdgePath(from, to, edge, x1, y1, x2, y2) {
     const dtype = this.diagram.diagram_type;
     if (dtype === "flowchart") return this._flowchartRoute(from, to, edge);
-    if (dtype !== "flowchart" && dtype !== "swim_lane") {
-      return [
-        { x: x1, y: y1 },
-        { x: x2, y: y2 },
-      ];
-    }
+    if (dtype === "use_case") return this._useCaseRoute(x1, y1, x2, y2);
+    if (dtype === "erd") return this._erdRoute(x1, y1, x2, y2);
+    if (dtype === "class_diagram") return this._classRoute(x1, y1, x2, y2);
+    if (dtype === "network") return this._networkRoute(x1, y1, x2, y2);
+    if (dtype === "architecture") return this._architectureRoute(x1, y1, x2, y2);
+    if (dtype !== "swim_lane") return this._straightRoute(x1, y1, x2, y2);
+    return this._swimLaneRoute(from, to, edge, x1, y1, x2, y2);
+  }
+
+  _swimLaneRoute(from, to, edge, x1, y1, x2, y2) {
     const label = String(edge.label || "").toLowerCase();
     const isLoop = y2 + 8 < y1 || (x2 + 40 < x1 && Math.abs(y2 - y1) > 20);
     const isNo = /\bno\b|\bfail|\breject|\bfalse\b/.test(label);
@@ -1999,7 +2172,7 @@ export class DiagramCanvas {
       (laneUse[lane] = laneUse[lane] || []).push(it);
       lanes.set(it.id, lane);
     }
-    this._fc = { back, lanes, byId, routes: new Map(), used: new Map() };
+    this._fc = { back, lanes, byId, routes: new Map(), used: new Map(), labelAnchors: new Map() };
 
     const markUsed = (id, side) => {
       if (!this._fc.used.has(id)) this._fc.used.set(id, new Set());
@@ -2051,58 +2224,103 @@ export class DiagramCanvas {
       }
       return n;
     };
-    // Collinear overlap with an already-placed route (two edges drawn on top of each other).
+    // Collinear overlap. Same-target lines may share only the last ~24px into the box.
     const overlaps = (pts, to) => {
       let n = 0;
+      const lastIdx = pts.length - 2;
       for (let i = 0; i < pts.length - 1; i += 1) {
         const p = pts[i], q = pts[i + 1];
         for (const other of placed) {
-          if (to && other.to === to) continue; // merging into the same target is fine
+          const sameTarget = to && other.to === to;
+          const otherLast = other.length - 2;
           for (let j = 0; j < other.length - 1; j += 1) {
             const r = other[j], t = other[j + 1];
+            let share = 0;
             if (Math.abs(p.y - q.y) < 0.5 && Math.abs(r.y - t.y) < 0.5 && Math.abs(p.y - r.y) < 3) {
               const lo = Math.max(Math.min(p.x, q.x), Math.min(r.x, t.x));
               const hi = Math.min(Math.max(p.x, q.x), Math.max(r.x, t.x));
-              if (hi - lo > 4) n += 1;
+              share = hi - lo;
             } else if (Math.abs(p.x - q.x) < 0.5 && Math.abs(r.x - t.x) < 0.5 && Math.abs(p.x - r.x) < 3) {
               const lo = Math.max(Math.min(p.y, q.y), Math.min(r.y, t.y));
               const hi = Math.min(Math.max(p.y, q.y), Math.max(r.y, t.y));
-              if (hi - lo > 4) n += 1;
+              share = hi - lo;
             }
+            if (share <= 4) continue;
+            if (sameTarget && i === lastIdx && j === otherLast) {
+              if (share <= 24) continue; // allow short shared tip into the same box
+              n += 1;
+              continue;
+            }
+            n += 1;
           }
         }
       }
       return n;
     };
+    const exitReuseCost = (node, exit) => {
+      if (!isUsed(node.id, exit)) return 0;
+      return ["decision", "gateway_xor"].includes(node.type) ? 1500 : 600;
+    };
+    const intoCount = new Map();
     const fromLaneCount = new Map();
     for (const { e } of fwd) {
       const a = byId.get(e.from);
       const b = byId.get(e.to);
       const laneShift = fromLaneCount.get(a.id) || 0;
-      const cands = this._fcForwardCandidates(a, b, laneShift);
+      let cands = this._fcForwardCandidates(a, b, laneShift);
+      const free = cands.filter((c) => !isUsed(a.id, c.exit));
+      if (free.length) cands = free;
       const isNo = pref(e.label) === 3;
       const isDec = ["decision", "gateway_xor"].includes(a.type);
+      const bottomTaken = isUsed(a.id, "bottom");
+      const bottomBlocked = cands.every((c) => c.exit !== "bottom");
       let best = null;
       for (const c of cands) {
         let score =
           hitCount(c.pts, a, b) * 10000 + ups(c.pts) * 3000 + length(c.pts) + (c.pts.length - 2) * 30 + crossings(c.pts) * 150 +
           overlaps(c.pts, b.id) * 1200;
-        if (isUsed(a.id, c.exit)) score += 600;
+        score += exitReuseCost(a, c.exit);
         if (c.entry !== "top" && isUsed(b.id, c.entry)) score += 600;
-        // Prefer a side exit for a decision's secondary / No branch (avoids shared bottom lane).
-        if (isDec && isNo && c.exit === "bottom") score += 280;
-        if (isDec && isNo && (c.exit === "left" || c.exit === "right")) score -= 80;
+        // Keep decision corners free for outgoing branches.
+        if (["decision", "gateway_xor"].includes(b.type) && c.entry !== "top" && c.entry !== "bottom") {
+          score += 1500;
+        }
+        // No-branch: only leave the straight drop when bottom is already taken or unavailable.
+        if (isDec && isNo && c.exit === "bottom" && (bottomTaken || bottomBlocked)) score += 280;
         if (!best || score < best.score) best = { ...c, score };
       }
       if (!best) continue;
-      const pts = best.score >= 10000 ? this._avoidObstacles(best.pts, a, b) : best.pts;
+      let pts = best.score >= 10000 ? this._avoidObstacles(best.pts, a, b) : best.pts.map((p) => ({ ...p }));
+      // Extra lines into the same box: share only the tip; offset entry 18px per prior inbound.
+      const nInto = intoCount.get(b.id) || 0;
+      if (nInto > 0 && pts.length >= 2) {
+        const last = pts[pts.length - 1];
+        const prev = pts[pts.length - 2];
+        const towardSrc = (a.x + a.width / 2) >= (b.x + b.width / 2) ? -1 : 1;
+        const dx = towardSrc * 18 * nInto;
+        if (Math.abs(last.x - prev.x) < 0.5) {
+          // vertical tip into top: shift approach x
+          last.x += dx;
+          prev.x += dx;
+          if (pts.length >= 3 && Math.abs(pts[pts.length - 3].y - prev.y) < 0.5) {
+            pts[pts.length - 3].y = prev.y;
+          }
+        } else if (Math.abs(last.y - prev.y) < 0.5) {
+          last.y += (towardSrc > 0 ? 1 : -1) * 6 * nInto;
+          prev.y = last.y;
+        }
+      }
       this._fc.routes.set(e.id, pts);
       pts.to = b.id;
+      pts.exit = best.exit;
+      pts.edgeId = e.id;
       placed.push(pts);
       markUsed(a.id, best.exit);
       if (best.entry !== "top") markUsed(b.id, best.entry);
       fromLaneCount.set(a.id, laneShift + 1);
+      intoCount.set(b.id, nInto + 1);
     }
+    this._fcBuildLabelAnchors(fwd, byId);
 
     // Back-edges: gutter on the left or right, entering beside or just above the target.
     for (const e of edges) {
@@ -2200,47 +2418,70 @@ export class DiagramCanvas {
     const toward = cx2 >= cx1 ? "right" : "left";
     const away = toward === "right" ? "left" : "right";
     const stagger = Math.max(0, Number(laneShift) || 0) * 16;
+    const isDec = ["decision", "gateway_xor"].includes(a.type);
     if (sameRow) {
-      const s = this._fcSidePoint(a, toward);
-      const t = this._fcSidePoint(b, away);
-      if (Math.abs(s.y - t.y) < 2) out.push({ exit: toward, entry: away, pts: [s, t] });
-      else {
-        const mx = (s.x + t.x) / 2;
-        out.push({ exit: toward, entry: away, pts: [s, { x: mx, y: s.y }, { x: mx, y: t.y }, t] });
+      const sToward = this._fcSidePoint(a, toward);
+      const tAway = this._fcSidePoint(b, away);
+      if (Math.abs(sToward.y - tAway.y) < 2) {
+        out.push({ exit: toward, entry: away, pts: [sToward, tAway] });
+      } else {
+        const mx = (sToward.x + tAway.x) / 2;
+        out.push({
+          exit: toward,
+          entry: away,
+          pts: [sToward, { x: mx, y: sToward.y }, { x: mx, y: tAway.y }, tAway],
+        });
       }
-      const gy = Math.min(b.y, a.y) - 18 - stagger;
+      const sAway = this._fcSidePoint(a, away);
+      const tToward = this._fcSidePoint(b, toward);
+      out.push({
+        exit: away,
+        entry: toward,
+        pts: [sAway, { x: (sAway.x + tToward.x) / 2, y: sAway.y }, { x: (sAway.x + tToward.x) / 2, y: tToward.y }, tToward],
+      });
+      const gyBot = Math.max(a.y + a.height, b.y + b.height) + 18 + stagger;
+      const tBot = this._fcSidePoint(b, "bottom");
+      out.push({
+        exit: "bottom",
+        entry: "bottom",
+        pts: [bottom, { x: bottom.x, y: gyBot }, { x: tBot.x, y: gyBot }, tBot],
+      });
+      const gyTop = Math.min(b.y, a.y) - 18 - stagger;
       const ta = this._fcSidePoint(a, "top");
-      out.push({ exit: "top", entry: "top", pts: [ta, { x: ta.x, y: gy }, { x: cx2, y: gy }, { x: cx2, y: b.y }] });
+      out.push({ exit: "top", entry: "top", pts: [ta, { x: ta.x, y: gyTop }, { x: cx2, y: gyTop }, { x: cx2, y: b.y }] });
       return out;
     }
     if (below) {
       const isBar = (n) => n.type === "connector_node" && this._isForkJoin(n);
-      // Fork bar: each branch drops straight down from the bar at the branch's x.
       if (isBar(a) && cx2 > a.x + 4 && cx2 < a.x + a.width - 4) {
         out.push({ exit: `bar${Math.round(cx2)}`, entry: "top", pts: [{ x: cx2, y: a.y + a.height }, topB] });
       }
-      // Join bar: each branch drops straight onto the bar at the branch's x.
       if (isBar(b) && cx1 > b.x + 4 && cx1 < b.x + b.width - 4) {
         out.push({ exit: "bottom", entry: "top", pts: [bottom, { x: cx1, y: b.y }] });
       }
-      if (Math.abs(cx1 - cx2) < 6) out.push({ exit: "bottom", entry: "top", pts: [bottom, { x: bottom.x, y: topB.y }] });
-      // Stagger shared horizontal lanes per source so second branches don't sit on the first.
+      if (Math.abs(cx1 - cx2) < 6) {
+        out.push({ exit: "bottom", entry: "top", pts: [bottom, { x: bottom.x, y: topB.y }] });
+      }
       const gy = Math.max(bottom.y + 14, b.y - 20) + stagger;
+      // Bottom exit (straight / elbow).
       if (Math.abs(cx1 - cx2) >= 6) {
         out.push({ exit: "bottom", entry: "top", pts: [bottom, { x: bottom.x, y: gy }, { x: cx2, y: gy }, topB] });
-        const s = this._fcSidePoint(a, toward);
-        if ((toward === "right" && cx2 > s.x + 10) || (toward === "left" && cx2 < s.x - 10)) {
-          out.push({ exit: toward, entry: "top", pts: [s, { x: cx2, y: s.y }, topB] });
+      }
+      // Distinct side exits so sibling decision branches leave different corners.
+      for (const side of isDec ? ["right", "left"] : [toward]) {
+        const s = this._fcSidePoint(a, side);
+        const sx = s.x + (side === "right" ? 20 + stagger : -(20 + stagger));
+        out.push({ exit: side, entry: "top", pts: [s, { x: sx, y: s.y }, { x: sx, y: gy }, { x: cx2, y: gy }, topB] });
+        if ((side === "right" && cx2 > s.x + 10) || (side === "left" && cx2 < s.x - 10)) {
+          out.push({ exit: side, entry: "top", pts: [s, { x: cx2, y: s.y }, topB] });
         }
-        const sx = s.x + (toward === "right" ? 20 : -20);
-        out.push({ exit: toward, entry: "top", pts: [s, { x: sx, y: s.y }, { x: sx, y: gy }, { x: cx2, y: gy }, topB] });
-        // Enter the target from its side.
+      }
+      if (Math.abs(cx1 - cx2) >= 6) {
         const tSide = this._fcSidePoint(b, away);
         if ((toward === "right" && tSide.x > cx1 + 10) || (toward === "left" && tSide.x < cx1 - 10)) {
           out.push({ exit: "bottom", entry: away, pts: [bottom, { x: bottom.x, y: tSide.y }, tSide] });
         }
       } else {
-        // Same column but something may sit in between: detour beside the column.
         for (const side of ["right", "left"]) {
           const s = this._fcSidePoint(a, side);
           const t = this._fcSidePoint(b, side);
@@ -2252,11 +2493,15 @@ export class DiagramCanvas {
       void cy2;
       return out;
     }
-    // Target above without being a loop (hand-placed): orthogonal elbow via the top.
     const s = this._fcSidePoint(a, "top");
     const t = this._fcSidePoint(b, "bottom");
     const midY = (s.y + t.y) / 2;
     out.push({ exit: "top", entry: "bottom", pts: [s, { x: s.x, y: midY }, { x: t.x, y: midY }, t] });
+    for (const side of ["left", "right"]) {
+      const ss = this._fcSidePoint(a, side);
+      const ts = this._fcSidePoint(b, side === toward ? away : side);
+      out.push({ exit: side, entry: away, pts: [ss, { x: ss.x + (side === "right" ? 24 : -24), y: ss.y }, { x: ss.x + (side === "right" ? 24 : -24), y: ts.y }, ts] });
+    }
     const ts = this._fcSidePoint(b, away);
     out.push({ exit: "top", entry: away, pts: [s, { x: s.x, y: ts.y }, ts] });
     return out;
